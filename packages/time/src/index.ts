@@ -13,3 +13,7 @@ export {
 export { addBusinessDuration, addDuration, businessDuration } from './business-time';
 export { autoCloseDue, isAutoCloseDue, staleState, type StaleState } from './lifecycle-clocks';
 export { formatBusinessDuration, type DurationTextContext } from './display';
+export {
+  mergeIntervals, effectiveWaitingEnd, waitingElapsed, slaElapsed,
+  type TimeInterval, type WaitingInterval, type SlaClock,
+} from './waiting-time';
