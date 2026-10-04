@@ -66,6 +66,9 @@ export function prepareCalendar(calendar: CalendarSnapshot): PreparedCalendar {
 }
 
 /** Immutable copy of a live calendar for one request/clock (Part 6 §6.7, C8). */
-export function snapshotCalendar(_live: CalendarSnapshot): CalendarSnapshot {
-  throw new Error('snapshotCalendar: not implemented yet (S03)');
+export function snapshotCalendar(live: CalendarSnapshot): CalendarSnapshot {
+  prepareCalendar(live);
+  const openWeekdays = Object.freeze([...live.openWeekdays].sort((a, b) => a - b));
+  const holidays = Object.freeze([...new Set(live.holidays)].sort());
+  return Object.freeze({ timeZone: live.timeZone, openWeekdays, holidays });
 }
