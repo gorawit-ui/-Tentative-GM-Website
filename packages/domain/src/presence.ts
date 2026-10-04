@@ -1,7 +1,8 @@
 // GM presence and leave (S07: C7, A3, F07, Part 6 §6.4/§6.9). Pure: callers pass `now`; the
 // scheduler persists resets; UI reads `effectivePresence` so yesterday's value never shows.
-import type { Instant } from '@gm/time';
-import type { Actor } from './request-creation';
+import { bangkokDateOf, presenceExpiresAt, type Instant } from '@gm/time';
+import { reject } from './command-guards';
+import { isGm, type Actor } from './request-creation';
 
 /** C7 presence values: stable keys stored, Thai labels displayed (same pattern as D-S04-1). */
 export const PRESENCE_LABELS = {
@@ -48,30 +49,77 @@ export type PresenceResetResult<P extends GmProfile> =
   | { readonly applied: true; readonly profile: P }
   | { readonly applied: false; readonly profile: P; readonly skipReason: 'already_unspecified' | 'not_expired' };
 
-function notImplemented(name: string): never {
-  throw new Error(`${name}: not implemented yet (S07)`);
+/** Part 6 §6.6 setFocus/setPresence: the GM who owns the profile, or GM Admin. */
+export function requireProfileOwner(actor: Actor, profile: GmProfile): void {
+  const owner = isGm(actor) && actor.personId === profile.personId;
+  if (!owner && actor.role !== 'gm_admin') reject('PROFILE_OWNER_ONLY', 'Only the GM or GM Admin can change this profile');
 }
 
+function validLeaveEnd(leaveEndsOn: string, now: Instant): string {
+  try {
+    // Epoch 0 is before any accepted date, so this only checks that the date itself is real.
+    presenceExpiresAt(0, leaveEndsOn);
+  } catch {
+    reject('LEAVE_END_INVALID', 'leave end date must be a real Gregorian YYYY-MM-DD date');
+  }
+  if (leaveEndsOn < bangkokDateOf(now)) reject('LEAVE_END_IN_PAST', 'leave end date must not be before today (A3)');
+  return leaveEndsOn;
+}
+
+function withoutPresenceDetails<P extends GmProfile>(profile: P): P {
+  const { presenceUpdatedAt: _setAt, leaveEndsOn: _leaveEndsOn, ...rest } = profile;
+  return rest as P;
+}
+
+/** GM sets presence; leave may carry an inclusive end date (A3). Focus is untouched (F07). */
 export function setPresence<P extends GmProfile>(
-  _profile: P,
-  _command: {
+  profile: P,
+  command: {
     readonly actor: Actor;
     readonly now: Instant;
     readonly status: string;
     readonly leaveEndsOn?: string | undefined;
   },
 ): { readonly profile: P; readonly event: PresenceChangedEvent } {
-  return notImplemented('setPresence');
+  requireProfileOwner(command.actor, profile);
+  if (!Object.hasOwn(PRESENCE_LABELS, command.status)) reject('PRESENCE_INVALID', 'Unknown presence status');
+  const status = command.status as PresenceStatus;
+  if (command.leaveEndsOn !== undefined && status !== 'on_leave') {
+    reject('LEAVE_END_NOT_APPLICABLE', 'Only leave has an end date');
+  }
+  const leaveEndsOn = command.leaveEndsOn === undefined ? undefined : validLeaveEnd(command.leaveEndsOn, command.now);
+  const leave = leaveEndsOn === undefined ? {} : { leaveEndsOn };
+  return {
+    profile: { ...withoutPresenceDetails(profile), presenceStatus: status, presenceUpdatedAt: command.now, ...leave },
+    event: {
+      kind: 'presence_changed',
+      at: command.now,
+      actorId: command.actor.personId,
+      personId: profile.personId,
+      status,
+      ...leave,
+    },
+  };
 }
 
-export function effectivePresence(_profile: GmProfile, _now: Instant): EffectivePresence {
-  return notImplemented('effectivePresence');
+/** What to show now: expired values read as “ไม่ระบุ” even before the reset job (Part 6 §6.9). */
+export function effectivePresence(profile: GmProfile, now: Instant): EffectivePresence {
+  const { presenceStatus: status, presenceUpdatedAt: setAt } = profile;
+  if (status === 'unspecified' || setAt === undefined) return { status: 'unspecified' };
+  const leaveEndsOn = status === 'on_leave' ? profile.leaveEndsOn : undefined;
+  const expiresAt = presenceExpiresAt(setAt, leaveEndsOn);
+  if (now >= expiresAt) return { status: 'unspecified' };
+  return { status, setAt, ...(leaveEndsOn === undefined ? {} : { leaveEndsOn }), expiresAt };
 }
 
-export function isOnLeave(_profile: GmProfile | undefined, _now: Instant): boolean {
-  return notImplemented('isOnLeave');
+/** Effective leave at `now`; a missing profile is not on leave. */
+export function isOnLeave(profile: GmProfile | undefined, now: Instant): boolean {
+  return profile !== undefined && effectivePresence(profile, now).status === 'on_leave';
 }
 
-export function resetPresence<P extends GmProfile>(_profile: P, _now: Instant): PresenceResetResult<P> {
-  return notImplemented('resetPresence');
+/** Scheduler reset: rechecks the latest profile, so a value set for the new day is kept. */
+export function resetPresence<P extends GmProfile>(profile: P, now: Instant): PresenceResetResult<P> {
+  if (profile.presenceStatus === 'unspecified') return { applied: false, profile, skipReason: 'already_unspecified' };
+  if (effectivePresence(profile, now).status !== 'unspecified') return { applied: false, profile, skipReason: 'not_expired' };
+  return { applied: true, profile: { ...withoutPresenceDetails(profile), presenceStatus: 'unspecified' } };
 }
