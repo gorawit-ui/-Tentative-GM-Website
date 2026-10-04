@@ -19,7 +19,15 @@ describe('P7-UX-01: less than 1 business day is never shown as "0 วันท�
   });
 });
 
-describe('whole business days, floored (F4)', () => {
+describe('D-S03-1: the word "วันนี้" is never used', () => {
+  it.each([0, 1, 0.4 * BD, BD - 1, BD, 4.9 * BD])('%s ms in every context', (raw) => {
+    for (const context of ['waiting', 'last_update'] as const) {
+      expect(formatBusinessDuration(raw, context)).not.toContain('วันนี้');
+    }
+  });
+});
+
+describe('whole business days, floored (F4, D-S03-2)', () => {
   it.each([
     [BD, '1 วันทำการ'],
     [4.1 * BD, '4 วันทำการ'],
@@ -40,7 +48,7 @@ describe('whole business days, floored (F4)', () => {
   });
 });
 
-describe('GM stale label (F4, U4)', () => {
+describe('GM stale label (F4, U4, D-S03-3)', () => {
   it('3 business days + 1 ms → "ไม่ขยับ 3 วันทำการ · ถึงเวลาติดตาม"', () => {
     expect(formatBusinessDuration(3 * BD + 1, 'gm_stale')).toBe('ไม่ขยับ 3 วันทำการ · ถึงเวลาติดตาม');
   });

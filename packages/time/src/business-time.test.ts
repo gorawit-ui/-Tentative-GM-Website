@@ -139,10 +139,10 @@ describe('time zone comes from the calendar snapshot, deterministically', () => 
     );
   });
 
-  it('the same instants measured with another snapshot zone use that zone’s dates', () => {
+  it('Phase 1 rejects another snapshot zone rather than using its dates (D-S01-5)', () => {
     // 23:30 Bangkok on Friday is already Saturday 01:30 in Tokyo.
     const tokyo: CalendarSnapshot = { ...MON_FRI, timeZone: 'Asia/Tokyo' };
-    expect(businessDuration(at('2026-10-02T23:30:00+07:00'), at('2026-10-03T00:30:00+07:00'), tokyo)).toBe(0);
+    expect(() => businessDuration(at('2026-10-02T23:30:00+07:00'), at('2026-10-03T00:30:00+07:00'), tokyo)).toThrow(RangeError);
   });
 
   it('gives identical results whatever the system clock says', () => {
