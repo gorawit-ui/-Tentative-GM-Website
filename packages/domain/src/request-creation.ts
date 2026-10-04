@@ -129,7 +129,7 @@ function requireText(value: unknown, code: string, what: string): string {
   return value.trim();
 }
 
-function isGm(actor: Actor): boolean {
+export function isGm(actor: Actor): boolean {
   return GM_ROLES.includes(actor.role);
 }
 
