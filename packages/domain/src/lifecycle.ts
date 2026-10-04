@@ -48,6 +48,8 @@ export interface LifecycleEvent {
   readonly closureKind?: ClosureKind;
   readonly reason?: string;
   readonly resolutionSummary?: string;
+  /** Accept that took the request over from another GM (D-S05-5). */
+  readonly previousAssigneeId?: string;
 }
 
 /** Commands return the whole request with only lifecycle fields changed, so history-adjacent
@@ -141,7 +143,13 @@ function requireOpenConfirmation(state: LifecycleState, actor: Actor, completion
   }
 }
 
-export function acceptRequest<S extends LifecycleState>(state: S, command: ActorCommand): LifecycleResult<S> {
+export function acceptRequest<S extends LifecycleState>(
+  state: S,
+  command: ActorCommand & {
+    /** D-S05-5: explicit confirmation to take over a request assigned to another GM. */
+    readonly takeOver?: boolean | undefined;
+  },
+): LifecycleResult<S> {
   requireWritable(state);
   requireGmActor(command.actor);
   requireStatus(state, ['queued'], 'accept');

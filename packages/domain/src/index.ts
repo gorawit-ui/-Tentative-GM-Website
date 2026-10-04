@@ -6,6 +6,7 @@ export {
   REQUEST_ORIGINS,
   REQUEST_TYPES,
   ROLES,
+  SENSITIVITY_REASONS,
   SENSITIVITY_SUBJECTS,
   RequestRejected,
   createRequestDraft,
@@ -23,6 +24,7 @@ export {
   type RequestOrigin,
   type RequestType,
   type Role,
+  type SensitivityReason,
   type SensitivitySubject,
   type ServiceDetails,
 } from './request-creation';
@@ -46,3 +48,8 @@ export {
   type LifecycleState,
   type RequestStatus,
 } from './lifecycle';
+export {
+  removeConfidentialFlag,
+  type ConfidentialFlagRemovedEvent,
+  type ConfidentialityState,
+} from './confidentiality';

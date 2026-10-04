@@ -402,6 +402,7 @@ describe('D-S04-4: who may change the confidential flag at creation', () => {
       category: 'documents_admin',
       sensitivitySubject: 'general',
       markConfidential: true,
+      confidentialNote: 'เกี่ยวกับข้อพิพาทกับคู่ค้า',
     });
     expect(draft.isConfidential).toBe(true);
   });
@@ -413,6 +414,7 @@ describe('D-S04-4: who may change the confidential flag at creation', () => {
       requester: { personId: 'person-employee-02' },
       details: { type: 'document_request', summaryTitle: 'ขอเอกสาร — ทีมบัญชี', sensitivitySubject: 'general' },
       markConfidential: true,
+      confidentialNote: 'มีข้อมูลเงินเดือนรวมอยู่',
     });
     expect(draft.isConfidential).toBe(true);
   });
@@ -472,5 +474,62 @@ describe('D-S04-6: a Viewer can open their own request', () => {
       origin: 'requester',
       requesterId: 'person-viewer-01',
     });
+  });
+});
+
+describe('D-S05-6: GM-marked confidential flag uses sensitivity_reason other with a note', () => {
+  it('a GM-marked general gm_task gets reason other and keeps the note as restricted detail', () => {
+    const draft = createRequestDraft({
+      kind: 'gm_task',
+      actor: GM,
+      summaryTitle: 'ติดตามเรื่องภายใน — ทีม GM',
+      category: 'documents_admin',
+      sensitivitySubject: 'general',
+      markConfidential: true,
+      confidentialNote: '  เกี่ยวกับข้อพิพาทกับคู่ค้า  ',
+    });
+    expect(draft).toMatchObject({
+      isConfidential: true,
+      sensitivityReason: 'other',
+      sensitivityNote: 'เกี่ยวกับข้อพิพาทกับคู่ค้า',
+    });
+  });
+
+  it.each([undefined, '', '   '])('the note is required when a GM marks a general item (%j)', (confidentialNote) => {
+    const command: CreateRequestCommand = {
+      kind: 'gm_task',
+      actor: GM,
+      summaryTitle: 'ติดตามเรื่องภายใน — ทีม GM',
+      category: 'documents_admin',
+      sensitivitySubject: 'general',
+      markConfidential: true,
+      confidentialNote,
+    };
+    expect(rejectionCode(() => createRequestDraft(command))).toBe('CONFIDENTIAL_NOTE_REQUIRED');
+  });
+
+  it.each(['contract', 'personnel'] as const)('marking a %s item keeps its own reason and needs no note', (subject) => {
+    const draft = createRequestDraft({
+      kind: 'gm_task',
+      actor: GM,
+      summaryTitle: 'เรื่องภายใน — ทีม HR',
+      category: 'documents_admin',
+      sensitivitySubject: subject,
+      markConfidential: true,
+    });
+    expect(draft).toMatchObject({ isConfidential: true, sensitivityReason: subject });
+    expect(draft).not.toHaveProperty('sensitivityNote');
+  });
+
+  it('a note without a GM-marked flag is rejected rather than silently dropped', () => {
+    const command: CreateRequestCommand = {
+      kind: 'gm_task',
+      actor: GM,
+      summaryTitle: 'จัดงานปีใหม่ — ทีม GM',
+      category: 'employee_activities',
+      sensitivitySubject: 'general',
+      confidentialNote: 'ไม่ได้ติดธง',
+    };
+    expect(rejectionCode(() => createRequestDraft(command))).toBe('CONFIDENTIAL_NOTE_NOT_APPLICABLE');
   });
 });

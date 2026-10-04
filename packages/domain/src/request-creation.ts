@@ -71,7 +71,13 @@ export type OnBehalfRequester = { readonly personId: string } | { readonly nameT
 /** D-S04-4: a GM may turn the confidential flag on; nobody turns a contract/personnel default off here. */
 export interface ConfidentialChoice {
   readonly markConfidential?: boolean | undefined;
+  /** D-S05-6: required short note when a GM marks a general item (`sensitivity_reason` = `other`). */
+  readonly confidentialNote?: string | undefined;
 }
+
+/** `sensitivity_reason`: C6 defaults plus `other` for a flag a GM sets on another matter (D-S05-6). */
+export const SENSITIVITY_REASONS = ['contract', 'personnel', 'other'] as const;
+export type SensitivityReason = (typeof SENSITIVITY_REASONS)[number];
 
 export type CreateRequestCommand =
   | ({ readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails } & ConfidentialChoice)
@@ -108,7 +114,9 @@ export interface RequestDraft {
   readonly symptomKey?: string;
   readonly description?: string;
   readonly isConfidential: boolean;
-  readonly sensitivityReason?: 'contract' | 'personnel';
+  readonly sensitivityReason?: SensitivityReason;
+  /** Restricted detail: why a GM marked the item confidential (`other`, D-S05-6). */
+  readonly sensitivityNote?: string;
   /** True only when a real requester account must confirm after GM completes (C2, Part 6 §6.6). */
   readonly requiresRequesterConfirmation: boolean;
 }
