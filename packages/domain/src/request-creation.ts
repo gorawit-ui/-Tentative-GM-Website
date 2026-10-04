@@ -21,6 +21,7 @@ export const GM_CATEGORIES = [
   'กิจกรรมพนักงาน',
 ] as const;
 export type GmCategory = (typeof GM_CATEGORIES)[number];
+export const GM_CATEGORY_KEYS: readonly string[] = [];
 
 /** Answer to the form question “สัญญาหรือเรื่องบุคคลหรือไม่” (C6, Part 2 F02). */
 export const SENSITIVITY_SUBJECTS = ['contract', 'personnel', 'general'] as const;
@@ -57,23 +58,28 @@ export type ServiceDetails = MaintenanceDetails | DocumentDetails;
 /** Who the on-behalf request is for: a directory account, or a name typed as text (Part 2 F03). */
 export type OnBehalfRequester = { readonly personId: string } | { readonly nameText: string };
 
+/** D-S04-4: a GM may turn the confidential flag on; nobody turns a contract/personnel default off here. */
+export interface ConfidentialChoice {
+  readonly markConfidential?: boolean | undefined;
+}
+
 export type CreateRequestCommand =
-  | { readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails }
-  | {
+  | ({ readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails } & ConfidentialChoice)
+  | ({
       readonly kind: 'on_behalf';
       readonly actor: Actor;
       readonly requester: OnBehalfRequester;
       readonly details: ServiceDetails;
-    }
-  | {
+    } & ConfidentialChoice)
+  | ({
       readonly kind: 'gm_task';
       readonly actor: Actor;
       readonly summaryTitle: string;
-      /** Must be chosen by the GM; there is no default (P7-UX-02). */
+      /** Category key, chosen by the GM; there is no default (P7-UX-02, D-S04-1). */
       readonly category?: string | undefined;
       readonly sensitivitySubject: SensitivitySubject;
       readonly description?: string | undefined;
-    };
+    } & ConfidentialChoice);
 
 /** Domain result of a valid create command; persistence (A01) maps it to Firestore fields. */
 export interface RequestDraft {

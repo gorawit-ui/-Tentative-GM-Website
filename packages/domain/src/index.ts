@@ -2,6 +2,7 @@
 // Time arithmetic comes only from @gm/time; no Firestore/HTTP here.
 export {
   GM_CATEGORIES,
+  GM_CATEGORY_KEYS,
   REQUEST_ORIGINS,
   REQUEST_TYPES,
   ROLES,
@@ -11,6 +12,7 @@ export {
   defaultSensitivity,
   maintenanceTitle,
   type Actor,
+  type ConfidentialChoice,
   type CreateRequestCommand,
   type DocumentDetails,
   type GmCategory,

@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   GM_CATEGORIES,
+  GM_CATEGORY_KEYS,
   RequestRejected,
   createRequestDraft,
   defaultSensitivity,
@@ -141,7 +142,7 @@ describe('C2: origin and requester', () => {
       kind: 'gm_task',
       actor: GM,
       summaryTitle: 'ติดตามเอกสาร BOI — หน่วยงานรัฐ',
-      category: 'ภาครัฐ กฎหมาย Compliance',
+      category: 'government_compliance',
       sensitivitySubject: 'general',
     });
     expect(draft).toMatchObject({
@@ -149,7 +150,7 @@ describe('C2: origin and requester', () => {
       source: 'web',
       origin: 'gm_initiated',
       createdById: 'person-gm-01',
-      category: 'ภาครัฐ กฎหมาย Compliance',
+      category: 'government_compliance',
       requiresRequesterConfirmation: false,
     });
     expect('requesterId' in draft).toBe(false);
@@ -161,7 +162,7 @@ describe('C2: origin and requester', () => {
       kind: 'gm_task',
       actor: GM,
       summaryTitle: 'จัดซื้อเก้าอี้ — ทีมคลัง',
-      category: 'จัดซื้อทั่วไปและบิล',
+      category: 'purchasing_bills',
       sensitivitySubject: 'general',
       requesterId: 'person-employee-01',
     } as unknown as CreateRequestCommand;
@@ -169,7 +170,7 @@ describe('C2: origin and requester', () => {
   });
 
   it.each([
-    ['gm_task by a non-GM', { kind: 'gm_task', actor: EMPLOYEE, summaryTitle: 'งาน', category: 'กิจกรรมพนักงาน', sensitivitySubject: 'general' }],
+    ['gm_task by a non-GM', { kind: 'gm_task', actor: EMPLOYEE, summaryTitle: 'งาน', category: 'employee_activities', sensitivitySubject: 'general' }],
     ['on-behalf by a non-GM', { kind: 'on_behalf', actor: EMPLOYEE, requester: { personId: 'person-employee-02' }, details: AIRCON_FAC16 }],
   ])('rejects %s', (_label, command) => {
     expect(rejectionCode(() => createRequestDraft(command as CreateRequestCommand))).toBe('GM_ONLY');
@@ -180,7 +181,7 @@ describe('C2: origin and requester', () => {
       kind: 'gm_task',
       actor: GM_ADMIN,
       summaryTitle: 'ปิดเพจปลอม — รอแพลตฟอร์ม',
-      category: 'ภาครัฐ กฎหมาย Compliance',
+      category: 'government_compliance',
       sensitivitySubject: 'general',
     });
     expect(draft.createdById).toBe('person-gm-admin-01');
@@ -247,7 +248,7 @@ describe('C6: confidential by default only for contract and personnel matters', 
       kind: 'gm_task',
       actor: GM,
       summaryTitle: 'เรื่องบุคคล — ทีม HR',
-      category: 'เอกสารและธุรการ',
+      category: 'documents_admin',
       sensitivitySubject: 'personnel',
     });
     expect(draft).toMatchObject({ isConfidential: true, sensitivityReason: 'personnel' });
@@ -267,7 +268,7 @@ describe('C6: confidential by default only for contract and personnel matters', 
       kind: 'gm_task',
       actor: GM,
       summaryTitle: 'งานติดตาม',
-      category: 'กิจกรรมพนักงาน',
+      category: 'employee_activities',
     } as unknown as CreateRequestCommand;
     expect(rejectionCode(() => createRequestDraft(document))).toBe('SENSITIVITY_SUBJECT_REQUIRED');
     expect(rejectionCode(() => createRequestDraft(task))).toBe('SENSITIVITY_SUBJECT_REQUIRED');
@@ -275,9 +276,28 @@ describe('C6: confidential by default only for contract and personnel matters', 
 });
 
 describe('P7-UX-02: manual GM category is required and has no default', () => {
-  it('lists exactly the 7 GM categories', () => {
-    expect(GM_CATEGORIES).toHaveLength(7);
-    expect(GM_CATEGORIES).toContain('จัดซื้อทั่วไปและบิล');
+  it('D-S04-1: 7 stable snake_case keys, each with its Thai label', () => {
+    expect(GM_CATEGORIES).toEqual({
+      damage: 'บริหารสินค้า Damage',
+      documents_admin: 'เอกสารและธุรการ',
+      assets_facilities: 'ทรัพย์สินและอาคารสถานที่',
+      purchasing_bills: 'จัดซื้อทั่วไปและบิล',
+      government_compliance: 'ภาครัฐ กฎหมาย Compliance',
+      improvement_projects: 'Project ปรับปรุงระบบ',
+      employee_activities: 'กิจกรรมพนักงาน',
+    });
+    expect(GM_CATEGORY_KEYS).toHaveLength(7);
+  });
+
+  it('D-S04-1: a Thai label is not accepted where the key is required', () => {
+    const command: CreateRequestCommand = {
+      kind: 'gm_task',
+      actor: GM,
+      summaryTitle: 'ติดตาม Damage — ทีมคลัง',
+      category: 'บริหารสินค้า Damage',
+      sensitivitySubject: 'general',
+    };
+    expect(rejectionCode(() => createRequestDraft(command))).toBe('CATEGORY_UNKNOWN');
   });
 
   it.each([undefined, '', '   '])('rejects a gm_task with category %j instead of defaulting', (category) => {
@@ -291,7 +311,7 @@ describe('P7-UX-02: manual GM category is required and has no default', () => {
     expect(rejectionCode(() => createRequestDraft(command))).toBe('CATEGORY_REQUIRED');
   });
 
-  it('never fills in “จัดซื้อทั่วไปและบิล” on its own', () => {
+  it('never fills in purchasing_bills (“จัดซื้อทั่วไปและบิล”) on its own', () => {
     const command = {
       kind: 'gm_task',
       actor: GM,
@@ -312,7 +332,7 @@ describe('P7-UX-02: manual GM category is required and has no default', () => {
     expect(rejectionCode(() => createRequestDraft(command))).toBe('CATEGORY_UNKNOWN');
   });
 
-  it.each(GM_CATEGORIES)('accepts %s', (category) => {
+  it.each(GM_CATEGORY_KEYS)('accepts %s', (category) => {
     const draft = createRequestDraft({
       kind: 'gm_task',
       actor: GM,
@@ -330,7 +350,7 @@ describe('titles that people type (gm_task and documents)', () => {
       kind: 'gm_task',
       actor: GM,
       summaryTitle,
-      category: 'กิจกรรมพนักงาน',
+      category: 'employee_activities',
       sensitivitySubject: 'general',
     };
     expect(rejectionCode(() => createRequestDraft(command))).toBe('TITLE_REQUIRED');
@@ -341,9 +361,116 @@ describe('titles that people type (gm_task and documents)', () => {
       kind: 'gm_task',
       actor: GM,
       summaryTitle: '  จัดงานปีใหม่ — ทีม GM  ',
-      category: 'กิจกรรมพนักงาน',
+      category: 'employee_activities',
       sensitivitySubject: 'general',
     });
     expect(draft.summaryTitle).toBe('จัดงานปีใหม่ — ทีม GM');
+  });
+});
+
+describe('D-S04-2: automatic category for service requests', () => {
+  it('maintenance → assets_facilities', () => {
+    expect(createRequestDraft({ kind: 'self', actor: EMPLOYEE, details: AIRCON_FAC16 }).category).toBe('assets_facilities');
+  });
+
+  it.each(['document_request', 'document_intake'] as const)('%s → documents_admin', (type) => {
+    const draft = createRequestDraft({
+      kind: 'self',
+      actor: EMPLOYEE,
+      details: { type, summaryTitle: 'ขอ ภ.พ.20 — ทีมบัญชี', sensitivitySubject: 'general' },
+    });
+    expect(draft.category).toBe('documents_admin');
+  });
+
+  it('on-behalf requests get the same automatic category', () => {
+    const draft = createRequestDraft({
+      kind: 'on_behalf',
+      actor: GM,
+      requester: { nameText: 'คุณสมมติ ไม่มีบัญชี' },
+      details: AIRCON_WH300,
+    });
+    expect(draft.category).toBe('assets_facilities');
+  });
+});
+
+describe('D-S04-4: who may change the confidential flag at creation', () => {
+  it('a GM may mark a general gm_task confidential', () => {
+    const draft = createRequestDraft({
+      kind: 'gm_task',
+      actor: GM,
+      summaryTitle: 'ติดตามเรื่องภายใน — ทีม GM',
+      category: 'documents_admin',
+      sensitivitySubject: 'general',
+      markConfidential: true,
+    });
+    expect(draft.isConfidential).toBe(true);
+  });
+
+  it('a GM opening a general document on behalf may mark it confidential', () => {
+    const draft = createRequestDraft({
+      kind: 'on_behalf',
+      actor: GM,
+      requester: { personId: 'person-employee-02' },
+      details: { type: 'document_request', summaryTitle: 'ขอเอกสาร — ทีมบัญชี', sensitivitySubject: 'general' },
+      markConfidential: true,
+    });
+    expect(draft.isConfidential).toBe(true);
+  });
+
+  it.each(['contract', 'personnel'] as const)('a GM cannot switch off the %s default at creation (unflagging is GM Admin + reason, C6)', (subject) => {
+    for (const actor of [GM, GM_ADMIN]) {
+      const command: CreateRequestCommand = {
+        kind: 'gm_task',
+        actor,
+        summaryTitle: 'เรื่องภายใน — ทีม HR',
+        category: 'documents_admin',
+        sensitivitySubject: subject,
+        markConfidential: false,
+      };
+      expect(rejectionCode(() => createRequestDraft(command))).toBe('DEFAULT_FLAG_LOCKED');
+    }
+  });
+
+  it('a regular requester cannot set the flag', () => {
+    const command: CreateRequestCommand = {
+      kind: 'self',
+      actor: EMPLOYEE,
+      details: { type: 'document_request', summaryTitle: 'ขอเอกสาร — ทีมบัญชี', sensitivitySubject: 'general' },
+      markConfidential: true,
+    };
+    expect(rejectionCode(() => createRequestDraft(command))).toBe('FLAG_NOT_ALLOWED');
+  });
+
+  it('D-S04-5: a repair request is never confidential, even when a GM asks', () => {
+    const command: CreateRequestCommand = {
+      kind: 'on_behalf',
+      actor: GM,
+      requester: { personId: 'person-employee-02' },
+      details: AIRCON_FAC16,
+      markConfidential: true,
+    };
+    expect(rejectionCode(() => createRequestDraft(command))).toBe('MAINTENANCE_NOT_CONFIDENTIAL');
+  });
+
+  it('markConfidential false on a general item simply keeps it non-confidential', () => {
+    const draft = createRequestDraft({
+      kind: 'gm_task',
+      actor: GM,
+      summaryTitle: 'จัดงานปีใหม่ — ทีม GM',
+      category: 'employee_activities',
+      sensitivitySubject: 'general',
+      markConfidential: false,
+    });
+    expect(draft.isConfidential).toBe(false);
+  });
+});
+
+describe('D-S04-6: a Viewer can open their own request', () => {
+  it('creates a self request with the viewer as requester', () => {
+    const viewer: Actor = { personId: 'person-viewer-01', role: 'viewer' };
+    expect(createRequestDraft({ kind: 'self', actor: viewer, details: AIRCON_FAC16 })).toMatchObject({
+      origin: 'requester',
+      requesterId: 'person-viewer-01',
+    });
   });
 });
