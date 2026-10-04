@@ -1,0 +1,11 @@
+{
+  "name": "@gm/time",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure business-time functions (Part 6 §6.7). The only time-calculation code in the system.",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

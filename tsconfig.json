@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/time" },
+    { "path": "./packages/domain" },
+    { "path": "./packages/contracts" },
+    { "path": "./apps/api" },
+    { "path": "./apps/worker" },
+    { "path": "./apps/web/tsconfig.app.json" },
+    { "path": "./apps/web/tsconfig.node.json" },
+    { "path": "./tests/rules" },
+    { "path": "./tests/e2e" },
+    { "path": "./tsconfig.tooling.json" }
+  ]
+}

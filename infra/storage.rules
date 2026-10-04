@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// S00 skeleton: deny every client read and write. Upload/finalize/signed-URL authorization
+// is built test-first in S12 (Part 6 §6.10): private bucket, no public or long-lived URLs.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

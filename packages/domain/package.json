@@ -1,0 +1,11 @@
+{
+  "name": "@gm/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Status, ACL, lifecycle, waiting, routing and renewal rules shared by API and worker.",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

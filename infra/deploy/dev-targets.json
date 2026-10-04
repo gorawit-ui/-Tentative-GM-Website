@@ -1,0 +1,9 @@
+{
+  "$comment": "Administrator-approved dev deploy targets (WEEK-0 P7-INFRA-01, Part 6 §6.13). Only the infrastructure owner (Tim) fills this in after confirming the deploy method, dev project ID and IAM. Empty allowlist or null adapter = every `npm run deploy:dev` fails closed before any network call. Never add a production project here.",
+  "status": "awaiting-P7-INFRA-01",
+  "approvedBy": null,
+  "approvedAt": null,
+  "adapter": null,
+  "allowedDevProjectIds": [],
+  "deniedProjectIds": ["tdfb-gm-prod"]
+}
