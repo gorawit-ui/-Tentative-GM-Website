@@ -8,6 +8,8 @@
 
 หากต้นทางไม่ตอบ ให้บันทึกข้อขัดกันพร้อมไฟล์/หัวข้อ และถามเฉพาะเรื่องที่จำเป็น ห้ามเปลี่ยนสิทธิ์/scope/ตัวเลขด้วยการคาดเดา
 
+คำตอบล่าสุดจากผู้ใช้สำหรับ S01 (`D-S01-1` ถึง `D-S01-6`) อยู่ [DECISIONS](DECISIONS.md) และมีผลเหนือข้อเดิมที่ขัดกันใน Part 6/S01; ผล implement อยู่ [S02](../sessions/S02.md)
+
 ## Map หัวข้อ → ไฟล์ / section
 
 | เรื่อง | ต้นทางหลัก | หัวข้อ / งานที่ใช้ |
@@ -47,3 +49,9 @@
 `Infrastructure-Budget-and-Renewals.md`, `Part-7-Directives.md` เป็นการถอดข้อกำหนดผู้ใช้ที่ปรากฏในบทสนทนา ไม่ใช่ต้นฉบับเก่าที่กู้จากไฟล์ รายละเอียดไม่เปลี่ยน scope
 
 Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบับเต็ม กู้คืนจากไฟล์ต้นฉบับที่ผู้ใช้อัปโหลด (4 ต.ค. 2569) ไม่มีการแก้เนื้อหา ใช้ Part 3 เป็นต้นทางของหน้าจอทุกหน้า ร่วมกับ approved prototype; ข้อที่ U1–U5, P1–P2, F1–F6 และ P7-UX แก้ไว้แล้วให้ใช้ฉบับใหม่กว่า ไม่มี app implementation รวมในชุดนี้
+
+## Session implementations
+
+- [S00](../sessions/S00.md): workspace/scripts/emulators/dev guard
+- [S01](../sessions/S01.md): business duration/add time; คำถามเดิมปิดแล้วใน D-S01-*
+- [S02](../sessions/S02.md): waiting interval union/effective end/elapsed/SLA pause และ calendar validation ล่าสุด

@@ -11,7 +11,7 @@ export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
  * weekday mask, holidays). Provenance (hash/source reference) belongs to the caller.
  */
 export interface CalendarSnapshot {
-  /** IANA time zone that defines where each calendar date starts and ends, e.g. Asia/Bangkok. */
+  /** Phase 1 accepts Asia/Bangkok only (D-S01-5). */
   readonly timeZone: string;
   /** Weekdays that are open for business. */
   readonly openWeekdays: readonly IsoWeekday[];
@@ -34,8 +34,8 @@ export interface PreparedCalendar {
 
 /** Validates a snapshot; anything unexpected throws RangeError instead of being guessed. */
 export function prepareCalendar(calendar: CalendarSnapshot): PreparedCalendar {
-  if (typeof calendar.timeZone !== 'string' || calendar.timeZone === '') {
-    throw new RangeError('calendar.timeZone must be an IANA time zone name');
+  if (calendar.timeZone !== 'Asia/Bangkok') {
+    throw new RangeError('calendar.timeZone must be Asia/Bangkok in Phase 1');
   }
   const formatter = zonedFormatter(calendar.timeZone);
 
@@ -50,11 +50,18 @@ export function prepareCalendar(calendar: CalendarSnapshot): PreparedCalendar {
   }
   const open = new Set<number>(weekdays);
 
+  if (!Array.isArray(calendar.holidays)) {
+    throw new RangeError('calendar.holidays must be an array of Gregorian YYYY-MM-DD dates');
+  }
   const holidays = new Set<number>();
   for (const holiday of calendar.holidays) {
     const dayNumber = typeof holiday === 'string' ? parseIsoDate(holiday) : undefined;
     if (dayNumber === undefined) {
       throw new RangeError(`calendar.holidays must be real YYYY-MM-DD dates, got ${JSON.stringify(holiday)}`);
+    }
+    const year = Number(holiday.slice(0, 4));
+    if (year < 2000 || year > 2100) {
+      throw new RangeError(`calendar.holidays year must be ค.ศ. 2000–2100; got ${holiday}, น่าจะกรอกเป็น พ.ศ. — convert and confirm in Admin/import`);
     }
     holidays.add(dayNumber);
   }
