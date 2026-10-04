@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/time" },
+    { "path": "./packages/time/tsconfig.test.json" },
     { "path": "./packages/domain" },
     { "path": "./packages/contracts" },
     { "path": "./apps/api" },
