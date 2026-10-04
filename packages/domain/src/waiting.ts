@@ -1,10 +1,10 @@
 // Waiting on others (S06): enter / change party, follow up (+ reminder quota), waiting-party
 // response and resume (F04, F05, C3, C4, A2, F3, Part 6 §6.6/§6.14). Pure: callers pass `now`,
 // the request's work calendar and persist state, history events and outbox items. Nothing is sent here.
-import { businessDateBucket, type CalendarSnapshot, type Instant } from '@gm/time';
+import { businessDateBucket, nextWorkingMorning, type CalendarSnapshot, type Instant } from '@gm/time';
 import { reject, requireGmActor, requireStatus, requireWritable } from './command-guards';
 import type { LifecycleState } from './lifecycle';
-import type { Actor } from './request-creation';
+import { isGm, type Actor } from './request-creation';
 
 export const WAITING_PARTY_KINDS = ['person', 'team', 'contractor', 'government', 'other'] as const;
 export type WaitingPartyKind = (typeof WAITING_PARTY_KINDS)[number];
@@ -12,6 +12,9 @@ export type ExternalPartyKind = 'contractor' | 'government' | 'other';
 
 /** Max internal contacts chosen for a team (F05 §9.1). */
 export const MAX_TEAM_CONTACTS = 3;
+
+/** D-S06-2 default for notices deferred from a closed day; overridable in settings. */
+export const DEFAULT_WORKING_MORNING_TIME = '09:00';
 
 /** Stored `waiting_on` (C3): exactly the fields of its kind. */
 export type WaitingOn =
@@ -72,6 +75,8 @@ export interface WaitingCommand {
   readonly waitingOn?: WaitingOnInput | undefined;
   /** Person: on by default; team: on by default when contacts are chosen; external: unavailable. */
   readonly notify?: boolean | undefined;
+  /** Current GM Staff/Admin person IDs: they already have access (D-S06-4). */
+  readonly gmPersonIds?: readonly string[] | undefined;
   /** Separate consent to let new people read a confidential request (C3). */
   readonly confirmConfidentialGrant?: boolean | undefined;
 }
@@ -118,7 +123,13 @@ export type WaitingEvent =
 
 export type ReminderOutcome =
   | { readonly status: 'send_now'; readonly businessDate: string; readonly recipientIds: readonly string[] }
-  | { readonly status: 'next_business_day'; readonly businessDate: string; readonly recipientIds: readonly string[] }
+  | {
+      readonly status: 'next_business_day';
+      readonly businessDate: string;
+      /** D-S06-2: `nextWorkingMorning` at the configured time (09:00 Asia/Bangkok by default). */
+      readonly sendAt: Instant;
+      readonly recipientIds: readonly string[];
+    }
   | { readonly status: 'quota_used'; readonly businessDate: string };
 
 export interface WaitingResult<S extends WaitingRequestState> {
@@ -209,11 +220,15 @@ function hasDetailAccess(state: WaitingRequestState, personId: string): boolean 
 /** Preview for the confirm sheet (F05 §9.2): party, recipients, new related persons, consent needed. */
 export function planWaiting(
   state: WaitingRequestState,
-  input: Pick<WaitingCommand, 'waitingOn' | 'notify'>,
+  input: Pick<WaitingCommand, 'waitingOn' | 'notify' | 'gmPersonIds'>,
 ): WaitingPlan {
   const waitingOn = validateWaitingOn(input.waitingOn);
   const recipientIds = recipientsOf(waitingOn, input.notify);
-  const newRelatedPersonIds = recipientIds.filter((personId) => !hasDetailAccess(state, personId));
+  // D-S06-4: GM Staff/Admin already have access; they are notified but never added or consented.
+  const gmPersonIds = input.gmPersonIds ?? [];
+  const newRelatedPersonIds = recipientIds.filter(
+    (personId) => !hasDetailAccess(state, personId) && !gmPersonIds.includes(personId),
+  );
   return {
     waitingOn,
     recipientIds,
@@ -320,6 +335,8 @@ export function followUp<S extends WaitingRequestState>(
     readonly remind?: boolean | undefined;
     /** The request's work calendar, for the business-date bucket. */
     readonly calendar: CalendarSnapshot;
+    /** Settings: local send time for reminders deferred from a closed day (D-S06-2). */
+    readonly workingMorningTime?: string | undefined;
   },
 ): FollowUpResult<S> {
   requireWritable(state);
@@ -338,11 +355,15 @@ export function followUp<S extends WaitingRequestState>(
     const reminder: ReminderOutcome = { status: 'quota_used', businessDate };
     return { state: followed, event: { ...base, reminder }, reminder };
   }
-  const reminder: ReminderOutcome = {
-    status: isOpenDay ? 'send_now' : 'next_business_day',
-    businessDate,
-    recipientIds,
-  };
+  const reminder: ReminderOutcome = isOpenDay
+    ? { status: 'send_now', businessDate, recipientIds }
+    : {
+        status: 'next_business_day',
+        businessDate,
+        // On a closed day the bucket is the next open day, which is also the next working morning.
+        sendAt: nextWorkingMorning(now, command.calendar, command.workingMorningTime ?? DEFAULT_WORKING_MORNING_TIME),
+        recipientIds,
+      };
   return {
     state: { ...followed, lastReminderBusinessDate: businessDate },
     event: { ...base, reminder, ...(isOpenDay ? { remindedAt: now } : {}) },
@@ -375,7 +396,7 @@ export function respondWaitingParty<S extends WaitingRequestState>(
   if (!(state.waitingRecipientIds ?? []).includes(personId)) {
     reject('NOT_CURRENT_RECIPIENT', 'Only a notified recipient of the current waiting interval can respond');
   }
-  if (!hasDetailAccess(state, personId)) reject('ACCESS_REVOKED', 'The recipient no longer has access to this request');
+  if (!isGm(command.actor) && !hasDetailAccess(state, personId)) reject('ACCESS_REVOKED', 'The recipient no longer has access to this request');
   if (state.waitingPartyResponded === true) reject('ALREADY_RESPONDED', 'The waited party has already responded');
   const note = text(command.note);
   return {

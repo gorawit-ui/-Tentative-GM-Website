@@ -1,7 +1,7 @@
 // S06 — business-date bucket for the follow-up reminder quota (C3: 1 per business day per request;
 // Part 6 §6.14: a closed day is bucketed into the next business day and adds no quota).
 import { describe, expect, it } from 'vitest';
-import { businessDateBucket, type CalendarSnapshot } from './index';
+import { businessDateBucket, nextWorkingMorning, type CalendarSnapshot } from './index';
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -47,5 +47,37 @@ describe('businessDateBucket', () => {
 
   it('rejects a non-integer instant', () => {
     expect(() => businessDateBucket(Number.NaN, COMPANY)).toThrow(RangeError);
+  });
+});
+
+describe('nextWorkingMorning (Part 6 §6.7, D-S06-2)', () => {
+  const iso = (instant: number) => new Date(instant).toISOString();
+
+  it.each([
+    ['holiday Thu 31 Dec 2026 10:00', '2026-12-31T10:00:00+07:00'],
+    ['Sat 2 Jan 2027 23:00', '2027-01-02T23:00:00+07:00'],
+    ['Mon 4 Jan 2027 00:00', '2027-01-04T00:00:00+07:00'],
+    ['Mon 4 Jan 2027 09:00 exactly', '2027-01-04T09:00:00+07:00'],
+  ])('%s → Mon 4 Jan 2027 09:00 Bangkok', (_label, from) => {
+    expect(iso(nextWorkingMorning(at(from), COMPANY, '09:00'))).toBe(iso(at('2027-01-04T09:00:00+07:00')));
+  });
+
+  it('after the morning time on an open day it is the next open day', () => {
+    expect(iso(nextWorkingMorning(at('2026-12-30T09:01:00+07:00'), COMPANY, '09:00'))).toBe(
+      iso(at('2027-01-04T09:00:00+07:00')),
+    );
+    expect(iso(nextWorkingMorning(at('2026-12-29T10:00:00+07:00'), COMPANY, '09:00'))).toBe(
+      iso(at('2026-12-30T09:00:00+07:00')),
+    );
+  });
+
+  it('uses the configured local time', () => {
+    expect(iso(nextWorkingMorning(at('2026-12-31T10:00:00+07:00'), COMPANY, '08:30'))).toBe(
+      iso(at('2027-01-04T08:30:00+07:00')),
+    );
+  });
+
+  it.each(['9:00', '24:00', '09:60', '0900', ''])('rejects local time %j', (localTime) => {
+    expect(() => nextWorkingMorning(at('2026-12-31T10:00:00+07:00'), COMPANY, localTime)).toThrow(RangeError);
   });
 });

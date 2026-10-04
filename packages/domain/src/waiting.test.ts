@@ -389,7 +389,13 @@ describe('followUp — ติดตามแล้ว (F05 §9.4, C3)', () => {
       remind: true,
       calendar: COMPANY,
     });
-    expect(reminder).toEqual({ status: 'next_business_day', businessDate: '2027-01-04', recipientIds: [FINANCE.personId] });
+    // D-S06-2: deferred to 09:00 Asia/Bangkok on the next business day.
+    expect(reminder).toEqual({
+      status: 'next_business_day',
+      businessDate: '2027-01-04',
+      sendAt: bkk('2027-01-04', '09:00'),
+      recipientIds: [FINANCE.personId],
+    });
     expect(state.lastUpdatedAt).toBe(holiday);
     expect(event).not.toHaveProperty('remindedAt');
     const monday = bkk('2027-01-04', '09:30');
@@ -397,6 +403,17 @@ describe('followUp — ติดตามแล้ว (F05 §9.4, C3)', () => {
       status: 'quota_used',
       businessDate: '2027-01-04',
     });
+  });
+
+  it('D-S06-2: the deferred send time comes from settings', () => {
+    const { reminder } = followUp(waitingOn(PERSON), {
+      actor: GM,
+      now: bkk('2027-01-02', '15:00'),
+      remind: true,
+      calendar: COMPANY,
+      workingMorningTime: '08:30',
+    });
+    expect(reminder).toMatchObject({ status: 'next_business_day', sendAt: bkk('2027-01-04', '08:30') });
   });
 
   it('the quota is per request, even after changing the waited party the same day', () => {
@@ -634,5 +651,50 @@ describe('waiting with the S05 lifecycle (D-S05-1)', () => {
     state = completeRequest(state, { actor: GM, now: doneAt, resolutionSummary: 'ได้เอกสารแล้ว', confirmationCalendar: COMPANY }).state;
     state = confirmCompletion(state, { actor: REQUESTER, now: doneAt + HOUR, completionCycleId: 1 }).state;
     expect(state.closureKind).toBe('requester_confirmed');
+  });
+});
+
+describe('D-S06-4: a GM as the waited party already has access', () => {
+  const GM_2: Actor = { personId: 'person-gm-02', role: 'gm_staff' };
+  const GM_PEOPLE = [GM.personId, GM_2.personId, GM_ADMIN.personId];
+  const WAIT_GM_2: WaitingOnInput = { kind: 'person', personId: GM_2.personId };
+
+  it('is notified as usual but not added as a related person', () => {
+    const { state, notice, event } = enterWaiting(inProgress(), {
+      actor: GM,
+      now: ENTER,
+      waitingOn: WAIT_GM_2,
+      gmPersonIds: GM_PEOPLE,
+    });
+    expect(notice).toEqual({ intervalId: 1, recipientIds: [GM_2.personId] });
+    expect(state.relatedPersonIds).toEqual([RELATED.personId]);
+    expect(event).toMatchObject({ addedRelatedPersonIds: [] });
+  });
+
+  it('needs no confidential consent', () => {
+    const secret = inProgress({ isConfidential: true });
+    expect(planWaiting(secret, { waitingOn: WAIT_GM_2, gmPersonIds: GM_PEOPLE }).needsConfidentialGrant).toBe(false);
+    expect(
+      enterWaiting(secret, { actor: GM, now: ENTER, waitingOn: WAIT_GM_2, gmPersonIds: GM_PEOPLE }).state.status,
+    ).toBe('waiting');
+  });
+
+  it('team contacts: only the non-GM contacts become related / need consent', () => {
+    const team = { kind: 'team', teamLabel: 'ทีมจัดซื้อ', contactIds: [GM_ADMIN.personId, IT_1.personId] };
+    const plan = planWaiting(inProgress({ isConfidential: true }), { waitingOn: team, gmPersonIds: GM_PEOPLE });
+    expect(plan.recipientIds).toEqual([GM_ADMIN.personId, IT_1.personId]);
+    expect(plan.newRelatedPersonIds).toEqual([IT_1.personId]);
+    expect(plan.needsConfidentialGrant).toBe(true);
+  });
+
+  it('the GM recipient can respond for the party', () => {
+    const state = enterWaiting(inProgress({ isConfidential: true }), {
+      actor: GM,
+      now: ENTER,
+      waitingOn: WAIT_GM_2,
+      gmPersonIds: GM_PEOPLE,
+    }).state;
+    const responded = respondWaitingParty(state, { actor: GM_2, now: RESPOND, intervalId: 1 }).state;
+    expect(responded.respondedAt).toBe(RESPOND);
   });
 });

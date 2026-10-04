@@ -58,5 +58,6 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S03](../sessions/S03.md): stale/auto-close/display/calendar snapshot; รวมกับ S02 แล้ว คำถามปิดใน D-S03-*
 - [S04](../sessions/S04.md): domain การสร้างงาน type/origin/title/default sensitivity/category; คำถามปิดแล้วใน D-S04-1 ถึง D-S04-6
 - [S05](../sessions/S05.md): ผล D-S04 และ lifecycle commands accept/complete/confirm/not resolved/auto-close/cancel/reopen; คำถามปิดแล้วใน D-S05-1 ถึง D-S05-6
-- [S06](../sessions/S06.md): ผล D-S05 (กฎ `last_updated_at`, รับงานต่อ, ธงลับ `other`/ปลดธง) และ waiting/follow-up/response; คำถามค้างใน S06
+- [S06](../sessions/S06.md): ผล D-S05 (กฎ `last_updated_at`, รับงานต่อ, ธงลับ `other`/ปลดธง) และ waiting/follow-up/response; คำถามปิดแล้วใน D-S06-1 ถึง D-S06-6
+- [S07](../sessions/S07.md): ผล D-S06 (GM เป็นฝ่ายที่รอ, เตือน 09:00 วันทำการถัดไป) และ routing/leave/presence/focus; คำถามค้างใน S07
 - [FOLLOW-UPS](../FOLLOW-UPS.md): งานที่เลื่อนข้าม session
