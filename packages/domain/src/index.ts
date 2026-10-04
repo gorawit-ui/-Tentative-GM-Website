@@ -26,3 +26,23 @@ export {
   type SensitivitySubject,
   type ServiceDetails,
 } from './request-creation';
+export {
+  REQUEST_STATUSES,
+  LifecycleRejected,
+  acceptRequest,
+  autoCloseRequest,
+  cancelRequest,
+  completeRequest,
+  confirmCompletion,
+  reopenRequest,
+  reportNotResolved,
+  type ActorCommand,
+  type AutoCloseResult,
+  type AutoCloseSkipReason,
+  type ClosureKind,
+  type LifecycleEvent,
+  type LifecycleEventKind,
+  type LifecycleResult,
+  type LifecycleState,
+  type RequestStatus,
+} from './lifecycle';
