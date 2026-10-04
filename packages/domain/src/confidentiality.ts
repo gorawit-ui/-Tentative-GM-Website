@@ -1,7 +1,7 @@
 // Unflagging a confidential request (C6, D-S04-4, D-S05-6): GM Admin only, with a reason kept in
 // history. Pure: the caller persists the state, the event and any ACL/projection rebuild.
 import type { Instant } from '@gm/time';
-import { LifecycleRejected } from './lifecycle';
+import { LifecycleRejected } from './command-guards';
 import type { Actor, SensitivityReason } from './request-creation';
 
 export interface ConfidentialityState {

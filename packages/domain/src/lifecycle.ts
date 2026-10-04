@@ -3,10 +3,18 @@
 // calendar snapshot; persistence, revision checks and notifications are elsewhere.
 // Waiting / follow-up / waiting-party response belong to S06; assignment and leave to S07.
 import { autoCloseDue, type CalendarSnapshot, type Instant } from '@gm/time';
-import { isGm, type Actor } from './request-creation';
+import {
+  reject,
+  requireGmActor,
+  requireReason,
+  requireStatus,
+  requireWritable,
+  type RequestStatus,
+} from './command-guards';
+import type { Actor } from './request-creation';
+import type { EndedWaitingInterval } from './waiting';
 
-export const REQUEST_STATUSES = ['queued', 'in_progress', 'waiting', 'completed', 'cancelled'] as const;
-export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+export { LifecycleRejected, REQUEST_STATUSES, type RequestStatus } from './command-guards';
 
 /** How a completed request was closed; history keeps them apart (F06). */
 export type ClosureKind = 'requester_confirmed' | 'auto_closed' | 'gm_closed';
@@ -50,6 +58,8 @@ export interface LifecycleEvent {
   readonly resolutionSummary?: string;
   /** Accept that took the request over from another GM (D-S05-5). */
   readonly previousAssigneeId?: string;
+  /** Cancel from waiting closes the open waiting interval (S06). */
+  readonly endedWaitingInterval?: EndedWaitingInterval;
 }
 
 /** Commands return the whole request with only lifecycle fields changed, so history-adjacent
@@ -70,14 +80,6 @@ export type AutoCloseResult<S extends LifecycleState = LifecycleState> =
   | { readonly applied: true; readonly state: S; readonly event: LifecycleEvent }
   | { readonly applied: false; readonly state: S; readonly skipReason: AutoCloseSkipReason };
 
-export class LifecycleRejected extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = 'LifecycleRejected';
-    this.code = code;
-  }
-}
 
 export interface ActorCommand {
   readonly actor: Actor;
@@ -107,28 +109,6 @@ const CURRENT_ROUND: readonly RoundField[] = [
   'closureKind',
   'cancelledAt',
 ];
-
-function reject(code: string, message: string): never {
-  throw new LifecycleRejected(code, message);
-}
-
-function requireWritable(state: LifecycleState): void {
-  if (state.source === 'trello') reject('READ_ONLY_SOURCE', 'Trello cards are read-only on the web (F04)');
-}
-
-function requireGmActor(actor: Actor): void {
-  if (!isGm(actor)) reject('GM_ONLY', 'Only GM staff or GM Admin can run this command');
-}
-
-function requireStatus(state: LifecycleState, allowed: readonly RequestStatus[], command: string): void {
-  if (!allowed.includes(state.status)) reject('INVALID_TRANSITION', `${command} is not allowed from ${state.status}`);
-}
-
-function requireReason(reason: string): string {
-  const trimmed = reason.trim();
-  if (trimmed === '') reject('REASON_REQUIRED', 'A reason is required');
-  return trimmed;
-}
 
 /** Requester answers (F06): only the real requester, on the current, still-open completion cycle. */
 function requireOpenConfirmation(state: LifecycleState, actor: Actor, completionCycleId: number): void {
