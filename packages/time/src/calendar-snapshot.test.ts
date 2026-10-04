@@ -23,7 +23,6 @@ describe('snapshotCalendar', () => {
 
     live.holidays.push('2027-01-04', '2027-01-05');
     live.openWeekdays.splice(0, live.openWeekdays.length, 1, 2, 3, 4, 5, 6);
-    live.timeZone = 'Asia/Tokyo';
 
     expect(snapshot).toEqual({
       timeZone: 'Asia/Bangkok',
@@ -56,5 +55,13 @@ describe('snapshotCalendar', () => {
   it('refuses to snapshot an invalid live calendar', () => {
     const invalid = { ...liveCompanyCalendar(), holidays: ['2026-02-30'] } as CalendarSnapshot;
     expect(() => snapshotCalendar(invalid)).toThrow(RangeError);
+  });
+
+  it('uses the same timezone validation as every calculation (D-S01-5: Asia/Bangkok only)', () => {
+    expect(() => snapshotCalendar({ ...liveCompanyCalendar(), timeZone: 'Asia/Tokyo' })).toThrow(/Asia\/Bangkok/);
+  });
+
+  it('uses the same holiday year range (D-S01-6: ค.ศ. 2000–2100, no silent พ.ศ.)', () => {
+    expect(() => snapshotCalendar({ ...liveCompanyCalendar(), holidays: ['2569-12-31'] })).toThrow(/2000.*2100.*พ\.ศ\./);
   });
 });

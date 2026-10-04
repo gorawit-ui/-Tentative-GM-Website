@@ -74,3 +74,14 @@
 | `D-S01-4` | Phase 1 configured durations เป็นจำนวนเต็มวันบวกเท่านั้น ผ่าน `addDuration`; สองหน่วย `business_days`/`continuous_24h`; ไม่มี fractional-day/hour policy unit | ลดความซับซ้อนตามคำยืนยันผู้ใช้; raw elapsed/interval calculations และ `addBusinessDuration` ยังคำนวณเป็น milliseconds เพื่อไม่ปัด clock / [S02](../sessions/S02.md) |
 | `D-S01-5` | ทุก company/site calendar snapshot รับเฉพาะ `Asia/Bangkok`; timezone อื่นโยน `RangeError` ใน validation แม้เป็น IANA zone ที่ถูกต้อง | บริษัทใช้งานในไทยซึ่งไม่มี DST; หลีกเลี่ยงความหมายวันเปิด 23/25 ชั่วโมงใน Phase 1 ตามคำยืนยันผู้ใช้ / [S02](../sessions/S02.md) |
 | `D-S01-6` | `packages/time` ปฏิเสธ holiday year นอก ค.ศ. 2000–2100 inclusive ด้วย `RangeError` ระบุว่าน่าจะกรอกเป็น พ.ศ.; แปลง พ.ศ.→ค.ศ. พร้อม preview/confirm ใน Admin/import tasks เท่านั้น | กันวันหยุดปี 2569 ที่รูปแบบ valid แต่ไม่ตรงวันใช้งาน ทำให้วันหยุดกลายเป็นวันทำงานเงียบๆ; สองชั้นตามคำยืนยันผู้ใช้และ R5 / [S02](../sessions/S02.md) |
+
+## S03 — คำตอบที่ผู้ใช้ยืนยัน 4 ต.ค. 2569 (D-S03-1 ถึง D-S03-4)
+
+ใหม่กว่าคำถามใน S03 และใช้แทนส่วนที่ขัดกัน ผล implement: [S03](../sessions/S03.md)
+
+| ID | การตัดสินใจ | เหตุผล / ต้นทาง |
+|---|---|---|
+| `D-S03-1` | เวลาที่น้อยกว่า 1 วันทำการแสดง “ไม่ถึง 1 วันทำการ” ทุกหน้าจอ ไม่ใช้คำว่า “วันนี้” | ปิดความกำกวม “วันนี้” ใน P7-UX-01/Part 6 §6.7 ตามคำยืนยันผู้ใช้ / [S03](../sessions/S03.md) |
+| `D-S03-2` | แสดงเป็นจำนวนวันทำการเต็ม ปัดลง ตาม F4; ไม่ใช้ทศนิยมหนึ่งตำแหน่งของ U4 | F4 ใหม่กว่าและอยู่ลำดับสูงกว่า U1–U5 ใน INDEX ตามคำยืนยันผู้ใช้ / [S03](../sessions/S03.md) |
+| `D-S03-3` | ป้าย GM “ไม่ขยับ 3 วันทำการ · ถึงเวลาติดตาม” ตอนเพิ่ง stale (raw > 3 วันทำการ แต่ปัดลงได้ 3) ยอมรับได้ | การตัดสินใช้ raw ส่วนการแสดงปัดลงตาม D-S03-2 ตามคำยืนยันผู้ใช้ / [S03](../sessions/S03.md) |
+| `D-S03-4` | `hash` = SHA-256 (hex) ของ canonical JSON `{"timezone","open_weekdays","holidays"}` (weekdays เรียงน้อยไปมาก, holidays เรียงวันที่และตัดซ้ำ, ไม่มีช่องว่าง); `source` = id ปฏิทินต้นทาง + เวลาที่ snapshot ในรูป `<calendar id>@<ISO-8601 UTC>`; คำนวณฝั่ง server ตอนบันทึกข้อมูล ไม่ใช่ใน `packages/time` | เก็บ provenance ตาม Part 6 §6.7 และ D-S01-1 โดย `packages/time` ยัง pure ตามคำยืนยันผู้ใช้; รูปแบบสตริง `@` เป็นรายละเอียด implement / [S03](../sessions/S03.md) |

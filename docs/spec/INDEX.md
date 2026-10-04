@@ -8,7 +8,7 @@
 
 หากต้นทางไม่ตอบ ให้บันทึกข้อขัดกันพร้อมไฟล์/หัวข้อ และถามเฉพาะเรื่องที่จำเป็น ห้ามเปลี่ยนสิทธิ์/scope/ตัวเลขด้วยการคาดเดา
 
-คำตอบล่าสุดจากผู้ใช้สำหรับ S01 (`D-S01-1` ถึง `D-S01-6`) อยู่ [DECISIONS](DECISIONS.md) และมีผลเหนือข้อเดิมที่ขัดกันใน Part 6/S01; ผล implement อยู่ [S02](../sessions/S02.md)
+คำตอบล่าสุดจากผู้ใช้สำหรับ S01 (`D-S01-1` ถึง `D-S01-6`) และ S03 (`D-S03-1` ถึง `D-S03-4`) อยู่ [DECISIONS](DECISIONS.md) และมีผลเหนือข้อเดิมที่ขัดกันใน Part 6/S01/S03; ผล implement อยู่ [S02](../sessions/S02.md) และ [S03](../sessions/S03.md)
 
 ## Map หัวข้อ → ไฟล์ / section
 
@@ -55,3 +55,4 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S00](../sessions/S00.md): workspace/scripts/emulators/dev guard
 - [S01](../sessions/S01.md): business duration/add time; คำถามเดิมปิดแล้วใน D-S01-*
 - [S02](../sessions/S02.md): waiting interval union/effective end/elapsed/SLA pause และ calendar validation ล่าสุด
+- [S03](../sessions/S03.md): stale/auto-close/display/calendar snapshot; รวมกับ S02 แล้ว คำถามปิดใน D-S03-*

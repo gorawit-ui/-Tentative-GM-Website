@@ -12,4 +12,9 @@ export interface HealthResponse {
 export function healthResponse(service: ServiceName): HealthResponse {
   return { status: 'ok', service };
 }
-export { type CalendarSnapshotDocument, type SlaDurationUnit } from './calendar';
+export {
+  canonicalCalendarSnapshotJson,
+  type CalendarSnapshotContent,
+  type CalendarSnapshotDocument,
+  type SlaDurationUnit,
+} from './calendar';
