@@ -1,0 +1,13 @@
+{
+  "$comment": "ข้อมูลสมมติสำหรับ E2E เท่านั้น ไม่ใช่ข้อมูลพนักงานหรือสถานที่จริง ห้ามใส่ข้อมูลจริง; collection ขึ้นต้น fixture_ เพราะ schema จริงมาใน task ถัดไป",
+  "collections": {
+    "fixture_places": {
+      "place-test-1": { "name": "อาคารทดสอบ ก", "area": "ห้องประชุมชั้น 2", "order": 1 },
+      "place-test-2": { "name": "คลังสินค้าทดสอบ", "area": "ประตูรับของด้านหลัง", "order": 2 }
+    },
+    "fixture_people": {
+      "person-test-1": { "display_name": "สมมติ ใจดี", "role": "requester", "active": true },
+      "person-test-2": { "display_name": "ทดสอบ รักงาน", "role": "gm_staff", "active": true }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@gm/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Request/response schemas shared by web, API and worker. The server decides; clients only help fill in.",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

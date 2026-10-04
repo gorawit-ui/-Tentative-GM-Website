@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tooling.tsbuildinfo",
+    "types": [
+      "node"
+    ],
+    "allowJs": true,
+    "checkJs": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "vitest.config.ts",
+    "scripts/**/*.mjs",
+    "tests/setup/**/*.ts",
+    "tests/support/**/*.mjs"
+  ]
+}

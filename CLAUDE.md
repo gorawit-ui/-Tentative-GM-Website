@@ -10,7 +10,7 @@ Stack: TypeScript, React/Vite, Tailwind v4.3.3 reference; Firebase Hosting/Auth 
 
 ## คำสั่ง
 
-Command contract นี้ต้องสร้างใน `S00` ก่อนใช้; รายละเอียด [BUILD-COMMANDS](docs/BUILD-COMMANDS.md)
+Command contract สร้างแล้วใน `S00` (ผลรัน/version pins/ข้อจำกัด: [บันทึก S00](docs/sessions/S00.md)); รายละเอียด [BUILD-COMMANDS](docs/BUILD-COMMANDS.md)
 
 ```sh
 npm ci

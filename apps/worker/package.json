@@ -1,0 +1,15 @@
+{
+  "name": "@gm/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "gm-worker: private Cloud Run service for Tasks/Scheduler work (same image as gm-api, different entrypoint; Part 6 §6.2).",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --sourcemap --outfile=dist/main.js",
+    "start": "node --enable-source-maps dist/main.js"
+  },
+  "dependencies": {
+    "@gm/contracts": "0.0.0"
+  }
+}

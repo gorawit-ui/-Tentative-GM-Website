@@ -1,0 +1,16 @@
+{
+  "name": "@gm/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Web app (React + Vite) served by Firebase Hosting. S00: empty shell only; UI starts after the S10–S12 gate.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

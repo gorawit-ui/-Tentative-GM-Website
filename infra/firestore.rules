@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// S00 skeleton: deny every client read and write. Real Rules are written test-first in
+// S10–S11 (Part 6 §6.5): summaries allowlist, private requests, server-only collections.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
