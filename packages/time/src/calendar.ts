@@ -64,3 +64,8 @@ export function prepareCalendar(calendar: CalendarSnapshot): PreparedCalendar {
     isOpen: (dayNumber) => open.has(isoWeekday(dayNumber)) && !holidays.has(dayNumber),
   };
 }
+
+/** Immutable copy of a live calendar for one request/clock (Part 6 §6.7, C8). */
+export function snapshotCalendar(_live: CalendarSnapshot): CalendarSnapshot {
+  throw new Error('snapshotCalendar: not implemented yet (S03)');
+}

@@ -4,9 +4,12 @@
 export {
   BUSINESS_DAY_MS,
   HOUR_MS,
+  snapshotCalendar,
   type CalendarSnapshot,
   type DurationUnit,
   type Instant,
   type IsoWeekday,
 } from './calendar';
 export { addBusinessDuration, addDuration, businessDuration } from './business-time';
+export { autoCloseDue, isAutoCloseDue, staleState, type StaleState } from './lifecycle-clocks';
+export { formatBusinessDuration, type DurationTextContext } from './display';
