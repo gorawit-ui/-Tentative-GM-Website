@@ -106,21 +106,142 @@ export class RequestRejected extends Error {
   }
 }
 
-export function maintenanceTitle(_parts: {
+const GM_ROLES: readonly Role[] = ['gm_staff', 'gm_admin'];
+
+function requireText(value: unknown, code: string, what: string): string {
+  if (typeof value !== 'string' || value.trim() === '') throw new RequestRejected(code, `${what} is required`);
+  return value.trim();
+}
+
+function requireGm(actor: Actor): void {
+  if (!GM_ROLES.includes(actor.role)) {
+    throw new RequestRejected('GM_ONLY', 'Only GM Staff or GM Admin can create GM tasks or open requests on behalf');
+  }
+}
+
+/** `[อาการ] — [บริเวณ] · [สถานที่]`, or `[อาการ] · [สถานที่]` without an area (U2). */
+export function maintenanceTitle(parts: {
   readonly symptomLabel: string;
   readonly areaLabel?: string | undefined;
   readonly locationLabel: string;
 }): string {
-  throw new Error('maintenanceTitle: not implemented yet (S04)');
+  const symptom = requireText(parts.symptomLabel, 'TITLE_PART_EMPTY', 'symptom label');
+  const location = requireText(parts.locationLabel, 'TITLE_PART_EMPTY', 'location label');
+  if (parts.areaLabel === undefined) return `${symptom} · ${location}`;
+  const area = requireText(parts.areaLabel, 'TITLE_PART_EMPTY', 'area label');
+  return `${symptom} — ${area} · ${location}`;
 }
 
-export function defaultSensitivity(_subject: SensitivitySubject): {
+/** C6: confidential by default only for contract and personnel matters, with the reason kept. */
+export function defaultSensitivity(subject: SensitivitySubject): {
   readonly isConfidential: boolean;
   readonly sensitivityReason?: 'contract' | 'personnel';
 } {
-  throw new Error('defaultSensitivity: not implemented yet (S04)');
+  if (subject === 'contract' || subject === 'personnel') return { isConfidential: true, sensitivityReason: subject };
+  if (subject === 'general') return { isConfidential: false };
+  throw new RequestRejected('SENSITIVITY_SUBJECT_REQUIRED', 'Answer whether this is a contract or personnel matter');
 }
 
-export function createRequestDraft(_command: CreateRequestCommand): RequestDraft {
-  throw new Error('createRequestDraft: not implemented yet (S04)');
+function sensitivityOf(subject: unknown) {
+  if (!(SENSITIVITY_SUBJECTS as readonly unknown[]).includes(subject)) {
+    throw new RequestRejected('SENSITIVITY_SUBJECT_REQUIRED', 'Answer whether this is a contract or personnel matter');
+  }
+  return defaultSensitivity(subject as SensitivitySubject);
+}
+
+function serviceFields(details: ServiceDetails) {
+  if (details.type === 'maintenance') {
+    const title = maintenanceTitle({
+      symptomLabel: details.symptom.label,
+      areaLabel: details.area?.label,
+      locationLabel: details.location.label,
+    });
+    // Anything the reporter typed (including a title) stays in the restricted description only (U2).
+    return {
+      type: details.type,
+      summaryTitle: title,
+      locationId: requireText(details.location.id, 'LOCATION_REQUIRED', 'location'),
+      ...(details.area === undefined ? {} : { areaId: requireText(details.area.id, 'AREA_INVALID', 'area id') }),
+      symptomKey: requireText(details.symptom.key, 'SYMPTOM_REQUIRED', 'symptom'),
+      ...optionalDescription(details.description),
+      isConfidential: false,
+    };
+  }
+  if (details.type === 'document_request' || details.type === 'document_intake') {
+    return {
+      type: details.type,
+      summaryTitle: requireText(details.summaryTitle, 'TITLE_REQUIRED', 'summary_title'),
+      ...optionalDescription(details.description),
+      ...sensitivityOf(details.sensitivitySubject),
+    };
+  }
+  throw new RequestRejected('TYPE_INVALID', 'Requests opened by or for an employee use a service type, not gm_task');
+}
+
+function optionalDescription(description: string | undefined) {
+  return description === undefined || description.trim() === '' ? {} : { description };
+}
+
+function onBehalfRequester(requester: OnBehalfRequester) {
+  const hasPerson = 'personId' in requester;
+  const hasName = 'nameText' in requester;
+  if (hasPerson === hasName) {
+    throw new RequestRejected('REQUESTER_INVALID', 'Choose either a directory account or a typed name');
+  }
+  if (hasPerson) {
+    const requesterId = requireText(requester.personId, 'REQUESTER_INVALID', 'requester account');
+    return { requesterId, requiresRequesterConfirmation: true };
+  }
+  // A typed name is not an account: no requester_id, no notifications, closes when GM completes (C2).
+  const requesterNameText = requireText(requester.nameText, 'REQUESTER_INVALID', 'requester name');
+  return { requesterNameText, requiresRequesterConfirmation: false };
+}
+
+/** Validates a create command and returns the request to persist. Throws RequestRejected otherwise. */
+export function createRequestDraft(command: CreateRequestCommand): RequestDraft {
+  const createdById = requireText(command.actor.personId, 'ACTOR_INVALID', 'actor');
+
+  switch (command.kind) {
+    case 'self':
+      return {
+        ...serviceFields(command.details),
+        source: 'web',
+        origin: 'requester',
+        createdById,
+        requesterId: createdById,
+        requiresRequesterConfirmation: true,
+      };
+    case 'on_behalf':
+      requireGm(command.actor);
+      return {
+        ...serviceFields(command.details),
+        source: 'web',
+        origin: 'gm_on_behalf',
+        createdById,
+        ...onBehalfRequester(command.requester),
+      };
+    case 'gm_task': {
+      requireGm(command.actor);
+      if ('requesterId' in command || 'requester' in command || 'requesterNameText' in command) {
+        throw new RequestRejected('GM_TASK_HAS_NO_REQUESTER', 'A gm_task has no requester (C2)');
+      }
+      const category = requireText(command.category, 'CATEGORY_REQUIRED', 'category');
+      if (!(GM_CATEGORIES as readonly string[]).includes(category)) {
+        throw new RequestRejected('CATEGORY_UNKNOWN', 'category must be one of the 7 GM categories');
+      }
+      return {
+        type: 'gm_task',
+        source: 'web',
+        origin: 'gm_initiated',
+        createdById,
+        summaryTitle: requireText(command.summaryTitle, 'TITLE_REQUIRED', 'summary_title'),
+        category: category as GmCategory,
+        ...optionalDescription(command.description),
+        ...sensitivityOf(command.sensitivitySubject),
+        requiresRequesterConfirmation: false,
+      };
+    }
+    default:
+      throw new RequestRejected('KIND_INVALID', 'Unknown create command');
+  }
 }
