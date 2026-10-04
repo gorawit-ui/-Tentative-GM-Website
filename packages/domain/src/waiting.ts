@@ -1,7 +1,8 @@
 // Waiting on others (S06): enter / change party, follow up (+ reminder quota), waiting-party
 // response and resume (F04, F05, C3, C4, A2, F3, Part 6 §6.6/§6.14). Pure: callers pass `now`,
 // the request's work calendar and persist state, history events and outbox items. Nothing is sent here.
-import type { CalendarSnapshot, Instant } from '@gm/time';
+import { businessDateBucket, type CalendarSnapshot, type Instant } from '@gm/time';
+import { reject, requireGmActor, requireStatus, requireWritable } from './command-guards';
 import type { LifecycleState } from './lifecycle';
 import type { Actor } from './request-creation';
 
@@ -134,31 +135,186 @@ export interface FollowUpResult<S extends WaitingRequestState> extends WaitingRe
   readonly reminder?: ReminderOutcome;
 }
 
-function notImplemented(name: string): never {
-  throw new Error(`${name}: not implemented yet (S06)`);
+const EXTERNAL_KINDS: readonly string[] = ['contractor', 'government', 'other'];
+
+/** Current-interval fields, cleared when the interval ends; history keeps them in the event. */
+const CURRENT_INTERVAL_FIELDS = [
+  'waitingOn',
+  'currentWaitingIntervalId',
+  'waitingSince',
+  'waitingRecipientIds',
+  'waitingPartyResponded',
+  'respondedAt',
+] as const;
+
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 }
 
+function rejectForeignFields(input: WaitingOnInput, allowed: readonly (keyof WaitingOnInput)[]): void {
+  const fields: readonly (keyof WaitingOnInput)[] = ['personId', 'teamLabel', 'contactIds', 'name'];
+  const foreign = fields.filter((field) => !allowed.includes(field) && input[field] !== undefined);
+  if (foreign.length > 0) reject('WAITING_ON_INVALID', `waiting_on.${foreign.join(', ')} does not belong to this kind`);
+}
+
+/** F3/C3: the party is explicit, with exactly the data of its kind; no default is ever chosen. */
+function validateWaitingOn(input: WaitingOnInput | undefined): WaitingOn {
+  const kind = text(input?.kind);
+  if (input === undefined || kind === undefined) reject('WAITING_ON_REQUIRED', 'Choose who the request is waiting on');
+  switch (kind) {
+    case 'person': {
+      rejectForeignFields(input, ['personId']);
+      const personId = text(input.personId) ?? reject('WAITING_PERSON_REQUIRED', 'Choose the person to wait on');
+      return { kind, personId };
+    }
+    case 'team': {
+      rejectForeignFields(input, ['teamLabel', 'contactIds']);
+      const teamLabel = text(input.teamLabel) ?? reject('WAITING_TEAM_LABEL_REQUIRED', 'Name the team to wait on');
+      const contactIds = (input.contactIds ?? []).map(
+        (id) => text(id) ?? reject('WAITING_CONTACT_INVALID', 'Team contacts must be people'),
+      );
+      if (contactIds.length > MAX_TEAM_CONTACTS) {
+        reject('WAITING_CONTACTS_TOO_MANY', `Choose at most ${MAX_TEAM_CONTACTS} team contacts`);
+      }
+      if (new Set(contactIds).size !== contactIds.length) reject('WAITING_CONTACTS_DUPLICATE', 'Team contacts must differ');
+      return { kind, teamLabel, contactIds };
+    }
+    case 'contractor':
+    case 'government':
+    case 'other': {
+      rejectForeignFields(input, ['name']);
+      const name = text(input.name) ?? reject('WAITING_NAME_REQUIRED', 'Name the party to wait on');
+      return { kind, name };
+    }
+    default:
+      return reject('WAITING_KIND_INVALID', 'waiting_on.kind must be person, team, contractor, government or other');
+  }
+}
+
+/** F05 §9.1: who gets the notice for this interval. */
+function recipientsOf(waitingOn: WaitingOn, notify: boolean | undefined): readonly string[] {
+  const candidates =
+    waitingOn.kind === 'person' ? [waitingOn.personId] : waitingOn.kind === 'team' ? waitingOn.contactIds : [];
+  if (candidates.length === 0) {
+    if (notify === true) reject('NOTIFY_NOT_AVAILABLE', 'Nobody can be notified for this party');
+    return [];
+  }
+  return notify === false ? [] : candidates;
+}
+
+function hasDetailAccess(state: WaitingRequestState, personId: string): boolean {
+  return state.requesterId === personId || state.relatedPersonIds.includes(personId);
+}
+
+/** Preview for the confirm sheet (F05 §9.2): party, recipients, new related persons, consent needed. */
 export function planWaiting(
-  _state: WaitingRequestState,
-  _input: Pick<WaitingCommand, 'waitingOn' | 'notify'>,
+  state: WaitingRequestState,
+  input: Pick<WaitingCommand, 'waitingOn' | 'notify'>,
 ): WaitingPlan {
-  return notImplemented('planWaiting');
+  const waitingOn = validateWaitingOn(input.waitingOn);
+  const recipientIds = recipientsOf(waitingOn, input.notify);
+  const newRelatedPersonIds = recipientIds.filter((personId) => !hasDetailAccess(state, personId));
+  return {
+    waitingOn,
+    recipientIds,
+    newRelatedPersonIds,
+    needsConfidentialGrant: state.isConfidential && newRelatedPersonIds.length > 0,
+  };
 }
 
-export function enterWaiting<S extends WaitingRequestState>(_state: S, _command: WaitingCommand): EnterWaitingResult<S> {
-  return notImplemented('enterWaiting');
+function without<S>(state: S, fields: readonly string[]): S {
+  return Object.fromEntries(Object.entries(state as object).filter(([key]) => !fields.includes(key))) as S;
 }
 
-export function changeWaitingParty<S extends WaitingRequestState>(
-  _state: S,
-  _command: WaitingCommand,
+/** Ends the open interval (exit = `now`) and clears the current waiting fields; used by resume and cancel. */
+export function endWaitingInterval<S extends LifecycleState & Partial<WaitingFields>>(
+  state: S,
+  now: Instant,
+): { readonly state: S; readonly endedInterval?: EndedWaitingInterval } {
+  const { currentWaitingIntervalId: intervalId, waitingOn, waitingSince: startedAt, respondedAt } = state;
+  if (intervalId === undefined || waitingOn === undefined || startedAt === undefined) return { state };
+  return {
+    state: without(state, CURRENT_INTERVAL_FIELDS),
+    endedInterval: {
+      intervalId,
+      waitingOn,
+      recipientIds: state.waitingRecipientIds ?? [],
+      startedAt,
+      ...(respondedAt === undefined ? {} : { respondedAt }),
+      exitedAt: now,
+    },
+  };
+}
+
+function openInterval<S extends WaitingRequestState>(
+  state: S,
+  command: WaitingCommand,
+  endedInterval: EndedWaitingInterval | undefined,
 ): EnterWaitingResult<S> {
-  return notImplemented('changeWaitingParty');
+  const plan = planWaiting(state, command);
+  if (plan.needsConfidentialGrant && command.confirmConfidentialGrant !== true) {
+    reject('CONFIDENTIAL_GRANT_REQUIRED', 'Confirm separately that the new people may read this confidential request');
+  }
+  const { now } = command;
+  const intervalId = state.waitingIntervalSeq + 1;
+  const next = {
+    ...without(state, CURRENT_INTERVAL_FIELDS),
+    status: 'waiting' as const,
+    relatedPersonIds: [...state.relatedPersonIds, ...plan.newRelatedPersonIds],
+    waitingIntervalSeq: intervalId,
+    waitingOn: plan.waitingOn,
+    currentWaitingIntervalId: intervalId,
+    waitingSince: now,
+    waitingRecipientIds: plan.recipientIds,
+    waitingPartyResponded: false,
+    lastUpdatedAt: now,
+  };
+  return {
+    state: next,
+    event: {
+      kind: 'waiting_started',
+      at: now,
+      actorId: command.actor.personId,
+      intervalId,
+      waitingOn: plan.waitingOn,
+      recipientIds: plan.recipientIds,
+      addedRelatedPersonIds: plan.newRelatedPersonIds,
+      ...(endedInterval === undefined ? {} : { endedInterval }),
+    },
+    ...(plan.recipientIds.length === 0 ? {} : { notice: { intervalId, recipientIds: plan.recipientIds } }),
+  };
 }
 
+/** GM puts an in-progress request on waiting (F04, F05). */
+export function enterWaiting<S extends WaitingRequestState>(state: S, command: WaitingCommand): EnterWaitingResult<S> {
+  requireWritable(state);
+  requireGmActor(command.actor);
+  requireStatus(state, ['in_progress'], 'enterWaiting');
+  return openInterval(state, command, undefined);
+}
+
+/** GM switches the waited party A → B: A's interval ends now, B's opens; history is not reset (F05 §9.3). */
+export function changeWaitingParty<S extends WaitingRequestState>(state: S, command: WaitingCommand): EnterWaitingResult<S> {
+  requireWritable(state);
+  requireGmActor(command.actor);
+  requireStatus(state, ['waiting'], 'changeWaitingParty');
+  const ended = endWaitingInterval(state, command.now);
+  return openInterval(ended.state, command, ended.endedInterval);
+}
+
+function requireOpenInterval(state: WaitingRequestState): number {
+  const intervalId = state.currentWaitingIntervalId;
+  if (intervalId === undefined) return reject('NOT_WAITING', 'The request has no open waiting interval');
+  return intervalId;
+}
+
+/**
+ * “ติดตามแล้ว” (F05 §9.4): GM progress — history + `last_updated_at`. An optional reminder is limited
+ * to one per business day per request; on a closed day it goes to the next business day's quota.
+ */
 export function followUp<S extends WaitingRequestState>(
-  _state: S,
-  _command: {
+  state: S,
+  command: {
     readonly actor: Actor;
     readonly now: Instant;
     readonly remind?: boolean | undefined;
@@ -166,39 +322,98 @@ export function followUp<S extends WaitingRequestState>(
     readonly calendar: CalendarSnapshot;
   },
 ): FollowUpResult<S> {
-  return notImplemented('followUp');
+  requireWritable(state);
+  requireGmActor(command.actor);
+  requireStatus(state, ['waiting'], 'followUp');
+  const intervalId = requireOpenInterval(state);
+  const { now } = command;
+  const base = { kind: 'followed_up' as const, at: now, actorId: command.actor.personId, intervalId };
+  const followed = { ...state, lastUpdatedAt: now };
+  if (command.remind !== true) return { state: followed, event: base };
+
+  const recipientIds = state.waitingRecipientIds ?? [];
+  if (recipientIds.length === 0) reject('REMINDER_NO_RECIPIENTS', 'Nobody was notified for this waiting party');
+  const { businessDate, isOpenDay } = businessDateBucket(now, command.calendar);
+  if (state.lastReminderBusinessDate === businessDate) {
+    const reminder: ReminderOutcome = { status: 'quota_used', businessDate };
+    return { state: followed, event: { ...base, reminder }, reminder };
+  }
+  const reminder: ReminderOutcome = {
+    status: isOpenDay ? 'send_now' : 'next_business_day',
+    businessDate,
+    recipientIds,
+  };
+  return {
+    state: { ...followed, lastReminderBusinessDate: businessDate },
+    event: { ...base, reminder, ...(isOpenDay ? { remindedAt: now } : {}) },
+    reminder,
+  };
 }
 
+/**
+ * “ฝั่งฉันเรียบร้อยแล้ว” (A2): only a notified recipient of the current interval who still has access;
+ * the first answer counts for a team. No status, waiting or `last_updated_at` change.
+ */
 export function respondWaitingParty<S extends WaitingRequestState>(
-  _state: S,
-  _command: {
+  state: S,
+  command: {
     readonly actor: Actor;
     readonly now: Instant;
     readonly intervalId: number;
     readonly note?: string | undefined;
   },
 ): WaitingResult<S> {
-  return notImplemented('respondWaitingParty');
+  requireWritable(state);
+  if (state.status !== 'waiting') reject('NOT_WAITING', 'The request is not waiting');
+  const intervalId = requireOpenInterval(state);
+  if (command.intervalId !== intervalId) reject('STALE_WAITING_INTERVAL', 'The response refers to an earlier waiting interval');
+  const kind = state.waitingOn?.kind;
+  if (kind === undefined || EXTERNAL_KINDS.includes(kind)) {
+    reject('NO_RESPONSE_FOR_PARTY', 'External parties do not respond in the app; GM resumes the work');
+  }
+  const { personId } = command.actor;
+  if (!(state.waitingRecipientIds ?? []).includes(personId)) {
+    reject('NOT_CURRENT_RECIPIENT', 'Only a notified recipient of the current waiting interval can respond');
+  }
+  if (!hasDetailAccess(state, personId)) reject('ACCESS_REVOKED', 'The recipient no longer has access to this request');
+  if (state.waitingPartyResponded === true) reject('ALREADY_RESPONDED', 'The waited party has already responded');
+  const note = text(command.note);
+  return {
+    state: { ...state, waitingPartyResponded: true, respondedAt: command.now },
+    event: {
+      kind: 'waiting_party_responded',
+      at: command.now,
+      actorId: personId,
+      intervalId,
+      ...(note === undefined ? {} : { note }),
+    },
+  };
 }
 
+/** “กลับมาทำต่อ”: GM moves waiting → in_progress and the interval ends (exit = now). */
 export function resumeWork<S extends WaitingRequestState>(
-  _state: S,
-  _command: { readonly actor: Actor; readonly now: Instant },
+  state: S,
+  command: { readonly actor: Actor; readonly now: Instant },
 ): WaitingResult<S> {
-  return notImplemented('resumeWork');
+  requireWritable(state);
+  requireGmActor(command.actor);
+  requireStatus(state, ['waiting'], 'resumeWork');
+  requireOpenInterval(state);
+  const { state: ended, endedInterval } = endWaitingInterval(state, command.now);
+  if (endedInterval === undefined) return reject('NOT_WAITING', 'The request has no open waiting interval');
+  return {
+    state: { ...ended, status: 'in_progress', lastUpdatedAt: command.now },
+    event: { kind: 'waiting_ended', at: command.now, actorId: command.actor.personId, endedInterval },
+  };
 }
 
 /** The open interval of a waiting request, as a @gm/time `WaitingInterval`. */
 export function currentWaitingInterval(
-  _state: WaitingRequestState,
+  state: WaitingRequestState,
 ): { readonly startedAt: Instant; readonly respondedAt?: Instant } | undefined {
-  return notImplemented('currentWaitingInterval');
-}
-
-/** Ends the open interval (exit = `now`) and clears the current waiting fields; used by resume and cancel. */
-export function endWaitingInterval<S extends LifecycleState & Partial<WaitingFields>>(
-  _state: S,
-  _now: Instant,
-): { readonly state: S; readonly endedInterval?: EndedWaitingInterval } {
-  return notImplemented('endWaitingInterval');
+  if (state.status !== 'waiting' || state.waitingSince === undefined) return undefined;
+  return {
+    startedAt: state.waitingSince,
+    ...(state.respondedAt === undefined ? {} : { respondedAt: state.respondedAt }),
+  };
 }

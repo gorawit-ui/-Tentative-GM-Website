@@ -12,7 +12,7 @@ import {
   type RequestStatus,
 } from './command-guards';
 import type { Actor } from './request-creation';
-import type { EndedWaitingInterval } from './waiting';
+import { endWaitingInterval, type EndedWaitingInterval } from './waiting';
 
 export { LifecycleRejected, REQUEST_STATUSES, type RequestStatus } from './command-guards';
 
@@ -266,9 +266,17 @@ export function cancelRequest<S extends LifecycleState>(
   requireGmActor(command.actor);
   requireStatus(state, ['queued', 'in_progress', 'waiting'], 'cancel');
   const reason = requireReason(command.reason);
+  // S06: cancelling while waiting ends the open waiting interval; history keeps it.
+  const { state: ended, endedInterval } = endWaitingInterval(state, command.now);
   return {
-    state: { ...state, status: 'cancelled', cancelledAt: command.now, lastUpdatedAt: command.now },
-    event: { kind: 'cancelled', at: command.now, actorId: command.actor.personId, reason },
+    state: { ...ended, status: 'cancelled', cancelledAt: command.now, lastUpdatedAt: command.now },
+    event: {
+      kind: 'cancelled',
+      at: command.now,
+      actorId: command.actor.personId,
+      reason,
+      ...(endedInterval === undefined ? {} : { endedWaitingInterval: endedInterval }),
+    },
   };
 }
 
