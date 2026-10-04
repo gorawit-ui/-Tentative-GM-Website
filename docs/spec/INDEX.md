@@ -56,5 +56,6 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S01](../sessions/S01.md): business duration/add time; คำถามเดิมปิดแล้วใน D-S01-*
 - [S02](../sessions/S02.md): waiting interval union/effective end/elapsed/SLA pause และ calendar validation ล่าสุด
 - [S03](../sessions/S03.md): stale/auto-close/display/calendar snapshot; รวมกับ S02 แล้ว คำถามปิดใน D-S03-*
-- [S04](../sessions/S04.md): domain การสร้างงาน type/origin/title/default sensitivity/category; คำถามค้างใน S04
+- [S04](../sessions/S04.md): domain การสร้างงาน type/origin/title/default sensitivity/category; คำถามปิดแล้วใน D-S04-1 ถึง D-S04-6
+- [S05](../sessions/S05.md): ผล D-S04 และ lifecycle commands accept/complete/confirm/not resolved/auto-close/cancel/reopen; คำถามค้างใน S05
 - [FOLLOW-UPS](../FOLLOW-UPS.md): งานที่เลื่อนข้าม session
