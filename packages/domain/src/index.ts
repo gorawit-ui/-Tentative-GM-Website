@@ -81,3 +81,35 @@ export {
   type WaitingRequestState,
   type WaitingResult,
 } from './waiting';
+export {
+  PRESENCE_LABELS,
+  PRESENCE_STATUSES,
+  effectivePresence,
+  isOnLeave,
+  resetPresence,
+  setPresence,
+  type EffectivePresence,
+  type GmProfile,
+  type PresenceChangedEvent,
+  type PresenceResetResult,
+  type PresenceStatus,
+} from './presence';
+export {
+  INTERNAL_WORK_LABEL,
+  NO_CURRENT_WORK_LABEL,
+  currentWork,
+  releaseFocusIfEnded,
+  setFocus,
+  type CurrentWork,
+  type CurrentWorkCandidate,
+  type FocusEvent,
+  type FocusRequest,
+} from './focus';
+export {
+  routeNewRequest,
+  type RouteNewRequestInput,
+  type RoutingNotice,
+  type RoutingReason,
+  type RoutingResult,
+  type RoutingSettings,
+} from './routing';

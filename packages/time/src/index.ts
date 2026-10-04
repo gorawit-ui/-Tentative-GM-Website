@@ -13,6 +13,7 @@ export {
 export { addBusinessDuration, addDuration, businessDuration } from './business-time';
 export { autoCloseDue, isAutoCloseDue, staleState, type StaleState } from './lifecycle-clocks';
 export { businessDateBucket, nextWorkingMorning, type BusinessDateBucket } from './business-date';
+export { bangkokDateOf, presenceExpiresAt } from './presence-clock';
 export { formatBusinessDuration, type DurationTextContext } from './display';
 export {
   mergeIntervals, effectiveWaitingEnd, waitingElapsed, slaElapsed,
