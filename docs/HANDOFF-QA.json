@@ -1,0 +1,11 @@
+{
+  "part6_formatting_only": true,
+  "part6_numeric_tokens_unchanged": 535,
+  "decision_ids": 57,
+  "ordered_session_tasks": 69,
+  "task_dependencies_valid": true,
+  "prototype_unchanged": true,
+  "missing_local_links": 0,
+  "claude_md_lines": 37,
+  "application_tests_run": false
+}

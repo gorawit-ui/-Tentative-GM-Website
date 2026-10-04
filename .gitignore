@@ -1,0 +1,65 @@
+# GM One Stop Service — สิ่งที่ห้าม commit (สร้างก่อน commit แรกใน S00)
+# ห้ามผ่อนกฎในไฟล์นี้; ถ้าต้องมี template ค่า config ให้ตั้งชื่อที่ไม่ขึ้นต้นด้วย .env
+# และห้ามใส่ค่า secret จริงลงไป (ดู CLAUDE.md "กฎห้ามละเมิด")
+
+# --- Dependencies ---
+node_modules/
+
+# --- Environment files: ทุกรูปแบบ (.env, .env.local, .env.production, .envrc, ...) ---
+.env*
+
+# --- Keys / credentials / tokens ---
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.ppk
+id_rsa*
+id_ecdsa*
+id_ed25519*
+*.secret
+*.secrets
+.secrets/
+credentials*.json
+*-credentials*.json
+*_credentials*.json
+client_secret*.json
+service-account*.json
+service_account*.json
+*-service-account*.json
+*serviceaccount*.json
+*-sa-key*.json
+*firebase-adminsdk*.json
+application_default_credentials.json
+gha-creds-*.json
+token.json
+oauth-token*.json
+.runtimeconfig.json
+
+# --- Firebase emulator data / caches / logs ---
+.firebase/
+emulator-data/
+.emulator-data/
+emulators-data/
+firebase-export-*/
+*-debug.log
+
+# --- Build / test output ---
+dist/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# --- Logs / OS / editor ---
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

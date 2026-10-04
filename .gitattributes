@@ -1,0 +1,2 @@
+# Normalise text files to LF so scripts/configs behave the same on every team machine.
+* text=auto eol=lf
