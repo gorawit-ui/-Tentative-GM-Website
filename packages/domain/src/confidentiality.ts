@@ -21,9 +21,27 @@ export interface ConfidentialFlagRemovedEvent {
   readonly previousSensitivityReason?: SensitivityReason;
 }
 
+/** GM Admin removes the confidential flag with a reason (C6). A GM action, so `last_updated_at` moves (D-S05-3). */
 export function removeConfidentialFlag<S extends ConfidentialityState>(
-  _state: S,
-  _command: { readonly actor: Actor; readonly now: Instant; readonly reason: string },
+  state: S,
+  command: { readonly actor: Actor; readonly now: Instant; readonly reason: string },
 ): { readonly state: S; readonly event: ConfidentialFlagRemovedEvent } {
-  throw new LifecycleRejected('NOT_IMPLEMENTED', 'removeConfidentialFlag: not implemented yet (D-S05-6)');
+  if (state.source === 'trello') throw new LifecycleRejected('READ_ONLY_SOURCE', 'Trello cards are read-only on the web');
+  if (command.actor.role !== 'gm_admin') {
+    throw new LifecycleRejected('GM_ADMIN_ONLY', 'Only GM Admin can remove the confidential flag (C6)');
+  }
+  const reason = command.reason.trim();
+  if (reason === '') throw new LifecycleRejected('REASON_REQUIRED', 'A reason is required');
+  if (!state.isConfidential) throw new LifecycleRejected('NOT_CONFIDENTIAL', 'The request is not confidential');
+  const { sensitivityReason: previousSensitivityReason, sensitivityNote: _note, ...rest } = state;
+  return {
+    state: { ...rest, isConfidential: false, lastUpdatedAt: command.now } as unknown as S,
+    event: {
+      kind: 'confidential_flag_removed',
+      at: command.now,
+      actorId: command.actor.personId,
+      reason,
+      ...(previousSensitivityReason === undefined ? {} : { previousSensitivityReason }),
+    },
+  };
 }

@@ -153,9 +153,19 @@ export function acceptRequest<S extends LifecycleState>(
   requireWritable(state);
   requireGmActor(command.actor);
   requireStatus(state, ['queued'], 'accept');
+  const previousAssigneeId = state.assigneeId;
+  const takesOver = previousAssigneeId !== undefined && previousAssigneeId !== command.actor.personId;
+  if (takesOver && command.takeOver !== true) {
+    reject('TAKEOVER_CONFIRMATION_REQUIRED', 'The request is assigned to another GM; confirm the take-over explicitly');
+  }
   return {
     state: { ...state, status: 'in_progress', assigneeId: command.actor.personId, lastUpdatedAt: command.now },
-    event: { kind: 'accepted', at: command.now, actorId: command.actor.personId },
+    event: {
+      kind: 'accepted',
+      at: command.now,
+      actorId: command.actor.personId,
+      ...(takesOver ? { previousAssigneeId } : {}),
+    },
   };
 }
 
@@ -229,7 +239,8 @@ export function reportNotResolved<S extends LifecycleState>(
   requireOpenConfirmation(state, command.actor, command.completionCycleId);
   const reason = requireReason(command.reason);
   return {
-    state: { ...without(state, CURRENT_ROUND), status: 'in_progress' },
+    // D-S05-3: every status change updates last_updated_at, whoever makes it.
+    state: { ...without(state, CURRENT_ROUND), status: 'in_progress', lastUpdatedAt: command.now },
     event: {
       kind: 'not_resolved',
       at: command.now,
