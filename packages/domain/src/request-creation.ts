@@ -10,18 +10,28 @@ export type RequestOrigin = (typeof REQUEST_ORIGINS)[number];
 export const ROLES = ['requester', 'gm_staff', 'gm_admin', 'viewer'] as const;
 export type Role = (typeof ROLES)[number];
 
-/** The 7 GM categories, exactly as named in PRD §5.1 / Part 2 §1.2 / Part 6 §6.6. */
-export const GM_CATEGORIES = [
-  'บริหารสินค้า Damage',
-  'เอกสารและธุรการ',
-  'ทรัพย์สินและอาคารสถานที่',
-  'จัดซื้อทั่วไปและบิล',
-  'ภาครัฐ กฎหมาย Compliance',
-  'Project ปรับปรุงระบบ',
-  'กิจกรรมพนักงาน',
-] as const;
-export type GmCategory = (typeof GM_CATEGORIES)[number];
-export const GM_CATEGORY_KEYS: readonly string[] = [];
+/**
+ * The 7 GM categories (PRD §5.1): stable snake_case keys are stored, Thai names are display
+ * labels only, so a label can be renamed without breaking stored data (D-S04-1).
+ */
+export const GM_CATEGORIES = {
+  damage: 'บริหารสินค้า Damage',
+  documents_admin: 'เอกสารและธุรการ',
+  assets_facilities: 'ทรัพย์สินและอาคารสถานที่',
+  purchasing_bills: 'จัดซื้อทั่วไปและบิล',
+  government_compliance: 'ภาครัฐ กฎหมาย Compliance',
+  improvement_projects: 'Project ปรับปรุงระบบ',
+  employee_activities: 'กิจกรรมพนักงาน',
+} as const;
+export type GmCategory = keyof typeof GM_CATEGORIES;
+export const GM_CATEGORY_KEYS = Object.keys(GM_CATEGORIES) as readonly GmCategory[];
+
+/** D-S04-2: categories set automatically for service requests (gm_task is chosen by the GM). */
+const SERVICE_CATEGORY = {
+  maintenance: 'assets_facilities',
+  document_request: 'documents_admin',
+  document_intake: 'documents_admin',
+} as const satisfies Record<ServiceDetails['type'], GmCategory>;
 
 /** Answer to the form question “สัญญาหรือเรื่องบุคคลหรือไม่” (C6, Part 2 F02). */
 export const SENSITIVITY_SUBJECTS = ['contract', 'personnel', 'general'] as const;
@@ -119,8 +129,12 @@ function requireText(value: unknown, code: string, what: string): string {
   return value.trim();
 }
 
+function isGm(actor: Actor): boolean {
+  return GM_ROLES.includes(actor.role);
+}
+
 function requireGm(actor: Actor): void {
-  if (!GM_ROLES.includes(actor.role)) {
+  if (!isGm(actor)) {
     throw new RequestRejected('GM_ONLY', 'Only GM Staff or GM Admin can create GM tasks or open requests on behalf');
   }
 }
@@ -155,6 +169,31 @@ function sensitivityOf(subject: unknown) {
   return defaultSensitivity(subject as SensitivitySubject);
 }
 
+/**
+ * D-S04-4/5: GM may turn the flag on; a contract/personnel default cannot be switched off at
+ * creation (unflagging is GM Admin + reason, C6); requesters cannot set it; repairs are never
+ * confidential.
+ */
+function applyConfidentialChoice<T extends { readonly type: RequestType; readonly isConfidential: boolean }>(
+  fields: T,
+  actor: Actor,
+  choice: boolean | undefined,
+): T {
+  if (choice === undefined) return fields;
+  if (!isGm(actor)) throw new RequestRejected('FLAG_NOT_ALLOWED', 'Only GM can set the confidential flag at creation');
+  if (fields.type === 'maintenance') {
+    if (choice) throw new RequestRejected('MAINTENANCE_NOT_CONFIDENTIAL', 'Repair requests are never confidential (D-S04-5)');
+    return fields;
+  }
+  if (!choice) {
+    if (fields.isConfidential) {
+      throw new RequestRejected('DEFAULT_FLAG_LOCKED', 'Contract/personnel matters stay confidential; GM Admin can unflag later with a reason');
+    }
+    return fields;
+  }
+  return { ...fields, isConfidential: true };
+}
+
 function serviceFields(details: ServiceDetails) {
   if (details.type === 'maintenance') {
     const title = maintenanceTitle({
@@ -166,6 +205,7 @@ function serviceFields(details: ServiceDetails) {
     return {
       type: details.type,
       summaryTitle: title,
+      category: SERVICE_CATEGORY.maintenance,
       locationId: requireText(details.location.id, 'LOCATION_REQUIRED', 'location'),
       ...(details.area === undefined ? {} : { areaId: requireText(details.area.id, 'AREA_INVALID', 'area id') }),
       symptomKey: requireText(details.symptom.key, 'SYMPTOM_REQUIRED', 'symptom'),
@@ -177,6 +217,7 @@ function serviceFields(details: ServiceDetails) {
     return {
       type: details.type,
       summaryTitle: requireText(details.summaryTitle, 'TITLE_REQUIRED', 'summary_title'),
+      category: SERVICE_CATEGORY[details.type],
       ...optionalDescription(details.description),
       ...sensitivityOf(details.sensitivitySubject),
     };
@@ -210,7 +251,7 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
   switch (command.kind) {
     case 'self':
       return {
-        ...serviceFields(command.details),
+        ...applyConfidentialChoice(serviceFields(command.details), command.actor, command.markConfidential),
         source: 'web',
         origin: 'requester',
         createdById,
@@ -220,7 +261,7 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
     case 'on_behalf':
       requireGm(command.actor);
       return {
-        ...serviceFields(command.details),
+        ...applyConfidentialChoice(serviceFields(command.details), command.actor, command.markConfidential),
         source: 'web',
         origin: 'gm_on_behalf',
         createdById,
@@ -232,13 +273,13 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
         throw new RequestRejected('GM_TASK_HAS_NO_REQUESTER', 'A gm_task has no requester (C2)');
       }
       const category = requireText(command.category, 'CATEGORY_REQUIRED', 'category');
-      if (!(GM_CATEGORIES as readonly string[]).includes(category)) {
-        throw new RequestRejected('CATEGORY_UNKNOWN', 'category must be one of the 7 GM categories');
+      if (!Object.hasOwn(GM_CATEGORIES, category)) {
+        throw new RequestRejected('CATEGORY_UNKNOWN', 'category must be one of the 7 GM category keys');
       }
-      return {
-        type: 'gm_task',
-        source: 'web',
-        origin: 'gm_initiated',
+      const draft = {
+        type: 'gm_task' as const,
+        source: 'web' as const,
+        origin: 'gm_initiated' as const,
         createdById,
         summaryTitle: requireText(command.summaryTitle, 'TITLE_REQUIRED', 'summary_title'),
         category: category as GmCategory,
@@ -246,6 +287,7 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
         ...sensitivityOf(command.sensitivitySubject),
         requiresRequesterConfirmation: false,
       };
+      return applyConfidentialChoice(draft, command.actor, command.markConfidential);
     }
     default:
       throw new RequestRejected('KIND_INVALID', 'Unknown create command');
