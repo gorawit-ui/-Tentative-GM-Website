@@ -27,3 +27,12 @@ export function businessDateBucket(instant: Instant, calendar: CalendarSnapshot)
   }
   throw new RangeError('calendar has no open business day within a year');
 }
+
+/**
+ * Part 6 §6.7 `nextWorkingMorning`: the earliest instant at or after `from` that is `localTime`
+ * (`HH:MM`, Asia/Bangkok) on an open day of the calendar. Used for notices deferred from a
+ * closed day (D-S06-2: 09:00 by default, configurable in settings).
+ */
+export function nextWorkingMorning(_from: Instant, _calendar: CalendarSnapshot, _localTime: string): Instant {
+  throw new Error('nextWorkingMorning: not implemented yet (D-S06-2)');
+}

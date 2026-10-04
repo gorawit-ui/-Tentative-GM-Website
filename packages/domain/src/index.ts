@@ -54,6 +54,7 @@ export {
   type ConfidentialityState,
 } from './confidentiality';
 export {
+  DEFAULT_WORKING_MORNING_TIME,
   MAX_TEAM_CONTACTS,
   WAITING_PARTY_KINDS,
   changeWaitingParty,
