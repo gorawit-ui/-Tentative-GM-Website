@@ -71,7 +71,13 @@ export type OnBehalfRequester = { readonly personId: string } | { readonly nameT
 /** D-S04-4: a GM may turn the confidential flag on; nobody turns a contract/personnel default off here. */
 export interface ConfidentialChoice {
   readonly markConfidential?: boolean | undefined;
+  /** D-S05-6: required short note when a GM marks a general item (`sensitivity_reason` = `other`). */
+  readonly confidentialNote?: string | undefined;
 }
+
+/** `sensitivity_reason`: C6 defaults plus `other` for a flag a GM sets on another matter (D-S05-6). */
+export const SENSITIVITY_REASONS = ['contract', 'personnel', 'other'] as const;
+export type SensitivityReason = (typeof SENSITIVITY_REASONS)[number];
 
 export type CreateRequestCommand =
   | ({ readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails } & ConfidentialChoice)
@@ -108,7 +114,9 @@ export interface RequestDraft {
   readonly symptomKey?: string;
   readonly description?: string;
   readonly isConfidential: boolean;
-  readonly sensitivityReason?: 'contract' | 'personnel';
+  readonly sensitivityReason?: SensitivityReason;
+  /** Restricted detail: why a GM marked the item confidential (`other`, D-S05-6). */
+  readonly sensitivityNote?: string;
   /** True only when a real requester account must confirm after GM completes (C2, Part 6 §6.6). */
   readonly requiresRequesterConfirmation: boolean;
 }
@@ -170,28 +178,35 @@ function sensitivityOf(subject: unknown) {
 }
 
 /**
- * D-S04-4/5: GM may turn the flag on; a contract/personnel default cannot be switched off at
- * creation (unflagging is GM Admin + reason, C6); requesters cannot set it; repairs are never
- * confidential.
+ * D-S04-4/5, D-S05-6: GM may turn the flag on; on a general item that needs a short note and
+ * `sensitivity_reason` = `other`. A contract/personnel default cannot be switched off at creation
+ * (unflagging is GM Admin + reason, C6); requesters cannot set it; repairs are never confidential.
  */
-function applyConfidentialChoice<T extends { readonly type: RequestType; readonly isConfidential: boolean }>(
-  fields: T,
-  actor: Actor,
-  choice: boolean | undefined,
-): T {
-  if (choice === undefined) return fields;
+function applyConfidentialChoice<
+  T extends { readonly type: RequestType; readonly isConfidential: boolean; readonly sensitivityReason?: SensitivityReason },
+>(fields: T, actor: Actor, choice: ConfidentialChoice): T {
+  const { markConfidential, confidentialNote } = choice;
+  const gmMarksGeneralItem = markConfidential === true && !fields.isConfidential;
+  if (confidentialNote !== undefined && !gmMarksGeneralItem) {
+    throw new RequestRejected('CONFIDENTIAL_NOTE_NOT_APPLICABLE', 'A note is only kept when a GM marks a general item confidential');
+  }
+  if (markConfidential === undefined) return fields;
   if (!isGm(actor)) throw new RequestRejected('FLAG_NOT_ALLOWED', 'Only GM can set the confidential flag at creation');
   if (fields.type === 'maintenance') {
-    if (choice) throw new RequestRejected('MAINTENANCE_NOT_CONFIDENTIAL', 'Repair requests are never confidential (D-S04-5)');
+    if (markConfidential) {
+      throw new RequestRejected('MAINTENANCE_NOT_CONFIDENTIAL', 'Repair requests are never confidential (D-S04-5)');
+    }
     return fields;
   }
-  if (!choice) {
+  if (!markConfidential) {
     if (fields.isConfidential) {
       throw new RequestRejected('DEFAULT_FLAG_LOCKED', 'Contract/personnel matters stay confidential; GM Admin can unflag later with a reason');
     }
     return fields;
   }
-  return { ...fields, isConfidential: true };
+  if (fields.isConfidential) return fields;
+  const sensitivityNote = requireText(confidentialNote, 'CONFIDENTIAL_NOTE_REQUIRED', 'confidential note');
+  return { ...fields, isConfidential: true, sensitivityReason: 'other', sensitivityNote };
 }
 
 function serviceFields(details: ServiceDetails) {
@@ -251,7 +266,7 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
   switch (command.kind) {
     case 'self':
       return {
-        ...applyConfidentialChoice(serviceFields(command.details), command.actor, command.markConfidential),
+        ...applyConfidentialChoice(serviceFields(command.details), command.actor, command),
         source: 'web',
         origin: 'requester',
         createdById,
@@ -261,7 +276,7 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
     case 'on_behalf':
       requireGm(command.actor);
       return {
-        ...applyConfidentialChoice(serviceFields(command.details), command.actor, command.markConfidential),
+        ...applyConfidentialChoice(serviceFields(command.details), command.actor, command),
         source: 'web',
         origin: 'gm_on_behalf',
         createdById,
@@ -287,7 +302,7 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
         ...sensitivityOf(command.sensitivitySubject),
         requiresRequesterConfirmation: false,
       };
-      return applyConfidentialChoice(draft, command.actor, command.markConfidential);
+      return applyConfidentialChoice(draft, command.actor, command);
     }
     default:
       throw new RequestRejected('KIND_INVALID', 'Unknown create command');

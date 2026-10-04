@@ -3,10 +3,18 @@
 // calendar snapshot; persistence, revision checks and notifications are elsewhere.
 // Waiting / follow-up / waiting-party response belong to S06; assignment and leave to S07.
 import { autoCloseDue, type CalendarSnapshot, type Instant } from '@gm/time';
-import { isGm, type Actor } from './request-creation';
+import {
+  reject,
+  requireGmActor,
+  requireReason,
+  requireStatus,
+  requireWritable,
+  type RequestStatus,
+} from './command-guards';
+import type { Actor } from './request-creation';
+import { endWaitingInterval, type EndedWaitingInterval } from './waiting';
 
-export const REQUEST_STATUSES = ['queued', 'in_progress', 'waiting', 'completed', 'cancelled'] as const;
-export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+export { LifecycleRejected, REQUEST_STATUSES, type RequestStatus } from './command-guards';
 
 /** How a completed request was closed; history keeps them apart (F06). */
 export type ClosureKind = 'requester_confirmed' | 'auto_closed' | 'gm_closed';
@@ -48,6 +56,10 @@ export interface LifecycleEvent {
   readonly closureKind?: ClosureKind;
   readonly reason?: string;
   readonly resolutionSummary?: string;
+  /** Accept that took the request over from another GM (D-S05-5). */
+  readonly previousAssigneeId?: string;
+  /** Cancel from waiting closes the open waiting interval (S06). */
+  readonly endedWaitingInterval?: EndedWaitingInterval;
 }
 
 /** Commands return the whole request with only lifecycle fields changed, so history-adjacent
@@ -68,14 +80,6 @@ export type AutoCloseResult<S extends LifecycleState = LifecycleState> =
   | { readonly applied: true; readonly state: S; readonly event: LifecycleEvent }
   | { readonly applied: false; readonly state: S; readonly skipReason: AutoCloseSkipReason };
 
-export class LifecycleRejected extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = 'LifecycleRejected';
-    this.code = code;
-  }
-}
 
 export interface ActorCommand {
   readonly actor: Actor;
@@ -106,28 +110,6 @@ const CURRENT_ROUND: readonly RoundField[] = [
   'cancelledAt',
 ];
 
-function reject(code: string, message: string): never {
-  throw new LifecycleRejected(code, message);
-}
-
-function requireWritable(state: LifecycleState): void {
-  if (state.source === 'trello') reject('READ_ONLY_SOURCE', 'Trello cards are read-only on the web (F04)');
-}
-
-function requireGmActor(actor: Actor): void {
-  if (!isGm(actor)) reject('GM_ONLY', 'Only GM staff or GM Admin can run this command');
-}
-
-function requireStatus(state: LifecycleState, allowed: readonly RequestStatus[], command: string): void {
-  if (!allowed.includes(state.status)) reject('INVALID_TRANSITION', `${command} is not allowed from ${state.status}`);
-}
-
-function requireReason(reason: string): string {
-  const trimmed = reason.trim();
-  if (trimmed === '') reject('REASON_REQUIRED', 'A reason is required');
-  return trimmed;
-}
-
 /** Requester answers (F06): only the real requester, on the current, still-open completion cycle. */
 function requireOpenConfirmation(state: LifecycleState, actor: Actor, completionCycleId: number): void {
   requireWritable(state);
@@ -141,13 +123,29 @@ function requireOpenConfirmation(state: LifecycleState, actor: Actor, completion
   }
 }
 
-export function acceptRequest<S extends LifecycleState>(state: S, command: ActorCommand): LifecycleResult<S> {
+export function acceptRequest<S extends LifecycleState>(
+  state: S,
+  command: ActorCommand & {
+    /** D-S05-5: explicit confirmation to take over a request assigned to another GM. */
+    readonly takeOver?: boolean | undefined;
+  },
+): LifecycleResult<S> {
   requireWritable(state);
   requireGmActor(command.actor);
   requireStatus(state, ['queued'], 'accept');
+  const previousAssigneeId = state.assigneeId;
+  const takesOver = previousAssigneeId !== undefined && previousAssigneeId !== command.actor.personId;
+  if (takesOver && command.takeOver !== true) {
+    reject('TAKEOVER_CONFIRMATION_REQUIRED', 'The request is assigned to another GM; confirm the take-over explicitly');
+  }
   return {
     state: { ...state, status: 'in_progress', assigneeId: command.actor.personId, lastUpdatedAt: command.now },
-    event: { kind: 'accepted', at: command.now, actorId: command.actor.personId },
+    event: {
+      kind: 'accepted',
+      at: command.now,
+      actorId: command.actor.personId,
+      ...(takesOver ? { previousAssigneeId } : {}),
+    },
   };
 }
 
@@ -221,7 +219,8 @@ export function reportNotResolved<S extends LifecycleState>(
   requireOpenConfirmation(state, command.actor, command.completionCycleId);
   const reason = requireReason(command.reason);
   return {
-    state: { ...without(state, CURRENT_ROUND), status: 'in_progress' },
+    // D-S05-3: every status change updates last_updated_at, whoever makes it.
+    state: { ...without(state, CURRENT_ROUND), status: 'in_progress', lastUpdatedAt: command.now },
     event: {
       kind: 'not_resolved',
       at: command.now,
@@ -267,9 +266,17 @@ export function cancelRequest<S extends LifecycleState>(
   requireGmActor(command.actor);
   requireStatus(state, ['queued', 'in_progress', 'waiting'], 'cancel');
   const reason = requireReason(command.reason);
+  // S06: cancelling while waiting ends the open waiting interval; history keeps it.
+  const { state: ended, endedInterval } = endWaitingInterval(state, command.now);
   return {
-    state: { ...state, status: 'cancelled', cancelledAt: command.now, lastUpdatedAt: command.now },
-    event: { kind: 'cancelled', at: command.now, actorId: command.actor.personId, reason },
+    state: { ...ended, status: 'cancelled', cancelledAt: command.now, lastUpdatedAt: command.now },
+    event: {
+      kind: 'cancelled',
+      at: command.now,
+      actorId: command.actor.personId,
+      reason,
+      ...(endedInterval === undefined ? {} : { endedWaitingInterval: endedInterval }),
+    },
   };
 }
 

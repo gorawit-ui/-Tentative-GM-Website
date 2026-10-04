@@ -12,6 +12,7 @@ export {
 } from './calendar';
 export { addBusinessDuration, addDuration, businessDuration } from './business-time';
 export { autoCloseDue, isAutoCloseDue, staleState, type StaleState } from './lifecycle-clocks';
+export { businessDateBucket, type BusinessDateBucket } from './business-date';
 export { formatBusinessDuration, type DurationTextContext } from './display';
 export {
   mergeIntervals, effectiveWaitingEnd, waitingElapsed, slaElapsed,

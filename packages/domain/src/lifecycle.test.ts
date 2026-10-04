@@ -94,6 +94,31 @@ describe('accept (F04 queued → in_progress)', () => {
     expect(event).toEqual({ kind: 'accepted', at: now, actorId: GM.personId });
   });
 
+  it('D-S05-5: taking over a request assigned to another GM needs explicit confirmation', () => {
+    const assigned = requestState({ assigneeId: GM_2.personId });
+    expect(rejectionCode(() => acceptRequest(assigned, { actor: GM, now: CREATED + MINUTE }))).toBe(
+      'TAKEOVER_CONFIRMATION_REQUIRED',
+    );
+    expect(rejectionCode(() => acceptRequest(assigned, { actor: GM, now: CREATED + MINUTE, takeOver: false }))).toBe(
+      'TAKEOVER_CONFIRMATION_REQUIRED',
+    );
+  });
+
+  it('D-S05-5: a confirmed take-over records who it was taken over from', () => {
+    const now = CREATED + MINUTE;
+    const assigned = requestState({ assigneeId: GM_2.personId });
+    const { state, event } = acceptRequest(assigned, { actor: GM, now, takeOver: true });
+    expect(state.assigneeId).toBe(GM.personId);
+    expect(state.status).toBe('in_progress');
+    expect(event).toEqual({ kind: 'accepted', at: now, actorId: GM.personId, previousAssigneeId: GM_2.personId });
+  });
+
+  it('accepting a request already assigned to yourself needs no take-over', () => {
+    const mine = requestState({ assigneeId: GM.personId });
+    const { event } = acceptRequest(mine, { actor: GM, now: CREATED + MINUTE });
+    expect(event).toEqual({ kind: 'accepted', at: CREATED + MINUTE, actorId: GM.personId });
+  });
+
   it('GM Admin can accept', () => {
     expect(acceptRequest(requestState(), { actor: GM_ADMIN, now: CREATED + MINUTE }).state.status).toBe('in_progress');
   });
@@ -265,6 +290,8 @@ describe('requester reports not resolved (F06, US-08)', () => {
     expect(state.confirmationCalendarSnapshot).toBeUndefined();
     expect(state.completionCycleId).toBe(1);
     expect(state.assigneeId).toBe(GM.personId);
+    // D-S05-3: every status change updates last_updated_at, whoever makes it.
+    expect(state.lastUpdatedAt).toBe(NOT_RESOLVED_AT);
     expect(event).toEqual({
       kind: 'not_resolved',
       at: NOT_RESOLVED_AT,
