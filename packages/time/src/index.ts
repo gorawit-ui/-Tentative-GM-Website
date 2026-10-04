@@ -10,3 +10,7 @@ export {
   type IsoWeekday,
 } from './calendar';
 export { addBusinessDuration, addDuration, businessDuration } from './business-time';
+export {
+  mergeIntervals, effectiveWaitingEnd, waitingElapsed, slaElapsed,
+  type TimeInterval, type WaitingInterval, type SlaClock,
+} from './waiting-time';
