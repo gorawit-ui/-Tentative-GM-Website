@@ -1,3 +1,5 @@
+import { isoWeekday, parseIsoDate, zonedFormatter } from './zoned-date';
+
 /** A point in time as UTC epoch milliseconds (timestamps are stored in UTC, Part 6 §6.7). */
 export type Instant = number;
 
@@ -23,3 +25,42 @@ export type DurationUnit = 'business_days' | 'continuous_24h';
 export const HOUR_MS = 3_600_000;
 /** One business day = 24 hours accumulated on open dates — not an 8-hour shift (PRD §6.1, C5). */
 export const BUSINESS_DAY_MS = 24 * HOUR_MS;
+
+/** A validated calendar ready for date-by-date evaluation. */
+export interface PreparedCalendar {
+  readonly formatter: Intl.DateTimeFormat;
+  isOpen(dayNumber: number): boolean;
+}
+
+/** Validates a snapshot; anything unexpected throws RangeError instead of being guessed. */
+export function prepareCalendar(calendar: CalendarSnapshot): PreparedCalendar {
+  if (typeof calendar.timeZone !== 'string' || calendar.timeZone === '') {
+    throw new RangeError('calendar.timeZone must be an IANA time zone name');
+  }
+  const formatter = zonedFormatter(calendar.timeZone);
+
+  const weekdays = calendar.openWeekdays;
+  if (
+    !Array.isArray(weekdays) ||
+    weekdays.length === 0 ||
+    !weekdays.every((day) => Number.isInteger(day) && day >= 1 && day <= 7) ||
+    new Set(weekdays).size !== weekdays.length
+  ) {
+    throw new RangeError('calendar.openWeekdays must list distinct ISO weekdays 1–7, at least one');
+  }
+  const open = new Set<number>(weekdays);
+
+  const holidays = new Set<number>();
+  for (const holiday of calendar.holidays) {
+    const dayNumber = typeof holiday === 'string' ? parseIsoDate(holiday) : undefined;
+    if (dayNumber === undefined) {
+      throw new RangeError(`calendar.holidays must be real YYYY-MM-DD dates, got ${JSON.stringify(holiday)}`);
+    }
+    holidays.add(dayNumber);
+  }
+
+  return {
+    formatter,
+    isOpen: (dayNumber) => open.has(isoWeekday(dayNumber)) && !holidays.has(dayNumber),
+  };
+}
