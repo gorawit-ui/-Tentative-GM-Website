@@ -4,7 +4,7 @@
 import { businessDateBucket, nextWorkingMorning, type CalendarSnapshot, type Instant } from '@gm/time';
 import { reject, requireGmActor, requireStatus, requireWritable } from './command-guards';
 import type { LifecycleState } from './lifecycle';
-import type { Actor } from './request-creation';
+import { isGm, type Actor } from './request-creation';
 
 export const WAITING_PARTY_KINDS = ['person', 'team', 'contractor', 'government', 'other'] as const;
 export type WaitingPartyKind = (typeof WAITING_PARTY_KINDS)[number];
@@ -224,7 +224,11 @@ export function planWaiting(
 ): WaitingPlan {
   const waitingOn = validateWaitingOn(input.waitingOn);
   const recipientIds = recipientsOf(waitingOn, input.notify);
-  const newRelatedPersonIds = recipientIds.filter((personId) => !hasDetailAccess(state, personId));
+  // D-S06-4: GM Staff/Admin already have access; they are notified but never added or consented.
+  const gmPersonIds = input.gmPersonIds ?? [];
+  const newRelatedPersonIds = recipientIds.filter(
+    (personId) => !hasDetailAccess(state, personId) && !gmPersonIds.includes(personId),
+  );
   return {
     waitingOn,
     recipientIds,
@@ -392,7 +396,7 @@ export function respondWaitingParty<S extends WaitingRequestState>(
   if (!(state.waitingRecipientIds ?? []).includes(personId)) {
     reject('NOT_CURRENT_RECIPIENT', 'Only a notified recipient of the current waiting interval can respond');
   }
-  if (!hasDetailAccess(state, personId)) reject('ACCESS_REVOKED', 'The recipient no longer has access to this request');
+  if (!isGm(command.actor) && !hasDetailAccess(state, personId)) reject('ACCESS_REVOKED', 'The recipient no longer has access to this request');
   if (state.waitingPartyResponded === true) reject('ALREADY_RESPONDED', 'The waited party has already responded');
   const note = text(command.note);
   return {
