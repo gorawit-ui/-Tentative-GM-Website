@@ -67,7 +67,9 @@ export function addDuration(start: Instant, amount: number, unit: DurationUnit, 
   if (unit !== 'business_days' && unit !== 'continuous_24h') {
     throw new RangeError(`unit must be business_days or continuous_24h`);
   }
-  if (!Number.isFinite(amount) || amount <= 0) throw new RangeError('amount must be a positive number of days');
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new RangeError('amount must be a positive whole number of days in Phase 1');
+  }
   const duration = amount * BUSINESS_DAY_MS;
   if (unit === 'business_days') return addBusinessDuration(start, duration, calendar);
 

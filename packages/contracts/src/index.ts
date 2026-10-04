@@ -1,5 +1,5 @@
 // @gm/contracts — schemas shared by web, API and worker (Part 6 §6.3).
-// S00 only defines the health-check shape so every workspace proves it can import a shared package.
+// Health response from S00; persisted calendar snapshot and SLA unit contracts added in S02.
 
 export const SERVICE_NAMES = ['gm-api', 'gm-worker'] as const;
 export type ServiceName = (typeof SERVICE_NAMES)[number];
@@ -12,3 +12,4 @@ export interface HealthResponse {
 export function healthResponse(service: ServiceName): HealthResponse {
   return { status: 'ok', service };
 }
+export { type CalendarSnapshotDocument, type SlaDurationUnit } from './calendar';
