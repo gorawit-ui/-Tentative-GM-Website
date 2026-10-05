@@ -62,16 +62,53 @@ const UNASSIGNED_NOTICE: RoutingNotice = { kind: 'all_gm' };
  * including requests a GM opens on behalf. No owner, an inactive owner (D-S07-5) or an owner on
  * effective leave now → queued, unassigned, all GM notified (A3). Existing work is never moved.
  */
-export function routeNewRequest(_input: RouteNewRequestInput): RoutingResult {
-  void UNASSIGNED_NOTICE;
-  void isOnLeave;
-  throw new Error('not implemented yet (D-S07-2/5)');
+export function routeNewRequest(input: RouteNewRequestInput): RoutingResult {
+  const { now, chosenAssigneeId } = input;
+  if (chosenAssigneeId !== undefined) {
+    const chosenProfile = input.chosenAssigneeProfile;
+    if (chosenProfile !== undefined && chosenProfile.personId !== chosenAssigneeId) {
+      throw new Error('chosen assignee profile does not match the chosen assignee');
+    }
+    return {
+      status: 'queued',
+      assigneeId: chosenAssigneeId,
+      reason: 'chosen_by_gm',
+      notice: { kind: 'assignee', personId: chosenAssigneeId },
+      assigneeOnLeave: isOnLeave(chosenProfile, now),
+    };
+  }
+  const isGmTask = input.type === 'gm_task';
+  const ownerId = input.type === 'gm_task' ? input.createdById : input.settings.defaultOwnerByType[input.type];
+  if (ownerId === undefined) return { status: 'queued', reason: 'no_default_owner', notice: UNASSIGNED_NOTICE };
+  const owner = input.defaultOwner;
+  if (owner === undefined || owner.personId !== ownerId) {
+    throw new Error(
+      isGmTask
+        ? 'default owner facts must describe the gm_task creator'
+        : 'default owner facts must describe the configured default owner',
+    );
+  }
+  if (owner.profile !== undefined && owner.profile.personId !== ownerId) {
+    throw new Error('default owner profile does not match the default owner');
+  }
+  if (!owner.active) return { status: 'queued', reason: 'default_owner_inactive', notice: UNASSIGNED_NOTICE };
+  if (isOnLeave(owner.profile, now)) {
+    return { status: 'queued', reason: 'default_owner_on_leave', notice: UNASSIGNED_NOTICE };
+  }
+  return {
+    status: 'queued',
+    assigneeId: ownerId,
+    reason: isGmTask ? 'gm_task_creator' : 'default_owner',
+    notice: { kind: 'assignee', personId: ownerId },
+  };
 }
 
 /**
  * D-S07-3: “แจ้ง GM ทุกคน” reaches every active GM not on effective leave now; when every active
  * GM is on leave, all of them are notified so the request does not go silent. Input order kept.
  */
-export function allGmNoticeRecipients(_members: readonly GmMember[], _now: Instant): readonly string[] {
-  throw new Error('not implemented yet (D-S07-3)');
+export function allGmNoticeRecipients(members: readonly GmMember[], now: Instant): readonly string[] {
+  const active = [...new Map(members.filter((member) => member.active).map((member) => [member.personId, member])).values()];
+  const available = active.filter((member) => !isOnLeave(member.profile, now));
+  return (available.length > 0 ? available : active).map((member) => member.personId);
 }

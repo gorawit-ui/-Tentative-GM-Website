@@ -60,8 +60,11 @@ export type PresenceResetResult<P extends GmProfile> =
  * Display text, built from the current location name (a rename shows at once). `locations` is the
  * Admin list; a stored location missing from it is a caller error (pass every location).
  */
-export function presenceLabel(_status: PresenceStatus, _locations: readonly Labelled[]): string {
-  throw new Error('not implemented yet (D-S07-1)');
+export function presenceLabel(status: PresenceStatus, locations: readonly Labelled[]): string {
+  if (status.kind !== 'at_location') return PRESENCE_KIND_LABELS[status.kind];
+  const location = locations.find((candidate) => candidate.id === status.locationId);
+  if (location === undefined) throw new Error('presence location is not in the locations list passed in');
+  return `อยู่ ${location.label}`;
 }
 
 /** Part 6 §6.6 setFocus/setPresence: the GM who owns the profile, or GM Admin. */
@@ -86,6 +89,23 @@ function withoutPresenceDetails<P extends GmProfile>(profile: P): P {
   return rest as P;
 }
 
+function validPresence(
+  presence: { readonly kind: string; readonly locationId?: string | undefined },
+  locations: readonly Labelled[],
+): PresenceStatus {
+  const { kind, locationId } = presence;
+  if (!(PRESENCE_KINDS as readonly string[]).includes(kind)) reject('PRESENCE_INVALID', 'Unknown presence kind');
+  if (kind !== 'at_location') {
+    if (locationId !== undefined) reject('PRESENCE_LOCATION_NOT_APPLICABLE', 'Only at_location carries a location');
+    return { kind: kind as Exclude<PresenceKind, 'at_location'> };
+  }
+  if (locationId === undefined || locationId === '') reject('PRESENCE_LOCATION_REQUIRED', 'Choose a location');
+  if (!locations.some((location) => location.id === locationId)) {
+    reject('PRESENCE_LOCATION_UNKNOWN', 'The location is not in the locations list');
+  }
+  return { kind: 'at_location', locationId };
+}
+
 /** GM sets presence; leave may carry an inclusive end date (A3). Focus is untouched (F07). */
 export function setPresence<P extends GmProfile>(
   profile: P,
@@ -99,9 +119,23 @@ export function setPresence<P extends GmProfile>(
   },
 ): { readonly profile: P; readonly event: PresenceChangedEvent } {
   requireProfileOwner(command.actor, profile);
-  void validLeaveEnd;
-  void withoutPresenceDetails;
-  throw new Error('not implemented yet (D-S07-1)');
+  const status = validPresence(command.presence, command.locations);
+  if (command.leaveEndsOn !== undefined && status.kind !== 'on_leave') {
+    reject('LEAVE_END_NOT_APPLICABLE', 'Only leave has an end date');
+  }
+  const leaveEndsOn = command.leaveEndsOn === undefined ? undefined : validLeaveEnd(command.leaveEndsOn, command.now);
+  const leave = leaveEndsOn === undefined ? {} : { leaveEndsOn };
+  return {
+    profile: { ...withoutPresenceDetails(profile), presenceStatus: status, presenceUpdatedAt: command.now, ...leave },
+    event: {
+      kind: 'presence_changed',
+      at: command.now,
+      actorId: command.actor.personId,
+      personId: profile.personId,
+      status,
+      ...leave,
+    },
+  };
 }
 
 /** What to show now: expired values read as “ไม่ระบุ” even before the reset job (Part 6 §6.9). */

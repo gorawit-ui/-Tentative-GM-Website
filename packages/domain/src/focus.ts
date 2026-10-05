@@ -48,8 +48,7 @@ export type FocusEvent =
 
 /** D-S07-6: only an in-progress request can be, or stay, pinned. */
 function isInProgress(request: FocusRequest): boolean {
-  // S07 behaviour until D-S07-6 is implemented: only closed or cancelled ends a pin.
-  return request.status !== 'cancelled' && request.closedAt === undefined;
+  return request.status === 'in_progress' && request.closedAt === undefined;
 }
 
 /** “กำลังทำตอนนี้”: pin one in-progress web request, replacing the previous pin. */
@@ -59,8 +58,8 @@ export function setFocus<P extends GmProfile>(
 ): { readonly profile: P; readonly event: FocusEvent } {
   requireProfileOwner(command.actor, profile);
   const { request } = command;
-  void requireWritable;
-  if (request.status !== 'in_progress') reject('FOCUS_NOT_IN_PROGRESS', 'Only an in-progress request can be pinned');
+  requireWritable(request);
+  if (!isInProgress(request)) reject('FOCUS_NOT_IN_PROGRESS', 'Only an in-progress request can be pinned');
   const previous = profile.focusRequestId;
   return {
     profile: { ...profile, focusRequestId: request.id },
@@ -107,7 +106,7 @@ export function currentWork(
 ): CurrentWork {
   const pinned = context.requests.find((request) => request.id === profile.focusRequestId && isInProgress(request));
   const latest = context.requests
-    .filter((request) => request.status === 'in_progress' && isInProgress(request) && request.assigneeId === profile.personId)
+    .filter((request) => isInProgress(request) && request.assigneeId === profile.personId)
     .sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt || a.id.localeCompare(b.id))[0];
   const shown = pinned ?? latest;
   if (shown === undefined) return { kind: 'none', label: NO_CURRENT_WORK_LABEL };

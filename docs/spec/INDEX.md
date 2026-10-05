@@ -8,7 +8,7 @@
 
 หากต้นทางไม่ตอบ ให้บันทึกข้อขัดกันพร้อมไฟล์/หัวข้อ และถามเฉพาะเรื่องที่จำเป็น ห้ามเปลี่ยนสิทธิ์/scope/ตัวเลขด้วยการคาดเดา
 
-คำตอบล่าสุดจากผู้ใช้สำหรับ S01 (`D-S01-1` ถึง `D-S01-6`) และ S03 (`D-S03-1` ถึง `D-S03-4`) อยู่ [DECISIONS](DECISIONS.md) และมีผลเหนือข้อเดิมที่ขัดกันใน Part 6/S01/S03; ผล implement อยู่ [S02](../sessions/S02.md) และ [S03](../sessions/S03.md)
+คำตอบล่าสุดจากผู้ใช้สำหรับ S01 (`D-S01-1` ถึง `D-S01-6`), S03 (`D-S03-1` ถึง `D-S03-4`) และ S04–S07 (`D-S04-*` ถึง `D-S07-*`) อยู่ [DECISIONS](DECISIONS.md) และมีผลเหนือข้อเดิมที่ขัดกันใน Part 6/S01/S03; ผล implement อยู่ [S02](../sessions/S02.md) และ [S03](../sessions/S03.md)
 
 ## Map หัวข้อ → ไฟล์ / section
 
@@ -59,5 +59,5 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S04](../sessions/S04.md): domain การสร้างงาน type/origin/title/default sensitivity/category; คำถามปิดแล้วใน D-S04-1 ถึง D-S04-6
 - [S05](../sessions/S05.md): ผล D-S04 และ lifecycle commands accept/complete/confirm/not resolved/auto-close/cancel/reopen; คำถามปิดแล้วใน D-S05-1 ถึง D-S05-6
 - [S06](../sessions/S06.md): ผล D-S05 (กฎ `last_updated_at`, รับงานต่อ, ธงลับ `other`/ปลดธง) และ waiting/follow-up/response; คำถามปิดแล้วใน D-S06-1 ถึง D-S06-6
-- [S07](../sessions/S07.md): ผล D-S06 (GM เป็นฝ่ายที่รอ, เตือน 09:00 วันทำการถัดไป) และ routing/leave/presence/focus; คำถามค้างใน S07
+- [S07](../sessions/S07.md): ผล D-S06 (GM เป็นฝ่ายที่รอ, เตือน 09:00 วันทำการถัดไป) และ routing/leave/presence/focus; คำถามปิดแล้วใน D-S07-1 ถึง D-S07-7
 - [FOLLOW-UPS](../FOLLOW-UPS.md): งานที่เลื่อนข้าม session
