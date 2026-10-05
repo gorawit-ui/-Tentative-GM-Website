@@ -82,15 +82,17 @@ export {
   type WaitingResult,
 } from './waiting';
 export {
-  PRESENCE_LABELS,
-  PRESENCE_STATUSES,
+  PRESENCE_KINDS,
+  PRESENCE_KIND_LABELS,
   effectivePresence,
   isOnLeave,
+  presenceLabel,
   resetPresence,
   setPresence,
   type EffectivePresence,
   type GmProfile,
   type PresenceChangedEvent,
+  type PresenceKind,
   type PresenceResetResult,
   type PresenceStatus,
 } from './presence';
@@ -98,7 +100,7 @@ export {
   INTERNAL_WORK_LABEL,
   NO_CURRENT_WORK_LABEL,
   currentWork,
-  releaseFocusIfEnded,
+  releaseFocusIfNotInProgress,
   setFocus,
   type CurrentWork,
   type CurrentWorkCandidate,
@@ -106,7 +108,9 @@ export {
   type FocusRequest,
 } from './focus';
 export {
+  allGmNoticeRecipients,
   routeNewRequest,
+  type GmMember,
   type RouteNewRequestInput,
   type RoutingNotice,
   type RoutingReason,
