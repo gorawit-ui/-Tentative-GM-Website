@@ -72,6 +72,7 @@ export interface CommandOutcome {
   readonly result: CommandResult;
 }
 
+/** Runs one command; `command` must come from `parseCommand` (its IDs become document paths). */
 export async function executeCommand(
   store: CommandStore,
   command: CommandEnvelope,

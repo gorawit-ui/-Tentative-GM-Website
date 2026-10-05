@@ -28,7 +28,7 @@
 | Renewal UI spec สั้น | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | ก่อน §6.1: UI/flow ต่ออายุ; ไม่ต้องสร้าง prototype ใหม่ |
 | Assumptions/stack/services/code boundaries | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.1–6.3 |
 | Data model/projections/ACL/Rules | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.4–6.5 |
-| Commands/counters/races/idempotency | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.6 |
+| Commands/counters/races/idempotency | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.6; implement [S08](../sessions/S08.md) |
 | Pure time snapshots/test examples | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.7; S01–S07 |
 | Renewal cycles/import/Scorecard/tick | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.8–6.9; B14–B24 |
 | Slack/Gmail/photo/QR/search/PWA/Trello | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.10; Gmail sender overridden by D4 |
@@ -60,4 +60,5 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S05](../sessions/S05.md): ผล D-S04 และ lifecycle commands accept/complete/confirm/not resolved/auto-close/cancel/reopen; คำถามปิดแล้วใน D-S05-1 ถึง D-S05-6
 - [S06](../sessions/S06.md): ผล D-S05 (กฎ `last_updated_at`, รับงานต่อ, ธงลับ `other`/ปลดธง) และ waiting/follow-up/response; คำถามปิดแล้วใน D-S06-1 ถึง D-S06-6
 - [S07](../sessions/S07.md): ผล D-S06 (GM เป็นฝ่ายที่รอ, เตือน 09:00 วันทำการถัดไป) และ routing/leave/presence/focus; คำถามปิดแล้วใน D-S07-1 ถึง D-S07-7
+- [S08](../sessions/S08.md): ผล D-S07 (presence อ้างรายการสถานที่, `gm_task` → ผู้สร้าง, แจ้ง GM ทุกคนยกเว้นคนลา, owner ไม่ active, ปลดหมุดเมื่อออกจาก `in_progress`, Trello ปักไม่ได้) และ contracts/command ID/ตัวนับเลขงาน (emulator); คำถามค้างใน S08
 - [FOLLOW-UPS](../FOLLOW-UPS.md): งานที่เลื่อนข้าม session
