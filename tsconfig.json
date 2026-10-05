@@ -11,6 +11,7 @@
     { "path": "./apps/web/tsconfig.app.json" },
     { "path": "./apps/web/tsconfig.node.json" },
     { "path": "./tests/rules" },
+    { "path": "./tests/emulator" },
     { "path": "./tests/e2e" },
     { "path": "./tsconfig.tooling.json" }
   ]

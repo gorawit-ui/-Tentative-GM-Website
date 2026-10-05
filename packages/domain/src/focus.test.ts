@@ -1,5 +1,7 @@
-// S07 — current work of a GM (C7, F06, F07): pin one in-progress request, auto-unpin on close/cancel,
+// S07 — current work of a GM (C7, F06, F07): pin one in-progress request,
 // fallback order pinned → latest in_progress → “ยังไม่มีงานที่กำลังทำ”, secret → “งานภายใน”.
+// D-S07-6: unpin as soon as the request leaves in_progress (waiting, queued, completed, cancelled);
+// resuming does not pin it again. D-S07-7: Trello cards cannot be pinned in Phase 1.
 import { describe, expect, it } from 'vitest';
 import type { Instant } from '@gm/time';
 import {
@@ -7,7 +9,7 @@ import {
   LifecycleRejected,
   NO_CURRENT_WORK_LABEL,
   currentWork,
-  releaseFocusIfEnded,
+  releaseFocusIfNotInProgress,
   setFocus,
   type Actor,
   type CurrentWorkCandidate,
@@ -24,11 +26,16 @@ function bkk(date: string, time: string): Instant {
 }
 
 const NOW = bkk('2026-12-28', '10:00');
-const gm: GmProfile = { personId: GM.personId, presenceStatus: 'at_wh300', presenceUpdatedAt: bkk('2026-12-28', '08:00') };
+const gm: GmProfile = {
+  personId: GM.personId,
+  presenceStatus: { kind: 'at_location', locationId: 'loc-wh300' },
+  presenceUpdatedAt: bkk('2026-12-28', '08:00'),
+};
 
 function request(id: string, overrides: Partial<CurrentWorkCandidate> = {}): CurrentWorkCandidate {
   return {
     id,
+    source: 'web',
     status: 'in_progress',
     summaryTitle: `งาน ${id}`,
     isConfidential: false,
@@ -79,8 +86,17 @@ describe('setFocus — “กำลังทำตอนนี้” (C7, US-21)
     expect(Object.keys(result).sort()).toEqual(['event', 'profile']);
   });
 
+  it('a Trello card cannot be pinned in Phase 1: it is read-only (D-S07-7)', () => {
+    expect(
+      rejectionCode(() => setFocus(gm, { actor: GM, now: NOW, request: request('trello-1', { source: 'trello' }) })),
+    ).toBe('READ_ONLY_SOURCE');
+    expect(
+      rejectionCode(() => setFocus(gm, { actor: GM_ADMIN, now: NOW, request: request('trello-1', { source: 'trello' }) })),
+    ).toBe('READ_ONLY_SOURCE');
+  });
+
   it('two GMs may pin the same request (F07)', () => {
-    const other: GmProfile = { personId: GM_2.personId, presenceStatus: 'unspecified' };
+    const other: GmProfile = { personId: GM_2.personId, presenceStatus: { kind: 'unspecified' } };
     expect(setFocus(other, { actor: GM_2, now: NOW, request: request('req-1') }).profile.focusRequestId).toBe('req-1');
   });
 
@@ -95,31 +111,42 @@ describe('setFocus — “กำลังทำตอนนี้” (C7, US-21)
   });
 });
 
-describe('releaseFocusIfEnded — auto-unpin (C7, F06)', () => {
+describe('releaseFocusIfNotInProgress — auto-unpin (C7, D-S07-6)', () => {
   const pinned: GmProfile = { ...gm, focusRequestId: 'req-1' };
 
   it.each([
-    ['closed (closed_at set)', { status: 'completed' as const, closedAt: NOW }],
+    ['waiting for someone else', { status: 'waiting' as const }],
+    ['back in the queue', { status: 'queued' as const }],
+    ['completed, awaiting the requester', { status: 'completed' as const }],
+    ['completed and closed', { status: 'completed' as const, closedAt: NOW }],
     ['cancelled', { status: 'cancelled' as const }],
   ])('unpins when the pinned request is %s', (_label, change) => {
-    const { profile, event } = releaseFocusIfEnded(pinned, request('req-1', change), NOW);
+    const { profile, event } = releaseFocusIfNotInProgress(pinned, request('req-1', change), NOW);
     expect(profile).toEqual(gm);
     expect(profile).not.toHaveProperty('focusRequestId');
     expect(event).toEqual({ kind: 'focus_released', at: NOW, personId: GM.personId, requestId: 'req-1' });
   });
 
-  it('a completed request still awaiting confirmation (no closed_at) stays pinned', () => {
-    expect(releaseFocusIfEnded(pinned, request('req-1', { status: 'completed' }), NOW)).toEqual({ profile: pinned });
+  it('a request still in progress stays pinned', () => {
+    expect(releaseFocusIfNotInProgress(pinned, request('req-1'), NOW)).toEqual({ profile: pinned });
   });
 
-  it('another request ending does not unpin', () => {
-    expect(releaseFocusIfEnded(pinned, request('req-2', { status: 'cancelled' }), NOW)).toEqual({ profile: pinned });
+  it('resuming work does not pin it again', () => {
+    const released = releaseFocusIfNotInProgress(pinned, request('req-1', { status: 'waiting' }), NOW).profile;
+    const resumed = releaseFocusIfNotInProgress(released, request('req-1', { status: 'in_progress' }), NOW + 60_000);
+    expect(resumed).toEqual({ profile: gm });
+    expect(resumed.profile).not.toHaveProperty('focusRequestId');
+  });
+
+  it('another request leaving in_progress does not unpin', () => {
+    expect(releaseFocusIfNotInProgress(pinned, request('req-2', { status: 'cancelled' }), NOW)).toEqual({ profile: pinned });
   });
 
   it('presence is untouched', () => {
-    expect(releaseFocusIfEnded(pinned, request('req-1', { status: 'cancelled' }), NOW).profile.presenceStatus).toBe(
-      'at_wh300',
-    );
+    expect(releaseFocusIfNotInProgress(pinned, request('req-1', { status: 'cancelled' }), NOW).profile.presenceStatus).toEqual({
+      kind: 'at_location',
+      locationId: 'loc-wh300',
+    });
   });
 });
 
@@ -172,10 +199,16 @@ describe('currentWork — display order per GM (C7, F07)', () => {
     );
   });
 
-  it('a pinned request awaiting confirmation is still shown with its real status (F06)', () => {
-    expect(
-      currentWork({ ...gm, focusRequestId: 'req-1' }, { requests: [request('req-1', { status: 'completed' })], viewerCanSeeDetail: everyone }),
-    ).toMatchObject({ kind: 'pinned', requestId: 'req-1', status: 'completed' });
+  it.each([
+    ['waiting', { status: 'waiting' as const }],
+    ['queued', { status: 'queued' as const }],
+    ['awaiting confirmation', { status: 'completed' as const }],
+  ])('a pinned request that is now %s (before the unpin ran) falls back (D-S07-6)', (_label, change) => {
+    const requests = [request('req-1', change), request('req-2', { lastUpdatedAt: bkk('2026-12-28', '08:00') })];
+    expect(currentWork({ ...gm, focusRequestId: 'req-1' }, { requests, viewerCanSeeDetail: everyone })).toMatchObject({
+      kind: 'latest_in_progress',
+      requestId: 'req-2',
+    });
   });
 
   it('a secret request the viewer cannot open shows only “งานภายใน”, without id or title', () => {
