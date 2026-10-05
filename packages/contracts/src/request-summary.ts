@@ -66,7 +66,31 @@ export const PRIVATE_REQUEST_FIELDS = [
   'emails',
 ] as const;
 
+/** Fields copied as they are; everything else on the request is left behind. */
+const COPIED = [
+  'request_number',
+  'summary_title',
+  'type',
+  'category',
+  'source',
+  'location_id',
+  'area_id',
+  'symptom_key',
+  'status',
+  'created_at',
+  'last_updated_at',
+  'completed_at',
+  'closed_at',
+  'cancelled_at',
+] as const satisfies readonly (keyof RequestDocument & keyof RequestSummaryDocument)[];
+
 /** The public summary of a request, or `null` for a confidential one (no summary document at all). */
-export function toRequestSummaryDocument(_requestId: string, _request: RequestDocument): RequestSummaryDocument | null {
-  throw new Error('not implemented yet (S08)');
+export function toRequestSummaryDocument(requestId: string, request: RequestDocument): RequestSummaryDocument | null {
+  if (request.is_confidential) return null;
+  const copied = Object.fromEntries(COPIED.filter((field) => request[field] !== undefined).map((field) => [field, request[field]]));
+  return {
+    request_id: requestId,
+    ...copied,
+    watcher_count: new Set(request.watcher_ids).size,
+  } as RequestSummaryDocument;
 }

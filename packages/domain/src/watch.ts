@@ -26,11 +26,19 @@ const WATCHABLE_STATUSES: readonly RequestStatus[] = ['queued', 'in_progress', '
  * related person, and `last_updated_at` stays (watching is not GM progress).
  */
 export function watchRequest<S extends WatchState>(
-  _state: S,
-  _command: { readonly actor: Actor },
+  state: S,
+  command: { readonly actor: Actor },
 ): { readonly state: S; readonly outcome: WatchOutcome } {
-  void reject;
-  void requireWritable;
-  void WATCHABLE_STATUSES;
-  throw new Error('not implemented yet (S08)');
+  requireWritable(state);
+  // A request that became confidential answers like any non-watchable one, revealing nothing.
+  if (state.type !== 'maintenance' || state.isConfidential) {
+    reject('WATCH_NOT_AVAILABLE', 'Only open, non-confidential repair requests can be watched');
+  }
+  if (!WATCHABLE_STATUSES.includes(state.status) || state.closedAt !== undefined) {
+    reject('WATCH_NOT_OPEN', 'The request is no longer open');
+  }
+  const { personId } = command.actor;
+  if (personId === state.requesterId) return { state, outcome: 'is_requester' };
+  if (state.watcherIds.includes(personId)) return { state, outcome: 'already_watching' };
+  return { state: { ...state, watcherIds: [...state.watcherIds, personId] }, outcome: 'added' };
 }

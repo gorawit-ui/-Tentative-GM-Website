@@ -23,7 +23,6 @@ export { canonicalJson } from './canonical-json';
 export { ContractRejected, type ContractCode } from './strict';
 export {
   COMMAND_TYPES,
-  REQUEST_CREATING_COMMANDS,
   parseCommand,
   type CommandEnvelope,
   type CommandType,

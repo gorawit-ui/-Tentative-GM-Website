@@ -1,7 +1,13 @@
-// What a command ID stands for (S08) — not implemented yet.
+// What a command ID stands for (S08, Part 6 §6.6 “Idempotency-Key + actor + payload hash”).
+import { createHash } from 'node:crypto';
+import { canonicalJson } from '@gm/contracts';
+
+/** SHA-256 (hex) of canonical JSON of actor, command type and payload; the command ID is the key. */
 export function commandFingerprint(
-  _actorId: string,
-  _command: { readonly type: string; readonly payload: unknown },
+  actorId: string,
+  command: { readonly type: string; readonly payload: unknown },
 ): string {
-  throw new Error('not implemented yet (S08)');
+  return createHash('sha256')
+    .update(canonicalJson({ actor_id: actorId, type: command.type, payload: command.payload }))
+    .digest('hex');
 }
