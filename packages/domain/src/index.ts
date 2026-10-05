@@ -117,3 +117,5 @@ export {
   type RoutingResult,
   type RoutingSettings,
 } from './routing';
+export { REQUEST_NUMBER_PREFIX, formatRequestNumber, nextRequestSequence } from './request-number';
+export { watchRequest, type WatchOutcome, type WatchState } from './watch';

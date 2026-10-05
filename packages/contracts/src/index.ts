@@ -1,5 +1,6 @@
 // @gm/contracts — schemas shared by web, API and worker (Part 6 §6.3).
-// Health response from S00; persisted calendar snapshot and SLA unit contracts added in S02.
+// Health response from S00; persisted calendar snapshot and SLA unit contracts added in S02;
+// command contracts, persisted request and public summary added in S08.
 
 export const SERVICE_NAMES = ['gm-api', 'gm-worker'] as const;
 export type ServiceName = (typeof SERVICE_NAMES)[number];
@@ -18,3 +19,27 @@ export {
   type CalendarSnapshotDocument,
   type SlaDurationUnit,
 } from './calendar';
+export { canonicalJson } from './canonical-json';
+export { ContractRejected, type ContractCode } from './strict';
+export {
+  COMMAND_TYPES,
+  REQUEST_CREATING_COMMANDS,
+  parseCommand,
+  type CommandEnvelope,
+  type CommandType,
+  type CreateGmTaskPayload,
+  type CreateMaintenancePayload,
+  type CreateOnBehalfPayload,
+  type DocumentDetailsPayload,
+  type MaintenanceDetailsPayload,
+  type MaintenanceSelection,
+  type OnBehalfRequesterPayload,
+  type WatchRequestPayload,
+} from './commands';
+export { type RequestDocument } from './request-document';
+export {
+  PRIVATE_REQUEST_FIELDS,
+  REQUEST_SUMMARY_FIELDS,
+  toRequestSummaryDocument,
+  type RequestSummaryDocument,
+} from './request-summary';
