@@ -2,7 +2,7 @@
 
 > ไฟล์นี้สร้างอัตโนมัติจาก `tests/rules/fixtures/acl-matrix.ts` ด้วย `npm run docs:acl-matrix` — ห้ามแก้ด้วยมือ; `tests/rules/fixtures/acl-matrix-doc.test.ts` ตรวจว่าเอกสารตรงกับ fixture เสมอ และ Rules tests (S10–S11) ใช้ fixture ชุดเดียวกัน
 
-ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5, D-S11-1 ถึง D-S11-3
+ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5, D-S11-1 ถึง D-S11-3, S12
 
 ## หลักการ
 
@@ -10,7 +10,7 @@
 - **การเขียนจาก client** (create / update / delete) ปฏิเสธทุก collection ทุก role — ทุกการเปลี่ยนแปลงผ่าน API ซึ่งตรวจสิทธิ์ด้วยกติกา domain ชุดเดียวกัน (Admin SDK ข้าม Rules)
 - **อ่าน**: `get` = เปิด document หนึ่งรายการ, `list` = query ทั้ง collection โดยไม่กรอง (Rules ไม่กรองผลให้) และ**ต้องมี limit ไม่เกิน 200** ไม่มี limit หรือเกินถูกปฏิเสธทุก collection (D-S10-4) หน้า “ดูทั้งหมด” แบ่งหน้าละ 50
 - บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified (ตรวจหลังแปลงเป็นตัวพิมพ์เล็ก TDFB.CO จึงเป็นโดเมนเดียวกัน ส่วนโดเมนหน้าตาคล้ายถูกปฏิเสธ, D-S10-5) และ `access/{uid}.enabled` = true; role อ่านจาก `access/{uid}` ไม่ใช่ custom claim
-- ขนาด matrix: 16 role × 41 collection/path × 5 operation = 3280 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
+- ขนาด matrix: 16 role × 42 collection/path × 5 operation = 3360 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
 
 ## สิทธิ์พื้นฐาน: ทุกบัญชีที่ใช้งานได้
 
@@ -214,6 +214,26 @@ watcher คือคนที่กด “แจ้งปัญหาเดี�
 - ทดสอบ upload/finalize/signed URL กับ path ของคนอื่นใน S12 (API/Storage authorization emulator)
 
 ตัวอย่าง path ที่ Rules tests ยืนยันว่าปฏิเสธทุก role: `requests/req-acl-general/attachments/att-acl-1.jpg`, `requests/req-acl-secret/attachments/att-acl-2.jpg`, `pending/uid-requester/upload-1.jpg`, `contributions/req-acl-general/acl.watcher@tdfb.co/photo-1.jpg`, `renewals/ri-1/document.pdf`, `unknown/path.bin`
+
+## API (Admin SDK) — ใครเรียก endpoint อ่านข้อมูล/ไฟล์ได้
+
+API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรวจสิทธิ์เอง: ตรวจ ID token (Google, @tdfb.co หลัง lower(), verified) และอ่าน `access/{uid}` ใหม่ทุกคำขอ แล้วใช้กติกา domain ชุดเดียวกับ Rules; งานที่อ่านไม่ได้ตอบ 404 เหมือนไม่มีงาน — `tests/emulator/api-access.test.ts` ทดสอบทุก role × ทุก endpoint ตามตารางนี้ (`tests/rules/fixtures/api-matrix.ts`)
+
+| Endpoint | ใครเรียกได้ | เงื่อนไข |
+|---|---|---|
+| `request_detail.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | รายละเอียดงาน (งานไม่ลับ) |
+| `request_detail.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | รายละเอียดงานลับ: GM, ผู้ขอ, grant (D-ACL-2) |
+| `history.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | history ตามสิทธิ์รายละเอียดของงาน |
+| `history.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | history ของงานลับ |
+| `comments.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | คอมเมนต์ตามสิทธิ์รายละเอียดของงาน |
+| `comments.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | คอมเมนต์ของงานลับ |
+| `my_requests` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `employee`, `viewer`, `viewer_related`, `viewer_unconfirmed`, `team_label_member`, `gm_staff`, `gm_admin` | คำขอของฉัน: เฉพาะงานที่ยังมีสิทธิ์ ณ ตอนขอ (watcher เห็นแค่สรุป) |
+| `awaiting_confirmation` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `employee`, `viewer`, `viewer_related`, `viewer_unconfirmed`, `team_label_member`, `gm_staff`, `gm_admin` | จำนวนงานรอฉันยืนยัน (D-S10-2) |
+| `view_url.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | ลิงก์ดูรูป GET 5 นาที: คนที่อ่านงานนั้นได้ |
+| `view_url.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | ลิงก์ดูรูปของงานลับ |
+| `upload_url.attachment.general` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลด PUT 15 นาที: GM และผู้ขอ (Q-S12-2) |
+| `upload_url.attachment.confidential` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลดของงานลับ: GM และผู้ขอ |
+| `upload_url.watch_contribution.general` | `watcher` | รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง (U1) — watcher เท่านั้น |
 
 ## หน้าจอ → แหล่งข้อมูล
 

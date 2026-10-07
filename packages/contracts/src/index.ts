@@ -67,6 +67,7 @@ export {
   attachmentObjectPath,
   imageTypeFromBytes,
   parseAttachmentObjectPath,
+  type AttachmentContentType,
 } from './attachments';
 export {
   REQUEST_DISPLAY_FIELDS,

@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ACTIVE_SUBJECTS, RESOURCES, SUBJECTS, SUBJECT_KEYS, decide, resourcePattern } from './acl-matrix';
 import { ACL_MATRIX_DOC_PATH, baselineRows, renderAclMatrixMarkdown } from './acl-matrix-doc';
+import { API_ENDPOINTS, apiDecide } from './api-matrix';
 import { SCREEN_SOURCES, STORAGE_SAMPLE_PATHS } from './screen-sources';
 
 const file = new URL(`../../../${ACL_MATRIX_DOC_PATH}`, import.meta.url);
@@ -65,6 +66,16 @@ describe('docs/spec/ACL-MATRIX.md', () => {
       const row = screens.split('\n').find((line) => line.startsWith(`| ${entry.screen} |`));
       expect(row, entry.screen).toBeDefined();
       for (const question of entry.questions) expect(row).toContain(question.slice(0, 7));
+    }
+  });
+
+  it('S12: has the API section with one row per endpoint listing exactly the allowed roles', () => {
+    const text = renderAclMatrixMarkdown();
+    const api = text.slice(text.indexOf('## API (Admin SDK)'), text.indexOf('## หน้าจอ → แหล่งข้อมูล'));
+    for (const endpoint of API_ENDPOINTS) {
+      const row = api.split('\n').find((line) => line.startsWith(`| \`${endpoint.key}\` |`));
+      expect(row, endpoint.key).toBeDefined();
+      for (const key of SUBJECT_KEYS) expect(row!.split(' | ')[1]!.includes(`\`${key}\``), `${endpoint.key} ${key}`).toBe(apiDecide(key, endpoint.key) === 'allow');
     }
   });
 

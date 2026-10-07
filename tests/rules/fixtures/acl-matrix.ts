@@ -264,6 +264,7 @@ export function seedDocuments(): ReadonlyMap<string, object> {
     'imports/imp-1': { state: 'preview' },
     'integration_inbox/in-1': { provider: 'slack' },
     'integration_state/slack': { cursor: 'x' },
+    'uploads/up-acl-1': { request_id: GENERAL_REQUEST_ID, purpose: 'attachment', state: 'pending' },
     'unknown_collection/doc-1': { anything: true },
   };
   for (const [path, data] of Object.entries(singles)) docs.set(path, data);
@@ -426,6 +427,7 @@ export const RESOURCES: readonly AclResource[] = [
       'imports/imp-1',
       'integration_inbox/in-1',
       'integration_state/slack',
+      'uploads/up-acl-1',
       'unknown_collection/doc-1',
     ] as const
   ).map((path) => deniedEverywhere(path.slice(0, path.indexOf('/')), path, 'server/API เท่านั้น หรือ path ที่ไม่มีกติกา')),

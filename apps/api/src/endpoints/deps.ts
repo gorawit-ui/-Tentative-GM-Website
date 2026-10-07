@@ -32,6 +32,8 @@ export interface StorageBucket {
 export interface SignedUrlRequest {
   readonly action: 'read' | 'write';
   readonly path: string;
+  /** API clock at signing (the link is valid from here to `expiresAt`). */
+  readonly issuedAt: Instant;
   readonly expiresAt: Instant;
   readonly contentType?: string;
   /** `x-goog-content-length-range` for uploads. */
