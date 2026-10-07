@@ -233,11 +233,29 @@ describe('notified people become related persons; confidential needs separate co
     expect(state.relatedPersonIds).toEqual([RELATED.personId]);
   });
 
-  it('confidential request notifying someone already related needs no consent', () => {
-    const secret = inProgress({ isConfidential: true });
+  it('D-ACL-2: confidential request notifying someone already granted needs no consent', () => {
+    const secret = inProgress({ isConfidential: true, confidentialGrantIds: [RELATED.personId] });
     const relatedPerson = { kind: 'person', personId: RELATED.personId };
     expect(planWaiting(secret, { waitingOn: relatedPerson }).needsConfidentialGrant).toBe(false);
     expect(enterWaiting(secret, { actor: GM, now: ENTER, waitingOn: relatedPerson }).state.status).toBe('waiting');
+  });
+
+  it('D-ACL-2: a related person without a grant on a confidential request needs consent, and gets the grant', () => {
+    const secret = inProgress({ isConfidential: true });
+    const relatedPerson = { kind: 'person', personId: RELATED.personId };
+    const plan = planWaiting(secret, { waitingOn: relatedPerson });
+    expect(plan).toMatchObject({ newRelatedPersonIds: [], newGrantPersonIds: [RELATED.personId], needsConfidentialGrant: true });
+    expect(rejectionCode(() => enterWaiting(secret, { actor: GM, now: ENTER, waitingOn: relatedPerson }))).toBe(
+      'CONFIDENTIAL_GRANT_REQUIRED',
+    );
+    const { state } = enterWaiting(secret, { actor: GM, now: ENTER, waitingOn: relatedPerson, confirmConfidentialGrant: true });
+    expect(state.relatedPersonIds).toEqual([RELATED.personId]);
+    expect(state.confidentialGrantIds).toEqual([RELATED.personId]);
+  });
+
+  it('D-ACL-2: an ungranted recipient of a confidential request cannot answer for the party', () => {
+    const state = { ...enterWaiting(inProgress({ isConfidential: true }), { actor: GM, now: ENTER, waitingOn: PERSON, confirmConfidentialGrant: true }).state, confidentialGrantIds: [] };
+    expect(rejectionCode(() => respondWaitingParty(state, { actor: FINANCE, now: RESPOND, intervalId: 1 }))).toBe('ACCESS_REVOKED');
   });
 });
 

@@ -1,8 +1,9 @@
-// Unflagging a confidential request (C6, D-S04-4, D-S05-6): GM Admin only, with a reason kept in
-// history. Pure: the caller persists the state, the event and any ACL/projection rebuild.
+// Confidential flag on an existing request (C6, D-S04-4, D-S05-6, D-ACL-2): flagging later is a GM
+// command that must confirm which existing related persons keep access; unflagging is GM Admin only
+// with a reason. Pure: the caller persists the state, the event and any ACL/projection rebuild.
 import type { Instant } from '@gm/time';
 import { LifecycleRejected } from './command-guards';
-import type { Actor, SensitivityReason } from './request-creation';
+import type { Actor, RequestType, SensitivityReason } from './request-creation';
 
 export interface ConfidentialityState {
   readonly source: 'web' | 'trello';
@@ -44,4 +45,36 @@ export function removeConfidentialFlag<S extends ConfidentialityState>(
       ...(previousSensitivityReason === undefined ? {} : { previousSensitivityReason }),
     },
   };
+}
+
+/** What flagging later needs to know about the request. */
+export interface FlaggableState extends ConfidentialityState {
+  readonly type: RequestType;
+  readonly relatedPersonIds: readonly string[];
+  readonly confidentialGrantIds?: readonly string[];
+}
+
+export interface ConfidentialFlagSetEvent {
+  readonly kind: 'confidential_flag_set';
+  readonly at: Instant;
+  readonly actorId: string;
+  readonly sensitivityReason: SensitivityReason;
+  /** Related persons the GM confirmed to keep detail access (they form `confidential_grant_ids`). */
+  readonly keptPersonIds: readonly string[];
+  /** Related persons who stay listed but lose detail access. */
+  readonly withdrawnPersonIds: readonly string[];
+}
+
+export function markConfidential<S extends FlaggableState>(
+  _state: S,
+  _command: {
+    readonly actor: Actor;
+    readonly now: Instant;
+    readonly sensitivityReason: string;
+    readonly note?: string | undefined;
+    /** Explicit confirmation of who keeps access; `[]` keeps nobody. */
+    readonly keepRelatedPersonIds?: readonly string[] | undefined;
+  },
+): { readonly state: S; readonly event: ConfidentialFlagSetEvent } {
+  throw new LifecycleRejected('NOT_IMPLEMENTED', 'markConfidential: not implemented yet (D-ACL-2)');
 }
