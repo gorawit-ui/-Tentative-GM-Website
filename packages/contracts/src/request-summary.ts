@@ -113,11 +113,35 @@ export const PUBLIC_COPIED_FIELDS = [
   'cancelled_at',
 ] as const satisfies readonly (keyof RequestDocument & keyof RequestSummaryDocument)[];
 
+/** Unique watchers other than the requester (the requester never counts as an extra reporter, §6.4.2). */
+export function watcherCount(request: RequestDocument): number {
+  return new Set(request.watcher_ids.filter((personId) => personId !== request.requester_id)).size;
+}
+
+/** U3: `completed` that the requester has not confirmed yet (no `closed_at`). */
+export function isAwaitingConfirmation(request: RequestDocument): boolean {
+  return request.status === 'completed' && request.closed_at === undefined;
+}
+
 /** The public summary of a request, or `null` for a confidential one (no summary document at all). */
 export function toRequestSummaryDocument(
-  _requestId: string,
-  _request: RequestDocument,
-  _context: { readonly personLabel: (personId: string) => string | undefined },
+  requestId: string,
+  request: RequestDocument,
+  context: { readonly personLabel: (personId: string) => string | undefined },
 ): RequestSummaryDocument | null {
-  throw new Error('toRequestSummaryDocument: not implemented yet (S09 labels)');
+  if (request.is_confidential) return null;
+  const copied = Object.fromEntries(
+    PUBLIC_COPIED_FIELDS.filter((field) => request[field] !== undefined).map((field) => [field, request[field]]),
+  );
+  const assigneeLabel = request.assignee_id === undefined ? undefined : context.personLabel(request.assignee_id);
+  const waitingOn = request.status === 'waiting' ? request.waiting_on : undefined;
+  return {
+    request_id: requestId,
+    ...copied,
+    awaiting_confirmation: isAwaitingConfirmation(request),
+    is_assigned: request.assignee_id !== undefined,
+    ...(assigneeLabel === undefined ? {} : { assignee_label: assigneeLabel }),
+    ...(waitingOn === undefined ? {} : { waiting_on_summary: PUBLIC_WAITING_LABELS[waitingOn.kind] }),
+    watcher_count: watcherCount(request),
+  } as RequestSummaryDocument;
 }

@@ -1,6 +1,6 @@
 // Read access to requests and projections (S09: Part 6 §6.4/§6.5, C4, C6, A1/U1). Pure predicates
 // shared by the API (Admin SDK bypasses Rules) and the Rules test fixtures; Rules mirror them in S10–S11.
-import type { Role } from './request-creation';
+import { isGm, type Role } from './request-creation';
 
 /** Who is looking, from the verified login and `access/{uid}`. */
 export interface AccessViewer {
@@ -19,22 +19,27 @@ export interface RequestAclFacts {
   readonly isConfidential: boolean;
 }
 
-function notImplemented(name: string): never {
-  throw new Error(`${name}: not implemented yet (S09)`);
+/** Part 6 §6.5 `isActive`: verified corporate Google login AND an enabled access document. */
+export function isActiveViewer(viewer: AccessViewer | undefined): viewer is AccessViewer {
+  return viewer !== undefined && viewer.corporate && viewer.enabled;
 }
 
-export function isActiveViewer(_viewer: AccessViewer | undefined): boolean {
-  return notImplemented('isActiveViewer');
+/** `request_summaries`, people picker, safe counters/profiles: every active employee (incl. Viewer). */
+export function canReadPublicSummaries(viewer: AccessViewer | undefined): boolean {
+  return isActiveViewer(viewer);
 }
 
-export function canReadPublicSummaries(_viewer: AccessViewer | undefined): boolean {
-  return notImplemented('canReadPublicSummaries');
+/** `gm_request_summaries` and other GM projections: active GM Staff / GM Admin. */
+export function canReadGmProjections(viewer: AccessViewer | undefined): boolean {
+  return isActiveViewer(viewer) && isGm(viewer);
 }
 
-export function canReadGmProjections(_viewer: AccessViewer | undefined): boolean {
-  return notImplemented('canReadGmProjections');
-}
-
-export function canReadRequestDetail(_viewer: AccessViewer | undefined, _request: RequestAclFacts): boolean {
-  return notImplemented('canReadRequestDetail');
+/**
+ * Part 6 §6.5 `canReadRequest`: active GM, the requester, or an explicitly related person (a Viewer
+ * included, Part 2 F05). Watching, team labels and the Viewer role alone never grant detail.
+ */
+export function canReadRequestDetail(viewer: AccessViewer | undefined, request: RequestAclFacts): boolean {
+  if (!isActiveViewer(viewer)) return false;
+  if (isGm(viewer)) return true;
+  return request.requesterId === viewer.personId || request.relatedPersonIds.includes(viewer.personId);
 }

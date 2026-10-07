@@ -40,7 +40,9 @@ export {
   PRIVATE_REQUEST_FIELDS,
   PUBLIC_WAITING_LABELS,
   REQUEST_SUMMARY_FIELDS,
+  isAwaitingConfirmation,
   toRequestSummaryDocument,
+  watcherCount,
   type RequestSummaryDocument,
 } from './request-summary';
 export { PERSON_EMAIL_DOMAIN, isPersonId, personIdFromCsvEmail } from './person-id';

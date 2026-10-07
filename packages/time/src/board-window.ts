@@ -4,6 +4,7 @@ import { HOUR_MS, type Instant } from './calendar';
 export const BOARD_RECENT_WINDOW_MS = 7 * 24 * HOUR_MS;
 
 /** Instant after which a close/cancel is still “recent” (`closed_at > cutoff` stays on the live board). */
-export function boardRecentCutoff(_now: Instant): Instant {
-  throw new Error('boardRecentCutoff: not implemented yet (S09)');
+export function boardRecentCutoff(now: Instant): Instant {
+  if (!Number.isSafeInteger(now)) throw new RangeError('now must be an integer epoch-millisecond instant');
+  return now - BOARD_RECENT_WINDOW_MS;
 }
