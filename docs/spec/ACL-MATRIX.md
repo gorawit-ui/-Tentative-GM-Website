@@ -231,9 +231,9 @@ API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรว
 | `awaiting_confirmation` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `employee`, `viewer`, `viewer_related`, `viewer_unconfirmed`, `team_label_member`, `gm_staff`, `gm_admin` | จำนวนงานรอฉันยืนยัน (D-S10-2) |
 | `view_url.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | ลิงก์ดูรูป GET 5 นาที: คนที่อ่านงานนั้นได้ |
 | `view_url.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | ลิงก์ดูรูปของงานลับ |
-| `upload_url.attachment.general` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลด PUT 15 นาที: GM และผู้ขอ (Q-S12-2) |
+| `upload_url.attachment.general` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลด PUT 15 นาที: GM และผู้ขอ (related ใช้คอมเมนต์แทน, D-S12-2); งานที่ปิด/ยกเลิกแล้วไม่รับ (D-S12-4) |
 | `upload_url.attachment.confidential` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลดของงานลับ: GM และผู้ขอ |
-| `upload_url.watch_contribution.general` | `watcher` | รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง (U1) — watcher เท่านั้น |
+| `upload_url.watch_contribution.general` | `watcher` | รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง ไม่เกิน 3 รูป (U1, D-S12-3) — watcher เท่านั้น ดูรูปตัวเองหลังส่งไม่ได้ |
 
 ## หน้าจอ → แหล่งข้อมูล
 

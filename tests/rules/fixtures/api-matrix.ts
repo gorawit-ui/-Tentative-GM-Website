@@ -45,13 +45,13 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
   { key: 'awaiting_confirmation', kind: 'awaiting_confirmation', description: 'จำนวนงานรอฉันยืนยัน (D-S10-2)', allow: ACTIVE_SUBJECTS },
   { key: 'view_url.general', kind: 'view_url', requestId: GENERAL_REQUEST_ID, description: 'ลิงก์ดูรูป GET 5 นาที: คนที่อ่านงานนั้นได้', allow: DETAIL_SUBJECTS },
   { key: 'view_url.confidential', kind: 'view_url', requestId: SECRET_REQUEST_ID, description: 'ลิงก์ดูรูปของงานลับ', allow: CONFIDENTIAL_DETAIL_SUBJECTS },
-  { key: 'upload_url.attachment.general', kind: 'upload_url.attachment', requestId: GENERAL_REQUEST_ID, description: 'ลิงก์อัปโหลด PUT 15 นาที: GM และผู้ขอ (Q-S12-2)', allow: ATTACHERS },
+  { key: 'upload_url.attachment.general', kind: 'upload_url.attachment', requestId: GENERAL_REQUEST_ID, description: 'ลิงก์อัปโหลด PUT 15 นาที: GM และผู้ขอ (related ใช้คอมเมนต์แทน, D-S12-2); งานที่ปิด/ยกเลิกแล้วไม่รับ (D-S12-4)', allow: ATTACHERS },
   { key: 'upload_url.attachment.confidential', kind: 'upload_url.attachment', requestId: SECRET_REQUEST_ID, description: 'ลิงก์อัปโหลดของงานลับ: GM และผู้ขอ', allow: ATTACHERS },
   {
     key: 'upload_url.watch_contribution.general',
     kind: 'upload_url.watch_contribution',
     requestId: GENERAL_REQUEST_ID,
-    description: 'รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง (U1) — watcher เท่านั้น',
+    description: 'รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง ไม่เกิน 3 รูป (U1, D-S12-3) — watcher เท่านั้น ดูรูปตัวเองหลังส่งไม่ได้',
     allow: ['watcher'],
   },
 ];
