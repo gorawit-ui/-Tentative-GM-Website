@@ -139,7 +139,8 @@ describe('routeNewRequest — gm_task uses the creating GM (D-S07-2)', () => {
       status: 'queued',
       assigneeId: GM.personId,
       reason: 'gm_task_creator',
-      notice: { kind: 'assignee', personId: GM.personId },
+      // D-S08-2: the creator is the one acting, so nobody is notified.
+      notice: { kind: 'none' },
     });
   });
 
@@ -196,7 +197,7 @@ describe('routeNewRequest — gm_task uses the creating GM (D-S07-2)', () => {
     ).toMatchObject({ assigneeId: MAINTENANCE_OWNER.personId, reason: 'chosen_by_gm' });
   });
 
-  it('a creator on leave: the A3 default-owner rule applies → unassigned, all GM (open question in S08)', () => {
+  it('D-S08-1: a creator on leave still owns the gm_task they created (A3 is for type routing only)', () => {
     expect(
       routeNewRequest({
         type: 'gm_task',
@@ -205,7 +206,7 @@ describe('routeNewRequest — gm_task uses the creating GM (D-S07-2)', () => {
         createdById: GM.personId,
         defaultOwner: member(GM, { profile: onLeave(GM, bkk('2026-12-28', '08:00')) }),
       }),
-    ).toEqual({ status: 'queued', reason: 'default_owner_on_leave', notice: { kind: 'all_gm' } });
+    ).toEqual({ status: 'queued', assigneeId: GM.personId, reason: 'gm_task_creator', notice: { kind: 'none' } });
   });
 
   it.each([
@@ -404,5 +405,65 @@ describe('a GM on leave may still accept work (D-S07-4)', () => {
       status: 'in_progress',
       assigneeId: GM.personId,
     });
+  });
+});
+
+describe('D-S08-2: nobody is notified about their own action', () => {
+  it('a default owner who opens a request on behalf gets no notice about it', () => {
+    expect(
+      routeNewRequest({
+        type: 'maintenance',
+        now: MON_10,
+        settings: SETTINGS,
+        createdById: MAINTENANCE_OWNER.personId,
+        defaultOwner: member(MAINTENANCE_OWNER),
+      }),
+    ).toEqual({ status: 'queued', assigneeId: MAINTENANCE_OWNER.personId, reason: 'default_owner', notice: { kind: 'none' } });
+  });
+
+  it('a GM who chooses themselves as assignee gets no notice; another chosen GM does', () => {
+    expect(
+      routeNewRequest({
+        type: 'gm_task',
+        now: MON_10,
+        settings: SETTINGS,
+        createdById: GM.personId,
+        defaultOwner: member(GM),
+        chosenAssigneeId: GM.personId,
+        chosenAssigneeProfile: profile(GM),
+      }).notice,
+    ).toEqual({ kind: 'none' });
+    expect(
+      routeNewRequest({
+        type: 'gm_task',
+        now: MON_10,
+        settings: SETTINGS,
+        createdById: GM.personId,
+        defaultOwner: member(GM),
+        chosenAssigneeId: GM_ADMIN.personId,
+      }).notice,
+    ).toEqual({ kind: 'assignee', personId: GM_ADMIN.personId });
+  });
+
+  it('“แจ้ง GM ทุกคน” leaves out the GM who acted', () => {
+    expect(allGmNoticeRecipients([member(GM), member(GM_ADMIN), member(MAINTENANCE_OWNER)], MON_10, GM.personId)).toEqual([
+      GM_ADMIN.personId,
+      MAINTENANCE_OWNER.personId,
+    ]);
+  });
+
+  it('the acting GM counts as available: others on leave are not pulled in by the fallback', () => {
+    const others = [
+      member(MAINTENANCE_OWNER, { profile: onLeave(MAINTENANCE_OWNER, bkk('2026-12-28', '08:00')) }),
+      member(GM_ADMIN, { profile: onLeave(GM_ADMIN, bkk('2026-12-28', '08:00')) }),
+    ];
+    expect(allGmNoticeRecipients([member(GM), ...others], MON_10, GM.personId)).toEqual([]);
+  });
+
+  it('when every GM is on leave the fallback still leaves out the actor', () => {
+    const everyone = [GM, GM_ADMIN, MAINTENANCE_OWNER].map((actor) =>
+      member(actor, { profile: onLeave(actor, bkk('2026-12-28', '08:00')) }),
+    );
+    expect(allGmNoticeRecipients(everyone, MON_10, GM.personId)).toEqual([GM_ADMIN.personId, MAINTENANCE_OWNER.personId]);
   });
 });

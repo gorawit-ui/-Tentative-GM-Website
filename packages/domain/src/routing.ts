@@ -29,7 +29,11 @@ export type RoutingReason =
   | 'no_default_owner'
   | 'chosen_by_gm';
 
-export type RoutingNotice = { readonly kind: 'assignee'; readonly personId: string } | { readonly kind: 'all_gm' };
+export type RoutingNotice =
+  | { readonly kind: 'assignee'; readonly personId: string }
+  | { readonly kind: 'all_gm' }
+  /** D-S08-2: the only person to tell is the one who acted. */
+  | { readonly kind: 'none' };
 
 export interface RoutingResult {
   readonly status: 'queued';
@@ -107,7 +111,11 @@ export function routeNewRequest(input: RouteNewRequestInput): RoutingResult {
  * D-S07-3: “แจ้ง GM ทุกคน” reaches every active GM not on effective leave now; when every active
  * GM is on leave, all of them are notified so the request does not go silent. Input order kept.
  */
-export function allGmNoticeRecipients(members: readonly GmMember[], now: Instant): readonly string[] {
+export function allGmNoticeRecipients(
+  members: readonly GmMember[],
+  now: Instant,
+  _actorId?: string | undefined,
+): readonly string[] {
   const active = [...new Map(members.filter((member) => member.active).map((member) => [member.personId, member])).values()];
   const available = active.filter((member) => !isOnLeave(member.profile, now));
   return (available.length > 0 ? available : active).map((member) => member.personId);

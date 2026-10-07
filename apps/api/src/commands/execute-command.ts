@@ -13,6 +13,7 @@ import {
   watchRequest,
   type Actor,
   type CreateRequestCommand,
+  type DeploymentEnvironment,
   type Labelled,
   type MaintenanceDetails,
   type RequestDraft,
@@ -26,6 +27,10 @@ import type { CommandStore, CommandTransaction } from './transaction-port';
 export const REQUEST_COUNTER_PATH = 'system_counters/request_sequence';
 export const COMMANDS_COLLECTION = 'commands';
 export const REQUESTS_COLLECTION = 'requests';
+
+/** D-S08-6: `commands/{id}` is kept 30 days through a Firestore TTL policy on `expire_at`. */
+export const COMMAND_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const COMMAND_EXPIRY_FIELD = 'expire_at';
 
 /** Refused by the executor itself; domain refusals keep their own error types and codes. */
 export class CommandRejected extends Error {
@@ -54,6 +59,8 @@ export interface CommandContext {
   readonly actor: Actor;
   /** Server time. */
   readonly now: Instant;
+  /** D-S08-8: decides the request number prefix (GM- / DEV-). */
+  readonly environment: DeploymentEnvironment;
   readonly newRequestId: () => string;
   readonly maintenanceCatalog: MaintenanceCatalog;
 }

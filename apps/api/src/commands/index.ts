@@ -1,6 +1,8 @@
 // Command pipeline of gm-api (S08): idempotent command IDs and the request number counter.
 export {
   COMMANDS_COLLECTION,
+  COMMAND_EXPIRY_FIELD,
+  COMMAND_RETENTION_MS,
   CommandRejected,
   REQUESTS_COLLECTION,
   REQUEST_COUNTER_PATH,

@@ -42,3 +42,4 @@ export {
   toRequestSummaryDocument,
   type RequestSummaryDocument,
 } from './request-summary';
+export { PERSON_EMAIL_DOMAIN, isPersonId, personIdFromCsvEmail } from './person-id';

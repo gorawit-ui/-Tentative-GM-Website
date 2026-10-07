@@ -28,7 +28,7 @@ const ON_BEHALF = {
   command_id: COMMAND_ID,
   type: 'create_on_behalf',
   payload: {
-    requester: { person_id: 'person-employee-03' },
+    requester: { person_id: 'employee03@tdfb.co' },
     details: { type: 'document_request', summary_title: 'ขอหนังสือรับรองเงินเดือน', sensitivity_subject: 'personnel' },
     mark_confidential: true,
   },
@@ -99,7 +99,7 @@ describe('parseCommand — unknown fields are refused at every level', () => {
     ['watch_request payload', withPayload(WATCH, { note: 'แจ้งด้วยคน' }), 'payload.note'],
     [
       'the on-behalf requester',
-      withPayload(ON_BEHALF, { requester: { person_id: 'person-employee-03', email: 'x@tdfb.co' } }),
+      withPayload(ON_BEHALF, { requester: { person_id: 'employee03@tdfb.co', email: 'x@tdfb.co' } }),
       'payload.requester.email',
     ],
     [
@@ -181,7 +181,7 @@ describe('parseCommand — envelope, required fields, types and enums', () => {
     ['payload.request_id', withPayload(WATCH, { request_id: '../requests/other' })],
     ['payload.location_id', withPayload(MAINTENANCE, { location_id: 'loc/fac16' })],
     ['payload.symptom_key', withPayload(MAINTENANCE, { symptom_key: '' })],
-    ['payload.requester.person_id', withPayload(ON_BEHALF, { requester: { person_id: 'a.b@tdfb.co' } })],
+    ['payload.requester.person_id', withPayload(ON_BEHALF, { requester: { person_id: 'A.B@tdfb.co' } })],
   ])('%s has an invalid value', (path, body) => {
     expect(rejection(body)).toEqual({ code: 'FIELD_INVALID', path });
   });
