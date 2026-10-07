@@ -157,22 +157,32 @@ export function toGmRequestSummaryDocument(
   } as GmRequestSummaryDocument;
 }
 
-/** The restricted layer: the request's own known fields (unknown stored keys are dropped). */
-export function toRequestDetailDocument(
-  request: RequestRecord,
-  _context: Pick<ProjectionContext, 'personLabel'>,
-): RequestDetailDocument {
-  return splitRequestRecord(request).request as RequestDetailDocument;
+/**
+ * The restricted layer: the request's own known fields (unknown stored keys are dropped) plus the
+ * D-S10-1 name pairs, written by the API at save time so the detail page needs no extra lookup.
+ */
+export function toRequestDetailDocument(request: RequestRecord, context: Pick<ProjectionContext, 'personLabel'>): RequestDetailDocument {
+  const display = (personId: string): PersonDisplay => {
+    const label = context.personLabel(personId)?.trim();
+    // D-S10-1: never an e-mail (or nothing) in place of a name.
+    const usable = label !== undefined && label !== '' && !label.includes('@');
+    return { person_id: personId, display_name: usable ? label : UNKNOWN_PERSON_DISPLAY_NAME };
+  };
+  return {
+    ...splitRequestRecord(request).request,
+    ...(request.requester_id === undefined ? {} : { requester_display: display(request.requester_id) }),
+    ...(request.assignee_id === undefined ? {} : { assignee_display: display(request.assignee_id) }),
+    related_people_display: request.related_person_ids.map(display),
+  };
 }
 
 /** All three projections of one request, written together in the command transaction (A01/A03). */
 export function buildRequestProjections(requestId: string, request: RequestRecord, context: ProjectionContext): RequestProjections {
-  const { request: detail, gmDetail } = splitRequestRecord(request);
   return {
     public: toRequestSummaryDocument(requestId, request, context),
     gm: toGmRequestSummaryDocument(requestId, request, context),
-    detail: detail as RequestDetailDocument,
-    gmDetail,
+    detail: toRequestDetailDocument(request, context),
+    gmDetail: splitRequestRecord(request).gmDetail,
   };
 }
 

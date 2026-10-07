@@ -3,6 +3,8 @@
 export const MAX_LIST_LIMIT = 200;
 export const ARCHIVE_PAGE_SIZE = 50;
 
-export function pageLimit(_requested?: number): number {
-  throw new Error('NOT_IMPLEMENTED');
+/** A page size for a client list query: whole number within 1..MAX_LIST_LIMIT, default ARCHIVE_PAGE_SIZE. */
+export function pageLimit(requested: number = ARCHIVE_PAGE_SIZE): number {
+  if (Number.isNaN(requested)) throw new RangeError('page size must be a number');
+  return Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(requested)));
 }

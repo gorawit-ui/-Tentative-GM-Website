@@ -56,15 +56,15 @@ describe('screen → data source table', () => {
     }
   });
 
-  it('a screen that cannot load what it needs says so as a question instead of a source', () => {
+  it('D-S10-1/2: Q-S10-1 and Q-S10-2 are closed — names come with requests/{id}, the awaiting count from the personal endpoint', () => {
+    const text = JSON.stringify(SCREEN_SOURCES);
+    expect(text).not.toContain('Q-S10-1');
+    expect(text).not.toContain('Q-S10-2');
     const awaiting = SCREEN_SOURCES.find((entry) => entry.screen.includes('รอคุณยืนยัน'));
     expect(awaiting?.firestore).toEqual([]);
-    expect(awaiting?.questions.join()).toContain('Q-S10-2');
-    for (const entry of SCREEN_SOURCES) {
-      if (entry.screen.startsWith('รายละเอียด —') && entry.screen !== 'รายละเอียด — watcher (UI-07 มุมมอง summary-only)') {
-        expect(entry.questions.join(), entry.screen).toContain('Q-S10-1');
-      }
-    }
+    expect(awaiting?.api.join()).toContain('D-S10-2');
+    const requesterDetail = SCREEN_SOURCES.find((entry) => entry.screen.startsWith('รายละเอียด — ผู้ขอ'));
+    expect(requesterDetail?.firestore.find((source) => source.resource === 'requests.general')?.use).toContain('D-S10-1');
   });
 
   it('Storage sample paths cover attachments of both samples, pending uploads, contributions and an unknown path', () => {

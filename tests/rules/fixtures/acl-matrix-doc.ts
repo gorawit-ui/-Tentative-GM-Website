@@ -13,6 +13,7 @@ import {
   type AclResource,
   type SubjectKey,
 } from './acl-matrix';
+import { ARCHIVE_PAGE_SIZE, MAX_LIST_LIMIT } from '@gm/contracts';
 import { SCREEN_SOURCES, STORAGE_POLICY, STORAGE_SAMPLE_PATHS } from './screen-sources';
 
 export const ACL_MATRIX_DOC_PATH = 'docs/spec/ACL-MATRIX.md';
@@ -166,14 +167,14 @@ export function renderAclMatrixMarkdown(): string {
     '',
     `> ไฟล์นี้สร้างอัตโนมัติจาก ${code('tests/rules/fixtures/acl-matrix.ts')} ด้วย ${code('npm run docs:acl-matrix')} — ห้ามแก้ด้วยมือ; ${code('tests/rules/fixtures/acl-matrix-doc.test.ts')} ตรวจว่าเอกสารตรงกับ fixture เสมอ และ Rules tests (S10–S11) ใช้ fixture ชุดเดียวกัน`,
     '',
-    'ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7',
+    'ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5',
     '',
     '## หลักการ',
     '',
     '- เอกสารนี้แสดง **เฉพาะสิ่งที่อนุญาต** ทุกอย่างที่ไม่อยู่ในเอกสาร = **ปฏิเสธ** (default deny) รวมถึง path ที่ไม่มีกติกา',
     `- **การเขียนจาก client** (${WRITES.join(' / ')}) ปฏิเสธทุก collection ทุก role — ทุกการเปลี่ยนแปลงผ่าน API ซึ่งตรวจสิทธิ์ด้วยกติกา domain ชุดเดียวกัน (Admin SDK ข้าม Rules)`,
-    `- **อ่าน**: ${code('get')} = เปิด document หนึ่งรายการ, ${code('list')} = query ทั้ง collection โดยไม่กรอง (Rules ไม่กรองผลให้)`,
-    `- บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified และ ${code('access/{uid}.enabled')} = true; role อ่านจาก ${code('access/{uid}')} ไม่ใช่ custom claim`,
+    `- **อ่าน**: ${code('get')} = เปิด document หนึ่งรายการ, ${code('list')} = query ทั้ง collection โดยไม่กรอง (Rules ไม่กรองผลให้) และ**ต้องมี limit ไม่เกิน ${MAX_LIST_LIMIT}** ไม่มี limit หรือเกินถูกปฏิเสธทุก collection (D-S10-4) หน้า “ดูทั้งหมด” แบ่งหน้าละ ${ARCHIVE_PAGE_SIZE}`,
+    `- บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified (ตรวจหลังแปลงเป็นตัวพิมพ์เล็ก TDFB.CO จึงเป็นโดเมนเดียวกัน ส่วนโดเมนหน้าตาคล้ายถูกปฏิเสธ, D-S10-5) และ ${code('access/{uid}.enabled')} = true; role อ่านจาก ${code('access/{uid}')} ไม่ใช่ custom claim`,
     `- ขนาด matrix: ${SUBJECT_KEYS.length} role × ${RESOURCES.length} collection/path × ${ACL_OPERATIONS.length} operation = ${cells.length} ช่อง อนุญาต ${allowedCount} ช่อง ที่เหลือปฏิเสธ`,
     '',
     '## สิทธิ์พื้นฐาน: ทุกบัญชีที่ใช้งานได้',

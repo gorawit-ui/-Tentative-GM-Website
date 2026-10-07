@@ -22,6 +22,20 @@ export function personIdFromCsvEmail(email: string, path = 'email'): string {
   return personId;
 }
 
+/** FU-07: an optional list of person IDs; a fresh array, each entry checked like `personIdField`. */
+export function optionalPersonIdList(object: JsonObject, path: string, key: string): string[] | undefined {
+  if (!Object.hasOwn(object, key) || object[key] === undefined) return undefined;
+  const value = object[key];
+  const where = join(path, key);
+  if (!Array.isArray(value)) throw new ContractRejected('FIELD_TYPE', where, `${where} must be a list of person IDs`);
+  return value.map((entry: unknown, index) => {
+    const at = `${where}[${index}]`;
+    if (typeof entry !== 'string') throw new ContractRejected('FIELD_TYPE', at, `${at} must be a string`);
+    if (!isPersonId(entry)) throw new ContractRejected('FIELD_INVALID', at, `${at} is not a person ID`);
+    return entry;
+  });
+}
+
 /** A person ID (D-S08-4): the stored lowercase `@tdfb.co` email, not normalised here. */
 export function personIdField(object: JsonObject, path: string, key: string): string {
   const value = stringField(object, path, key);

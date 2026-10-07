@@ -23,7 +23,7 @@ import {
   stringField,
   type JsonObject,
 } from './strict';
-import { personIdField } from './person-id';
+import { optionalPersonIdList, personIdField } from './person-id';
 
 /** Mirrors Part 6 §6.6 createMaintenance / createOnBehalf / createGmTask / watchRequest. */
 export const COMMAND_TYPES = ['create_maintenance', 'create_on_behalf', 'create_gm_task', 'watch_request'] as const;
@@ -136,17 +136,27 @@ function confidentialChoice(object: JsonObject, path: string) {
   };
 }
 
+function relatedChoice(object: JsonObject, path: string) {
+  return {
+    ...optional('related_person_ids', optionalPersonIdList(object, path, 'related_person_ids')),
+    ...optional('confirm_confidential_grant', optionalBoolean(object, path, 'confirm_confidential_grant')),
+  };
+}
+
+const RELATED_FIELDS = ['related_person_ids', 'confirm_confidential_grant'] as const;
+
 function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'] {
   const path = 'payload';
   switch (type) {
     case 'create_maintenance':
       return maintenanceSelection(strictObject(value, path, MAINTENANCE_FIELDS), path);
     case 'create_on_behalf': {
-      const payload = strictObject(value, path, ['requester', 'details', 'mark_confidential', 'confidential_note']);
+      const payload = strictObject(value, path, ['requester', 'details', 'mark_confidential', 'confidential_note', ...RELATED_FIELDS]);
       return {
         requester: onBehalfRequester(requiredField(payload, path, 'requester'), `${path}.requester`),
         details: serviceDetails(requiredField(payload, path, 'details'), `${path}.details`),
         ...confidentialChoice(payload, path),
+        ...relatedChoice(payload, path),
       };
     }
     case 'create_gm_task': {
@@ -157,6 +167,7 @@ function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'
         'description',
         'mark_confidential',
         'confidential_note',
+        ...RELATED_FIELDS,
       ]);
       return {
         summary_title: stringField(payload, path, 'summary_title'),
@@ -164,6 +175,7 @@ function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'
         sensitivity_subject: enumField(payload, path, 'sensitivity_subject', SENSITIVITY_SUBJECTS),
         ...optional('description', optionalString(payload, path, 'description')),
         ...confidentialChoice(payload, path),
+        ...relatedChoice(payload, path),
       };
     }
     case 'watch_request': {

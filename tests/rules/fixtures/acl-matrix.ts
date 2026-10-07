@@ -308,7 +308,7 @@ export const RESOURCES: readonly AclResource[] = [
   },
   {
     key: 'requests.general',
-    description: 'รายละเอียดงาน (ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; list ทั้ง collection ได้เฉพาะ GM',
+    description: 'รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM',
     path: `requests/${GENERAL_REQUEST_ID}`,
     collectionPath: 'requests',
     allow: { ...readFor(DETAIL_SUBJECTS, ['get']), ...readFor(GM_SUBJECTS) },
