@@ -187,7 +187,7 @@ describe('ACL matrix — the same policy as the domain predicates', () => {
 });
 
 describe('D-S09 in the matrix', () => {
-  it('D-S09-2: a related Viewer opens the confidential request only with the confirmed grant', () => {
+  it('D-S09-2 (now D-ACL-2): a related Viewer opens the confidential request only with the confirmed grant', () => {
     expect(decide('viewer_related', 'requests.confidential', 'get')).toBe('allow');
     expect(decide('viewer_unconfirmed', 'requests.confidential', 'get')).toBe('deny');
     expect(decide('viewer_unconfirmed', 'requests.general', 'get')).toBe('allow');

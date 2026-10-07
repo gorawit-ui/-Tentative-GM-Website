@@ -17,7 +17,7 @@ export interface RequestAclFacts {
   readonly requesterId?: string | undefined;
   readonly relatedPersonIds: readonly string[];
   readonly isConfidential: boolean;
-  /** D-S09-2: people whose access to the confidential request was confirmed separately (C3). */
+  /** D-ACL-2: the only non-GM, non-requester people who may read a confidential request (C3). */
   readonly confidentialGrantIds?: readonly string[] | undefined;
 }
 
@@ -37,18 +37,14 @@ export function canReadGmProjections(viewer: AccessViewer | undefined): boolean 
 }
 
 /**
- * Part 6 §6.5 `canReadRequest`: active GM, the requester, or an explicitly related person (a Viewer
- * included, Part 2 F05; on a confidential request only with the confirmed grant, D-S09-2). Watching,
- * team labels and the Viewer role alone never grant detail.
+ * Part 6 §6.5 `canReadRequest`: active GM or the requester; on a general request also an explicitly
+ * related person (a Viewer included, Part 2 F05); on a confidential request only people in the
+ * confirmed grant list (D-ACL-2, any role). Watching, team labels and a role alone never grant detail.
  */
 export function canReadRequestDetail(viewer: AccessViewer | undefined, request: RequestAclFacts): boolean {
   if (!isActiveViewer(viewer)) return false;
-  if (isGm(viewer)) return true;
-  if (request.requesterId === viewer.personId) return true;
-  if (!request.relatedPersonIds.includes(viewer.personId)) return false;
-  // D-S09-2: a Viewer opens a confidential request only with the separately confirmed grant (C3).
-  if (request.isConfidential && viewer.role === 'viewer') {
-    return (request.confidentialGrantIds ?? []).includes(viewer.personId);
-  }
-  return true;
+  if (isGm(viewer) || request.requesterId === viewer.personId) return true;
+  // D-ACL-2: a confidential request opens only for confirmed grants, whatever the role.
+  if (request.isConfidential) return (request.confidentialGrantIds ?? []).includes(viewer.personId);
+  return request.relatedPersonIds.includes(viewer.personId);
 }

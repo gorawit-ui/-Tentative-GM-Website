@@ -13,6 +13,7 @@ import {
   type AclResource,
   type SubjectKey,
 } from './acl-matrix';
+import { SCREEN_SOURCES, STORAGE_POLICY, STORAGE_SAMPLE_PATHS } from './screen-sources';
 
 export const ACL_MATRIX_DOC_PATH = 'docs/spec/ACL-MATRIX.md';
 
@@ -76,6 +77,8 @@ function confidentialSection(): string[] {
     '',
     `งานลับไม่มี ${code('request_summaries/{id}')} เลย (C6, C11) คนทั่วไปเห็นเพียงตัวเลข “งานภายใน X รายการ” จาก ${code('board_counters/public')} ซึ่งนับเฉพาะงานลับที่ยังเปิด (D-S09-4) ไม่มีชื่อ เลขงาน หรือ ID`,
     '',
+    `รายละเอียดงานลับอ่านได้เฉพาะ GM, ผู้ขอ และคนใน ${code('confidential_grant_ids')} — ทุก role ไม่ใช่แค่ Viewer (D-ACL-2) คนที่ถูกเพิ่มเป็น related ในงานลับพร้อมการยืนยันแยก (C3) ถูกบันทึกใน ${code('confidential_grant_ids')}; เมื่องานทั่วไปถูกติดธงลับภายหลัง GM ต้องยืนยันรายชื่อ related เดิมว่าจะคงสิทธิ์ใคร คนที่ไม่ได้รับการยืนยันยังอยู่ในรายชื่อ related แต่อ่านรายละเอียดไม่ได้`,
+    '',
     '| Role | รายละเอียด `requests/{id}` | สรุปของ GM | รายชื่อ watcher / หมายเหตุธงลับ | ตัวเลข “งานภายใน” |',
     '|---|---|---|---|---|',
   ];
@@ -115,6 +118,44 @@ function watcherSection(): string[] {
   return lines;
 }
 
+function storageSection(): string[] {
+  return [
+    '## Storage',
+    '',
+    'รูปและไฟล์แนบเข้าถึงผ่าน API เท่านั้น (Part 6 §6.10, D-ACL-5):',
+    '',
+    ...STORAGE_POLICY.map((line) => `- ${line}`),
+    '',
+    `ตัวอย่าง path ที่ Rules tests ยืนยันว่าปฏิเสธทุก role: ${STORAGE_SAMPLE_PATHS.map(code).join(', ')}`,
+    '',
+  ];
+}
+
+const escapeCell = (text: string) => text.replaceAll('|', '\\|');
+
+function screenSection(): string[] {
+  const lines = [
+    '## หน้าจอ → แหล่งข้อมูล',
+    '',
+    'แต่ละหน้าโหลดข้อมูลจากไหนภายใต้สิทธิ์ในเอกสารนี้ (D-ACL-6) — `screen-sources.test.ts` ตรวจว่าทุกแหล่ง Firestore ในตารางนี้อนุญาตจริงสำหรับทุกคนที่เปิดหน้านั้น ข้อมูลที่โหลดไม่ได้ภายใต้สิทธิ์นี้เขียนเป็นคำถาม (docs/sessions/S10.md) ไม่แก้สิทธิ์เอง',
+    '',
+    '| หน้าจอ | ใครเปิด | Firestore (path · operation) | ผ่าน API | คำถามค้าง |',
+    '|---|---|---|---|---|',
+  ];
+  for (const entry of SCREEN_SOURCES) {
+    const firestore = entry.firestore.map((source) => {
+      const who = source.audience === undefined ? '' : ` — เฉพาะ ${source.audience.map(code).join(', ')}`;
+      return `${code(resourcePattern(byKey(source.resource)))} · ${source.operations.join(', ')}: ${source.use}${who}`;
+    });
+    lines.push(
+      `| ${entry.screen} | ${entry.audienceLabel} | ${escapeCell(firestore.join('<br>') || '—')} | ${escapeCell(entry.api.join('<br>') || '—')} | ${escapeCell(
+        entry.questions.join('<br>') || '—',
+      )} |`,
+    );
+  }
+  return [...lines, ''];
+}
+
 /** The whole document; deterministic (no dates or counts that change by themselves). */
 export function renderAclMatrixMarkdown(): string {
   const cells = matrixCells();
@@ -125,7 +166,7 @@ export function renderAclMatrixMarkdown(): string {
     '',
     `> ไฟล์นี้สร้างอัตโนมัติจาก ${code('tests/rules/fixtures/acl-matrix.ts')} ด้วย ${code('npm run docs:acl-matrix')} — ห้ามแก้ด้วยมือ; ${code('tests/rules/fixtures/acl-matrix-doc.test.ts')} ตรวจว่าเอกสารตรงกับ fixture เสมอ และ Rules tests (S10–S11) ใช้ fixture ชุดเดียวกัน`,
     '',
-    'ที่มา: Part 6 §6.4/§6.5, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8',
+    'ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7',
     '',
     '## หลักการ',
     '',
@@ -146,6 +187,8 @@ export function renderAclMatrixMarkdown(): string {
     ...SUBJECT_KEYS.flatMap((key) => roleSection(key, baseline)),
     ...confidentialSection(),
     ...watcherSection(),
+    ...storageSection(),
+    ...screenSection(),
   ];
   return `${lines.join('\n').trimEnd()}\n`;
 }
