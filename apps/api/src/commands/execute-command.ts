@@ -8,6 +8,7 @@
 import {
   joinRequestRecord,
   splitRequestRecord,
+  toRequestDetailDocument,
   type CommandEnvelope,
   type CreateOnBehalfPayload,
   type GmRequestDetailDocument,
@@ -65,6 +66,11 @@ export interface MaintenanceCatalog {
   resolve(transaction: CommandTransaction, selection: MaintenanceSelection): Promise<MaintenanceLabels>;
 }
 
+/** D-S10-1: display names from `people/{person_id}` (read inside the transaction, before any write). */
+export interface PeopleDirectory {
+  displayNames(transaction: CommandTransaction, personIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+}
+
 export interface CommandContext {
   /** From the verified login (A01), never from the body. */
   readonly actor: Actor;
@@ -74,6 +80,7 @@ export interface CommandContext {
   readonly environment: DeploymentEnvironment;
   readonly newRequestId: () => string;
   readonly maintenanceCatalog: MaintenanceCatalog;
+  readonly peopleDirectory: PeopleDirectory;
 }
 
 /** What the client gets back, the same on every retry of the same command ID. */
@@ -135,10 +142,15 @@ async function create(
   if (counter !== undefined && counter.last_issued === undefined) {
     throw new RangeError('request counter document has no last_issued');
   }
+  // D-S10-1: names are written with the request (read before any write in the transaction).
+  const people = [draft.requesterId, ...(draft.relatedPersonIds ?? [])].filter((id): id is string => id !== undefined);
+  const names = people.length === 0 ? new Map<string, string>() : await context.peopleDirectory.displayNames(transaction, people);
   const sequence = nextRequestSequence(counter?.last_issued as number | undefined);
   const requestNumber = formatRequestNumber(sequence, context.environment);
   transaction.set(REQUEST_COUNTER_PATH, { last_issued: sequence });
-  const { request, gmDetail } = splitRequestRecord(newRequestRecord(draft, requestNumber, context.now));
+  const record = newRequestRecord(draft, requestNumber, context.now);
+  const request = toRequestDetailDocument(record, { personLabel: (personId) => names.get(personId) });
+  const { gmDetail } = splitRequestRecord(record);
   transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, request);
   transaction.set(`${GM_REQUEST_DETAILS_COLLECTION}/${requestId}`, gmDetail);
   return { request_id: requestId, request_number: requestNumber };
@@ -177,6 +189,8 @@ async function toDomainCommand(
         details: await onBehalfDetails(transaction, payload.details, context),
         markConfidential: payload.mark_confidential,
         confidentialNote: payload.confidential_note,
+        relatedPersonIds: payload.related_person_ids,
+        confirmConfidentialGrant: payload.confirm_confidential_grant,
       };
     }
     case 'create_gm_task': {
@@ -190,6 +204,8 @@ async function toDomainCommand(
         description: payload.description,
         markConfidential: payload.mark_confidential,
         confidentialNote: payload.confidential_note,
+        relatedPersonIds: payload.related_person_ids,
+        confirmConfidentialGrant: payload.confirm_confidential_grant,
       };
     }
   }
@@ -232,7 +248,8 @@ function newRequestRecord(draft: RequestDraft, requestNumber: string, now: Insta
     is_confidential: draft.isConfidential,
     ...optional('sensitivity_reason', draft.sensitivityReason),
     ...optional('sensitivity_note', draft.sensitivityNote),
-    related_person_ids: [],
+    related_person_ids: draft.relatedPersonIds ?? [],
+    ...optional('confidential_grant_ids', draft.confidentialGrantIds),
     watcher_ids: [],
     status: 'queued',
     revision: 1,

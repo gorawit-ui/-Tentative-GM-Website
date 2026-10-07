@@ -57,13 +57,17 @@ export {
   type RequestSummaryDocument,
 } from './request-summary';
 export { PERSON_EMAIL_DOMAIN, isPersonId, personIdFromCsvEmail } from './person-id';
+export { ARCHIVE_PAGE_SIZE, MAX_LIST_LIMIT, pageLimit } from './query-limits';
 export {
+  REQUEST_DISPLAY_FIELDS,
+  UNKNOWN_PERSON_DISPLAY_NAME,
   buildRequestProjections,
   toBoardCountersDocument,
   toGmRequestSummaryDocument,
   toRequestDetailDocument,
   type BoardCountersDocument,
   type GmRequestSummaryDocument,
+  type PersonDisplay,
   type ProjectionContext,
   type RequestDetailDocument,
   type RequestProjections,

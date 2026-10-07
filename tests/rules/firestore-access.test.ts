@@ -3,7 +3,7 @@
 // (denied even when filtered to their own requests), no self-service writes to `access`, the bounded
 // queries the screens will run, and summaries carrying only allowlisted fields. Emulator only.
 import { assertFails, assertSucceeds, type RulesTestContext, type RulesTestEnvironment, type TokenOptions } from '@firebase/rules-unit-testing';
-import { REQUEST_SUMMARY_FIELDS } from '@gm/contracts';
+import { MAX_LIST_LIMIT, REQUEST_SUMMARY_FIELDS } from '@gm/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GENERAL_REQUEST_ID, SECRET_REQUEST_ID, SUBJECTS, type SubjectKey } from './fixtures/acl-matrix';
 import { clientFor, seed, startRulesEnvironment, subjectClient } from './support/rules-env';
@@ -40,11 +40,18 @@ const LOOKALIKES: readonly Probe[] = [
   ['suffix x@tdfb.co.evil.com', 'probe.evil@tdfb.co.evil.com'],
   ['prefix x@eviltdfb.co', 'probe.prefix@eviltdfb.co'],
   ['tdfb.co@gmail.com', 'tdfb.co@gmail.com'],
-  ['upper-case domain x@TDFB.CO', 'probe.upper@TDFB.CO'],
+  ['upper-case lookalike x@TDFB.CO.TH', 'probe.upperth@TDFB.CO.TH'],
+  ['upper-case subdomain x@MAIL.TDFB.CO', 'probe.uppersub@MAIL.TDFB.CO'],
   ['trailing space', 'probe.space@tdfb.co '],
   ['two @', 'probe@x@tdfb.co'],
   ['empty local part', '@tdfb.co'],
 ].map(([name, email], index) => ({ name: name!, uid: `uid-probe-lookalike-${index}`, token: google(email!), access: enabledRequester(email!) }));
+
+/** D-S10-5: the domain is checked after lower(), like person IDs from the CSV (D-S08-4). */
+const CASE_VARIANTS: readonly Probe[] = [
+  ['upper-case domain x@TDFB.CO', 'probe.upper@TDFB.CO'],
+  ['mixed case Probe.Mixed@TdFb.Co', 'Probe.Mixed@TdFb.Co'],
+].map(([name, email], index) => ({ name: name!, uid: `uid-probe-case-${index}`, token: google(email!), access: enabledRequester(email!) }));
 
 const WRONG_SIGN_IN: readonly Probe[] = [
   { name: 'unverified @tdfb.co', uid: 'uid-probe-unverified', token: google('probe.unverified@tdfb.co', { email_verified: false }), access: enabledRequester('probe.unverified@tdfb.co') },
@@ -83,7 +90,7 @@ const CLAIM_SPOOF: Probe = {
   access: enabledRequester('probe.claim@tdfb.co'),
 };
 
-const ALL_PROBES = [CONTROL, ...LOOKALIKES, ...WRONG_SIGN_IN, CLAIM_SPOOF];
+const ALL_PROBES = [CONTROL, ...LOOKALIKES, ...CASE_VARIANTS, ...WRONG_SIGN_IN, CLAIM_SPOOF];
 const probeDb = (probe: Probe) => clientFor(env, clients, `probe:${probe.uid}`, probe.uid, probe.token).firestore();
 const subjectDb = (key: SubjectKey) => subjectClient(env, clients, key).firestore();
 const personOf = (key: SubjectKey) => SUBJECTS[key].access!.person_id;
@@ -102,28 +109,35 @@ afterAll(async () => {
 describe('exact corporate e-mail: verified Google sign-in @tdfb.co only', () => {
   it('control: an exact verified @tdfb.co Google account with an enabled access document reads summaries', async () => {
     await assertSucceeds(probeDb(CONTROL).doc(`request_summaries/${GENERAL_REQUEST_ID}`).get());
-    await assertSucceeds(probeDb(CONTROL).collection('request_summaries').get());
+    await assertSucceeds(probeDb(CONTROL).collection('request_summaries').limit(MAX_LIST_LIMIT).get());
+  });
+
+  it.each(CASE_VARIANTS.map((probe) => [probe.name, probe] as const))('D-S10-5: %s is the same corporate domain and is accepted', async (_name, probe) => {
+    const db = probeDb(probe);
+    await assertSucceeds(db.doc(`request_summaries/${GENERAL_REQUEST_ID}`).get());
+    await assertSucceeds(db.collection('request_summaries').limit(MAX_LIST_LIMIT).get());
+    await assertSucceeds(db.doc(`access/${probe.uid}`).get());
   });
 
   it.each(LOOKALIKES.map((probe) => [probe.name, probe] as const))('lookalike %s is denied even with an enabled access document', async (_name, probe) => {
     const db = probeDb(probe);
     await assertFails(db.doc(`request_summaries/${GENERAL_REQUEST_ID}`).get());
-    await assertFails(db.collection('request_summaries').get());
+    await assertFails(db.collection('request_summaries').limit(MAX_LIST_LIMIT).get());
     await assertFails(db.doc(`access/${probe.uid}`).get());
   });
 
   it.each(WRONG_SIGN_IN.map((probe) => [probe.name, probe] as const))('%s is denied', async (_name, probe) => {
     const db = probeDb(probe);
     await assertFails(db.doc(`request_summaries/${GENERAL_REQUEST_ID}`).get());
-    await assertFails(db.collection('gm_profile_summaries').get());
+    await assertFails(db.collection('gm_profile_summaries').limit(MAX_LIST_LIMIT).get());
   });
 
   it('a role claim in the token does not make a requester GM (the access document decides)', async () => {
     const db = probeDb(CLAIM_SPOOF);
     await assertSucceeds(db.doc(`request_summaries/${GENERAL_REQUEST_ID}`).get());
-    await assertFails(db.collection('gm_request_summaries').get());
+    await assertFails(db.collection('gm_request_summaries').limit(MAX_LIST_LIMIT).get());
     await assertFails(db.doc(`requests/${GENERAL_REQUEST_ID}`).get());
-    await assertFails(db.collection('people_picker').get());
+    await assertFails(db.collection('people_picker').limit(MAX_LIST_LIMIT).get());
   });
 });
 
@@ -143,7 +157,9 @@ describe('queries on requests: GM only, even when a non-GM filters to their own 
 
   it('the same filtered query works for GM Staff and GM Admin', async () => {
     for (const key of ['gm_staff', 'gm_admin'] as const) {
-      const result = await assertSucceeds(subjectDb(key).collection('requests').where('requester_id', '==', personOf('requester')).get());
+      const result = await assertSucceeds(
+        subjectDb(key).collection('requests').where('requester_id', '==', personOf('requester')).limit(MAX_LIST_LIMIT).get(),
+      );
       expect(result.size).toBe(2);
     }
   });
@@ -212,7 +228,7 @@ describe('bounded queries the screens run (pagination) match the Rules', () => {
 
 describe('summaries carry only allowlisted fields', () => {
   it('what an employee reads from request_summaries is a subset of the public allowlist', async () => {
-    const snapshot = await assertSucceeds(subjectDb('employee').collection('request_summaries').get());
+    const snapshot = await assertSucceeds(subjectDb('employee').collection('request_summaries').limit(MAX_LIST_LIMIT).get());
     expect(snapshot.size).toBe(1);
     for (const doc of snapshot.docs) {
       for (const field of Object.keys(doc.data())) expect(REQUEST_SUMMARY_FIELDS as readonly string[]).toContain(field);
@@ -224,3 +240,35 @@ describe('summaries carry only allowlisted fields', () => {
     expect(snapshot.exists).toBe(false);
   });
 });
+
+describe('D-S10-4: every list query is bounded — no limit or a limit above 200 is refused', () => {
+  const LISTS: readonly (readonly [SubjectKey, string])[] = [
+    ['employee', 'request_summaries'],
+    ['employee', 'gm_profile_summaries'],
+    ['employee', 'locations'],
+    ['employee', `user_state/${personOf('employee')}/requests`],
+    ['gm_staff', 'gm_request_summaries'],
+    ['gm_staff', 'requests'],
+    ['gm_staff', 'people_picker'],
+    ['gm_admin', 'renewal_items'],
+  ];
+
+  it.each(LISTS.map(([key, path]) => [`${key}: ${path}`, key, path] as const))('%s — no limit → denied', async (_name, key, path) => {
+    await assertFails(subjectDb(key).collection(path).get());
+  });
+
+  it.each(LISTS.map(([key, path]) => [`${key}: ${path}`, key, path] as const))('%s — limit 201 → denied', async (_name, key, path) => {
+    await assertFails(subjectDb(key).collection(path).limit(MAX_LIST_LIMIT + 1).get());
+  });
+
+  it.each(LISTS.map(([key, path]) => [`${key}: ${path}`, key, path] as const))('%s — limit 200 and a page of 50 → allowed', async (_name, key, path) => {
+    await assertSucceeds(subjectDb(key).collection(path).limit(MAX_LIST_LIMIT).get());
+    await assertSucceeds(subjectDb(key).collection(path).limit(50).get());
+  });
+
+  it('opening one document (get) needs no limit', async () => {
+    await assertSucceeds(subjectDb('employee').doc(`request_summaries/${GENERAL_REQUEST_ID}`).get());
+    await assertSucceeds(subjectDb('gm_staff').doc(`requests/${GENERAL_REQUEST_ID}`).get());
+  });
+});
+

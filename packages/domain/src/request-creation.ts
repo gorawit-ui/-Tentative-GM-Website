@@ -79,14 +79,21 @@ export interface ConfidentialChoice {
 export const SENSITIVITY_REASONS = ['contract', 'personnel', 'other'] as const;
 export type SensitivityReason = (typeof SENSITIVITY_REASONS)[number];
 
+/** FU-07: related persons chosen in a GM form; a confidential request needs the separate confirmation (C3). */
+export interface RelatedChoice {
+  readonly relatedPersonIds?: readonly string[] | undefined;
+  readonly confirmConfidentialGrant?: boolean | undefined;
+}
+
 export type CreateRequestCommand =
-  | ({ readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails } & ConfidentialChoice)
+  | ({ readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails } & ConfidentialChoice & RelatedChoice)
   | ({
       readonly kind: 'on_behalf';
       readonly actor: Actor;
       readonly requester: OnBehalfRequester;
       readonly details: ServiceDetails;
-    } & ConfidentialChoice)
+    } & ConfidentialChoice &
+      RelatedChoice)
   | ({
       readonly kind: 'gm_task';
       readonly actor: Actor;
@@ -95,7 +102,8 @@ export type CreateRequestCommand =
       readonly category?: string | undefined;
       readonly sensitivitySubject: SensitivitySubject;
       readonly description?: string | undefined;
-    } & ConfidentialChoice);
+    } & ConfidentialChoice &
+      RelatedChoice);
 
 /** Domain result of a valid create command; persistence (A01) maps it to Firestore fields. */
 export interface RequestDraft {
@@ -117,6 +125,10 @@ export interface RequestDraft {
   readonly sensitivityReason?: SensitivityReason;
   /** Restricted detail: why a GM marked the item confidential (`other`, D-S05-6). */
   readonly sensitivityNote?: string;
+  /** FU-07: related persons chosen in the GM form (absent when none). */
+  readonly relatedPersonIds?: readonly string[];
+  /** FU-07: on a confidential request, the related persons whose access the GM confirmed (C3, D-ACL-2). */
+  readonly confidentialGrantIds?: readonly string[];
   /** True only when a real requester account must confirm after GM completes (C2, Part 6 §6.6). */
   readonly requiresRequesterConfirmation: boolean;
 }
@@ -259,12 +271,33 @@ function onBehalfRequester(requester: OnBehalfRequester) {
   return { requesterNameText, requiresRequesterConfirmation: false };
 }
 
+/**
+ * FU-07: related persons chosen in a GM form. On a confidential request they read detail only with the
+ * separate confirmation (C3, nothing pre-ticked) and are recorded as grants (D-ACL-2). The real
+ * requester is never repeated as a related person.
+ */
+function withRelated<T extends { readonly isConfidential: boolean; readonly requesterId?: string }>(
+  draft: T,
+  choice: RelatedChoice,
+): T & { readonly relatedPersonIds?: readonly string[]; readonly confidentialGrantIds?: readonly string[] } {
+  const relatedPersonIds = [...new Set(choice.relatedPersonIds ?? [])].filter((personId) => personId !== draft.requesterId);
+  if (relatedPersonIds.length === 0) return draft;
+  if (!draft.isConfidential) return { ...draft, relatedPersonIds };
+  if (choice.confirmConfidentialGrant !== true) {
+    throw new RequestRejected('CONFIDENTIAL_GRANT_REQUIRED', 'Related persons on a confidential request need the separate access confirmation (C3)');
+  }
+  return { ...draft, relatedPersonIds, confidentialGrantIds: relatedPersonIds };
+}
+
 /** Validates a create command and returns the request to persist. Throws RequestRejected otherwise. */
 export function createRequestDraft(command: CreateRequestCommand): RequestDraft {
   const createdById = requireText(command.actor.personId, 'ACTOR_INVALID', 'actor');
 
   switch (command.kind) {
     case 'self':
+      if (command.relatedPersonIds !== undefined && command.relatedPersonIds.length > 0) {
+        throw new RequestRejected('RELATED_NOT_ALLOWED', 'Related persons are chosen by GM, not in the requester form');
+      }
       return {
         ...applyConfidentialChoice(serviceFields(command.details), command.actor, command),
         source: 'web',
@@ -275,13 +308,16 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
       };
     case 'on_behalf':
       requireGm(command.actor);
-      return {
-        ...applyConfidentialChoice(serviceFields(command.details), command.actor, command),
-        source: 'web',
-        origin: 'gm_on_behalf',
-        createdById,
-        ...onBehalfRequester(command.requester),
-      };
+      return withRelated(
+        {
+          ...applyConfidentialChoice(serviceFields(command.details), command.actor, command),
+          source: 'web' as const,
+          origin: 'gm_on_behalf' as const,
+          createdById,
+          ...onBehalfRequester(command.requester),
+        },
+        command,
+      );
     case 'gm_task': {
       requireGm(command.actor);
       if ('requesterId' in command || 'requester' in command || 'requesterNameText' in command) {
@@ -302,7 +338,7 @@ export function createRequestDraft(command: CreateRequestCommand): RequestDraft 
         ...sensitivityOf(command.sensitivitySubject),
         requiresRequesterConfirmation: false,
       };
-      return applyConfidentialChoice(draft, command.actor, command);
+      return withRelated(applyConfidentialChoice(draft, command.actor, command), command);
     }
     default:
       throw new RequestRejected('KIND_INVALID', 'Unknown create command');

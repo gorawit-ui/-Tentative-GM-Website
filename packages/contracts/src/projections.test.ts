@@ -6,13 +6,16 @@ import { snapshotCalendar, type Instant } from '@gm/time';
 import {
   PRIVATE_REQUEST_FIELDS,
   PUBLIC_WAITING_LABELS,
+  REQUEST_DISPLAY_FIELDS,
   REQUEST_DOCUMENT_FIELDS,
+  UNKNOWN_PERSON_DISPLAY_NAME,
   REQUEST_SUMMARY_FIELDS,
   GM_ONLY_REQUEST_FIELDS,
   buildRequestProjections,
   joinRequestRecord,
   splitRequestRecord,
   toBoardCountersDocument,
+  toRequestDetailDocument,
   type ProjectionContext,
   type RequestRecord,
 } from './index';
@@ -89,7 +92,11 @@ describe('three projections from one request document', () => {
     expect(summary).toMatchObject({ request_id: 'req-0427', request_number: 'GM-0427', status: 'in_progress' });
     expect(gm).toMatchObject({ request_id: 'req-0427', request_number: 'GM-0427', status: 'in_progress' });
     const { watcher_ids: watchers, ...requestDocument } = REQUEST;
-    expect(detail).toEqual(requestDocument);
+    expect(detail).toEqual({
+      ...requestDocument,
+      assignee_display: { person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM หนึ่ง' },
+      related_people_display: [{ person_id: 'related01@tdfb.co', display_name: UNKNOWN_PERSON_DISPLAY_NAME }],
+    });
     expect(gmDetail).toEqual({ watcher_ids: watchers });
   });
 
@@ -102,7 +109,8 @@ describe('three projections from one request document', () => {
       requester_name_text: REQUEST.requester_name_text,
       related_person_ids: REQUEST.related_person_ids,
     });
-    expect(Object.keys(detail).filter((key) => !(REQUEST_DOCUMENT_FIELDS as readonly string[]).includes(key))).toEqual([]);
+    const known: readonly string[] = [...REQUEST_DOCUMENT_FIELDS, ...REQUEST_DISPLAY_FIELDS];
+    expect(Object.keys(detail).filter((key) => !known.includes(key))).toEqual([]);
   });
 
   it('does not mutate the request', () => {
@@ -418,3 +426,66 @@ describe('D-S09-5: watcher list and confidential note live only in the GM detail
     expect(GM_ONLY_REQUEST_FIELDS).toEqual(['watcher_ids', 'sensitivity_note']);
   });
 });
+
+describe('D-S10-1: display names in requests/{id} (person_id + display_name pairs)', () => {
+  const withRequester: RequestRecord = {
+    ...REQUEST,
+    origin: 'requester',
+    requester_id: 'finance01@tdfb.co',
+    related_person_ids: ['gm.staff01@tdfb.co', 'related01@tdfb.co'],
+  };
+  const { requester_name_text: _text, ...selfService } = withRequester;
+
+  it('the requester, the assignee and every related person get a pair, in the stored order', () => {
+    const detail = toRequestDetailDocument(selfService, { personLabel: (personId) => NAMES[personId] });
+    expect(detail.requester_display).toEqual({ person_id: 'finance01@tdfb.co', display_name: 'คุณการเงิน' });
+    expect(detail.assignee_display).toEqual({ person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM หนึ่ง' });
+    expect(detail.related_people_display).toEqual([
+      { person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM หนึ่ง' },
+      { person_id: 'related01@tdfb.co', display_name: UNKNOWN_PERSON_DISPLAY_NAME },
+    ]);
+  });
+
+  it('never shows an e-mail as a name: an unknown person gets the neutral label', () => {
+    const detail = toRequestDetailDocument(selfService, { personLabel: () => undefined });
+    const names = [detail.requester_display, detail.assignee_display, ...detail.related_people_display].map((pair) => pair?.display_name);
+    expect(names).toEqual(Array(4).fill(UNKNOWN_PERSON_DISPLAY_NAME));
+    for (const name of names) expect(name).not.toContain('@');
+    expect(UNKNOWN_PERSON_DISPLAY_NAME).toBe('พนักงาน');
+  });
+
+  it('a label that is an e-mail or blank is not used as a name', () => {
+    const detail = toRequestDetailDocument(selfService, { personLabel: (personId) => (personId.startsWith('finance') ? personId : '  ') });
+    expect(detail.requester_display?.display_name).toBe(UNKNOWN_PERSON_DISPLAY_NAME);
+    expect(detail.assignee_display?.display_name).toBe(UNKNOWN_PERSON_DISPLAY_NAME);
+  });
+
+  it('a gm_task has no requester pair; an unassigned request has no assignee pair; no related = empty list', () => {
+    const { assignee_id: _assignee, requester_name_text: _name, ...task } = { ...REQUEST, type: 'gm_task' as const, origin: 'gm_initiated' as const };
+    const detail = toRequestDetailDocument({ ...task, related_person_ids: [] }, { personLabel: (personId) => NAMES[personId] });
+    expect(detail).not.toHaveProperty('requester_display');
+    expect(detail).not.toHaveProperty('assignee_display');
+    expect(detail.related_people_display).toEqual([]);
+  });
+
+  it('the pairs never reach the public summary and are listed as private fields', () => {
+    const { public: summary } = buildRequestProjections('req-0427', selfService, context(UPDATED));
+    for (const field of REQUEST_DISPLAY_FIELDS) {
+      expect(summary).not.toHaveProperty(field);
+      expect(PRIVATE_REQUEST_FIELDS as readonly string[]).toContain(field);
+    }
+  });
+
+  it('buildRequestProjections writes the same pairs into the detail document', () => {
+    const { detail } = buildRequestProjections('req-0427', selfService, context(UPDATED));
+    expect(detail).toEqual(toRequestDetailDocument(selfService, { personLabel: (personId) => NAMES[personId] }));
+  });
+
+  it('reading the stored document back drops the pairs, so the record stays the single source', () => {
+    const detail = toRequestDetailDocument(selfService, { personLabel: (personId) => NAMES[personId] });
+    const record = joinRequestRecord(detail, { watcher_ids: [] });
+    for (const field of REQUEST_DISPLAY_FIELDS) expect(record).not.toHaveProperty(field);
+    expect(splitRequestRecord(record).request).toEqual(splitRequestRecord(selfService).request);
+  });
+});
+

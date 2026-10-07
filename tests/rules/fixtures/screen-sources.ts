@@ -77,10 +77,8 @@ export const SCREEN_SOURCES: readonly ScreenDataSources[] = [
     audience: NON_GM_ACTIVE,
     audienceLabel: 'ผู้ขอ (ทุกบัญชีที่ใช้งานได้)',
     firestore: [],
-    api: ['จำนวนงานที่ requester_id = ฉัน, status = completed และยังไม่มี closed_at (Part 2 Addendum) — เสนอ endpoint เดียวกับคำขอของฉัน'],
-    questions: [
-      'Q-S10-2: spec ไม่ระบุแหล่งของจำนวนนี้ — query requests ของคนที่ไม่ใช่ GM ถูกปฏิเสธ (S10), request_summaries ไม่มีตัวตนผู้ขอและไม่มีงานลับ, user_state ไม่มี status จึงโหลดตรงจาก Firestore ไม่ได้ (ยกเว้น get requests ทีละงานจาก user_state)',
-    ],
+    api: ['จำนวนงานที่ requester_id = ฉัน, status = completed และยังไม่มี closed_at (Part 2 Addendum) จาก endpoint ส่วนบุคคลเดียวกับคำขอของฉัน (D-S10-2)'],
+    questions: [],
   },
   {
     screen: 'คำขอของฉัน — แท็บที่ฉันขอ (UI-06)',
@@ -106,26 +104,26 @@ export const SCREEN_SOURCES: readonly ScreenDataSources[] = [
     audience: ['requester'],
     audienceLabel: 'ผู้ขอของงาน',
     firestore: [
-      { resource: 'requests.general', operations: ['get'], use: 'รายละเอียดงาน' },
+      { resource: 'requests.general', operations: ['get'], use: 'รายละเอียดงาน พร้อมชื่อผู้ขอ ผู้รับผิดชอบ และ related เป็นคู่ person_id + display_name (D-S10-1)' },
       { resource: 'requests.confidential', operations: ['get'], use: 'รายละเอียดงานลับของตัวเอง' },
       { resource: 'locations', operations: ['get'], use: 'ชื่อสถานที่' },
       { resource: 'areas', operations: ['get'], use: 'ชื่อบริเวณ' },
     ],
     api: ['คอมเมนต์, history, ช่วงรอ, ลิงก์รูป (signed URL) — API ตรวจ parent ACL', 'ยืนยัน / ยังไม่เรียบร้อย / คอมเมนต์ / แนบรูป เป็น command'],
-    questions: ['Q-S10-1: ชื่อผู้ขอ ผู้สร้าง ผู้รับผิดชอบ และรายชื่อ related — requests/{id} มีเพียง person ID (อีเมล) และ people_picker เป็นของ GM เท่านั้น (D-ACL-1)'],
+    questions: ['Q-S11-1: ชื่อ “ผู้สร้าง” (เปิดเรื่องโดย GM) ไม่อยู่ในคู่ชื่อของ D-S10-1'],
   },
   {
     screen: 'รายละเอียด — related (UI-07)',
     audience: RELATED,
     audienceLabel: 'related person ทุก role',
     firestore: [
-      { resource: 'requests.general', operations: ['get'], use: 'รายละเอียดงานไม่ลับ (เห็นอีเมล related คนอื่นในงานเดียวกันได้, D-ACL-1)' },
+      { resource: 'requests.general', operations: ['get'], use: 'รายละเอียดงานไม่ลับ พร้อมชื่อคนในงาน (D-S10-1; เห็นอีเมล related คนอื่นในงานเดียวกันได้, D-ACL-1)' },
       { resource: 'requests.confidential', operations: ['get'], use: 'งานลับ: เฉพาะคนใน confidential_grant_ids (D-ACL-2)', audience: RELATED_GRANTED },
       { resource: 'locations', operations: ['get'], use: 'ชื่อสถานที่' },
       { resource: 'areas', operations: ['get'], use: 'ชื่อบริเวณ' },
     ],
     api: ['คอมเมนต์, history, ช่วงรอ, ลิงก์รูป — API ตรวจ parent ACL', 'คอมเมนต์ เป็น command'],
-    questions: ['Q-S10-1: ชื่อคนในข้อมูลสรุปของงาน (ข้อเดียวกับผู้ขอ)'],
+    questions: ['Q-S11-1: ชื่อ “ผู้สร้าง” (ข้อเดียวกับผู้ขอ)'],
   },
   {
     screen: 'รายละเอียด — ฝ่ายที่ถูกรอ (UI-07)',
@@ -136,7 +134,7 @@ export const SCREEN_SOURCES: readonly ScreenDataSources[] = [
       { resource: 'requests.confidential', operations: ['get'], use: 'งานลับที่ได้รับการยืนยัน' },
     ],
     api: ['ฉันเป็น recipient ของช่วงปัจจุบันหรือไม่ (recipients อยู่ใน waiting_intervals ที่ client อ่านตรงไม่ได้)', '“ฝั่งฉันเรียบร้อยแล้ว” เป็น command'],
-    questions: ['Q-S10-1: ชื่อคนในข้อมูลสรุปของงาน (ข้อเดียวกับผู้ขอ)'],
+    questions: ['Q-S11-1: ชื่อ “ผู้สร้าง” (ข้อเดียวกับผู้ขอ)'],
   },
   {
     screen: 'รายละเอียด — watcher (UI-07 มุมมอง summary-only)',
@@ -185,8 +183,8 @@ export const STORAGE_SAMPLE_PATHS: readonly string[] = [
 export const STORAGE_POLICY: readonly string[] = [
   'client อ่าน เขียน list หรือลบ object ใน Storage ผ่าน Firebase SDK ไม่ได้ทุก role (`infra/storage.rules` ปฏิเสธทั้งหมด) — ทดสอบใน Rules tests ทุก subject × ตัวอย่าง path',
   'bucket เป็น private และ uniform bucket-level access ไม่มี public ACL และไม่ใช้ Firebase download-token URL อายุยาว (§6.10)',
-  'ดูรูป/ไฟล์: API ตรวจ ACL ปัจจุบันของงาน (หรือ contribution ของตัวเองสำหรับ watcher) ทุกครั้งที่ขอลิงก์ แล้วออก **signed URL แบบ GET เฉพาะ object นั้น อายุสั้น 5 นาที** (ตัวอย่างใน §6.10) เป็น bearer จนหมดอายุ จึงมี revoke window ไม่เกินอายุลิงก์; ห้าม log URL; response เป็น private, no-store',
-  'อัปโหลด: browser ส่งไฟล์ตรงไป Storage ไม่ผ่าน API ทั้งไฟล์ ด้วยลิงก์อัปโหลดเฉพาะ object อายุสั้นที่ API ออกให้หลังตรวจสิทธิ์ ผูก actor + request/contribution จำกัดขนาด/ชนิด เป็นสถานะ pending — §6.10 ไม่ระบุว่าเป็น signed URL แบบ PUT หรือ resumable session (Q-S10-3)',
+  'ดูรูป/ไฟล์: API ตรวจ ACL ปัจจุบันของงาน (หรือ contribution ของตัวเองสำหรับ watcher) ทุกครั้งที่ขอลิงก์ แล้วออก **signed URL แบบ GET เฉพาะ object นั้น อายุสั้น 5 นาที** (Part 6 §6.10, D-S10-3) เป็น bearer จนหมดอายุ จึงมี revoke window ไม่เกินอายุลิงก์; หน้าเว็บขอ URL ใหม่เองเมื่อหมดอายุ; ห้าม log URL; response เป็น private, no-store',
+  'อัปโหลด: browser ส่งไฟล์ตรงไป Storage ไม่ผ่าน API ทั้งไฟล์ ด้วย **signed URL แบบ PUT เฉพาะ object อายุ 15 นาที** (D-S10-3: รูปย่อแล้วไฟล์เล็ก เผื่อเน็ตช้าที่คลังและโรงงาน) ที่ API ออกให้หลังตรวจสิทธิ์ ผูก actor + request/contribution จำกัดขนาด/ชนิด เป็นสถานะ pending',
   'pending ไม่เปิดให้ผู้อื่น; server finalize ตรวจขนาดจริงและ decode ภาพก่อนเปิดอ่าน; orphan ลบหลัง 24 ชม. ผ่าน cleanup เดิม; เดา path ไม่ได้สิทธิ์',
   'ไม่ persistent-cache รูปหรือรายละเอียดลับใน PWA',
   'ทดสอบ upload/finalize/signed URL กับ path ของคนอื่นใน S12 (API/Storage authorization emulator)',

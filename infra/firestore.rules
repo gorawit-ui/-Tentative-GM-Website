@@ -10,14 +10,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Verified Google sign-in with an exact @tdfb.co address: lookalikes such as tdfb.co.th,
-    // mail.tdfb.co or TDFB.CO fail. `hd` at sign-in is a hint only, never the check.
+    // Verified Google sign-in with an exact @tdfb.co address, compared after lower() like person IDs
+    // from the CSV (D-S10-5, D-S08-4): TDFB.CO is the same domain; lookalikes such as tdfb.co.th or
+    // mail.tdfb.co fail. `hd` at sign-in is a hint only, never the check.
     function corporateSignIn() {
       return request.auth != null
         && request.auth.token.firebase.sign_in_provider == 'google.com'
         && request.auth.token.email_verified == true
         && request.auth.token.email is string
-        && request.auth.token.email.matches('^[a-z0-9._%+-]+@tdfb[.]co$');
+        && request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@tdfb[.]co$');
+    }
+
+    // D-S10-4: every client list query carries a limit of at most 200 (budget); pages of 50 for
+    // “ดูทั้งหมด”. A query without a limit is refused, so a bug cannot read a whole collection.
+    function boundedList() {
+      return request.query.limit is int && request.query.limit <= 200;
     }
 
     // The single dependency read: role and enabled live here, not in custom claims.
@@ -50,25 +57,32 @@ service cloud.firestore {
 
     // Summaries and reference data for every active account.
     match /request_summaries/{requestId} {
-      allow read: if corporateSignIn() && isActive(accessOf());
+      allow get: if corporateSignIn() && isActive(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isActive(accessOf());
     }
     match /gm_profile_summaries/{personId} {
-      allow read: if corporateSignIn() && isActive(accessOf());
+      allow get: if corporateSignIn() && isActive(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isActive(accessOf());
     }
     match /locations/{locationId} {
-      allow read: if corporateSignIn() && isActive(accessOf());
+      allow get: if corporateSignIn() && isActive(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isActive(accessOf());
     }
     match /areas/{areaId} {
-      allow read: if corporateSignIn() && isActive(accessOf());
+      allow get: if corporateSignIn() && isActive(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isActive(accessOf());
     }
     match /qr_codes/{qrId} {
-      allow read: if corporateSignIn() && isActive(accessOf());
+      allow get: if corporateSignIn() && isActive(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isActive(accessOf());
     }
     match /content_pages/{pageId} {
-      allow read: if corporateSignIn() && isActive(accessOf());
+      allow get: if corporateSignIn() && isActive(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isActive(accessOf());
     }
     match /announcements/{announcementId} {
-      allow read: if corporateSignIn() && isActive(accessOf());
+      allow get: if corporateSignIn() && isActive(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isActive(accessOf());
     }
 
     // D-ACL-3: the public counter document only; no queries over the collection.
@@ -81,31 +95,37 @@ service cloud.firestore {
     // Children (history, comments, gm_history, waiting_intervals) have no rule: API only.
     match /requests/{requestId} {
       allow get: if corporateSignIn() && canReadRequest(accessOf(), resource.data);
-      allow list: if corporateSignIn() && isGm(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isGm(accessOf());
     }
 
     // GM only: board projection, watcher list / confidential note (D-S09-5), people picker (D-ACL-1),
     // renewal register.
     match /gm_request_summaries/{requestId} {
-      allow read: if corporateSignIn() && isGm(accessOf());
+      allow get: if corporateSignIn() && isGm(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isGm(accessOf());
     }
     match /gm_request_details/{requestId} {
-      allow read: if corporateSignIn() && isGm(accessOf());
+      allow get: if corporateSignIn() && isGm(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isGm(accessOf());
     }
     match /people_picker/{personId} {
-      allow read: if corporateSignIn() && isGm(accessOf());
+      allow get: if corporateSignIn() && isGm(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isGm(accessOf());
     }
     match /renewal_items/{itemId} {
-      allow read: if corporateSignIn() && isGm(accessOf());
+      allow get: if corporateSignIn() && isGm(accessOf());
+      allow list: if corporateSignIn() && boundedList() && isGm(accessOf());
 
       match /cycles/{cycleId} {
-        allow read: if corporateSignIn() && isGm(accessOf());
+        allow get: if corporateSignIn() && isGm(accessOf());
+        allow list: if corporateSignIn() && boundedList() && isGm(accessOf());
       }
     }
 
     // Own documents only.
     match /user_state/{personId}/requests/{requestId} {
-      allow read: if corporateSignIn() && isOwnState(accessOf(), personId);
+      allow get: if corporateSignIn() && isOwnState(accessOf(), personId);
+      allow list: if corporateSignIn() && boundedList() && isOwnState(accessOf(), personId);
     }
     // D-S09-6: a disabled account still reads its own access document (to show it is disabled).
     match /access/{uid} {

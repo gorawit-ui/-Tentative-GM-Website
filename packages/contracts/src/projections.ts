@@ -62,8 +62,24 @@ export interface GmRequestSummaryDocument {
   readonly stale_threshold_at?: number;
 }
 
-/** `requests/{id}` as read by people with detail access; only known fields are kept. */
-export type RequestDetailDocument = RequestDocument;
+/** D-S10-1: a person shown on the detail page — never an e-mail as the name. */
+export interface PersonDisplay {
+  readonly person_id: string;
+  readonly display_name: string;
+}
+
+/** D-S10-1: name pairs written into `requests/{id}` so the detail page needs no extra lookup. */
+export const REQUEST_DISPLAY_FIELDS = ['requester_display', 'assignee_display', 'related_people_display'] as const;
+
+/** Shown when the directory has no usable name for a person (same neutral word as D-S09-1). */
+export const UNKNOWN_PERSON_DISPLAY_NAME = 'พนักงาน';
+
+/** `requests/{id}` as read by people with detail access: known fields plus the display pairs. */
+export type RequestDetailDocument = RequestDocument & {
+  readonly requester_display?: PersonDisplay;
+  readonly assignee_display?: PersonDisplay;
+  readonly related_people_display: readonly PersonDisplay[];
+};
 
 export interface RequestProjections {
   readonly public: RequestSummaryDocument | null;
@@ -141,19 +157,32 @@ export function toGmRequestSummaryDocument(
   } as GmRequestSummaryDocument;
 }
 
-/** The restricted layer: the request's own known fields (unknown stored keys are dropped). */
-export function toRequestDetailDocument(request: RequestRecord): RequestDetailDocument {
-  return splitRequestRecord(request).request;
+/**
+ * The restricted layer: the request's own known fields (unknown stored keys are dropped) plus the
+ * D-S10-1 name pairs, written by the API at save time so the detail page needs no extra lookup.
+ */
+export function toRequestDetailDocument(request: RequestRecord, context: Pick<ProjectionContext, 'personLabel'>): RequestDetailDocument {
+  const display = (personId: string): PersonDisplay => {
+    const label = context.personLabel(personId)?.trim();
+    // D-S10-1: never an e-mail (or nothing) in place of a name.
+    const usable = label !== undefined && label !== '' && !label.includes('@');
+    return { person_id: personId, display_name: usable ? label : UNKNOWN_PERSON_DISPLAY_NAME };
+  };
+  return {
+    ...splitRequestRecord(request).request,
+    ...(request.requester_id === undefined ? {} : { requester_display: display(request.requester_id) }),
+    ...(request.assignee_id === undefined ? {} : { assignee_display: display(request.assignee_id) }),
+    related_people_display: request.related_person_ids.map(display),
+  };
 }
 
 /** All three projections of one request, written together in the command transaction (A01/A03). */
 export function buildRequestProjections(requestId: string, request: RequestRecord, context: ProjectionContext): RequestProjections {
-  const { request: detail, gmDetail } = splitRequestRecord(request);
   return {
     public: toRequestSummaryDocument(requestId, request, context),
     gm: toGmRequestSummaryDocument(requestId, request, context),
-    detail,
-    gmDetail,
+    detail: toRequestDetailDocument(request, context),
+    gmDetail: splitRequestRecord(request).gmDetail,
   };
 }
 

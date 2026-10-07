@@ -119,6 +119,10 @@ export const PRIVATE_REQUEST_FIELDS = [
   'confidential_grant_ids',
   'auto_close_due_at',
   'revision',
+  // D-S10-1: name pairs in requests/{id}
+  'requester_display',
+  'assignee_display',
+  'related_people_display',
 ] as const;
 
 /** Fields copied as they are; everything else on the request is left behind. */

@@ -139,8 +139,12 @@ export function splitRequestRecord(record: RequestRecord): {
 
 /** Joins the two stored documents back into the whole request (no GM detail yet = no watchers). */
 export function joinRequestRecord(request: RequestDocument, gmDetail: GmRequestDetailDocument | undefined): RequestRecord {
+  // Only the canonical fields: D-S10-1 name pairs and unknown keys are rebuilt on the next write.
+  const known = Object.fromEntries(
+    REQUEST_DOCUMENT_FIELDS.filter((field) => request[field] !== undefined).map((field) => [field, request[field]]),
+  ) as unknown as RequestDocument;
   return {
-    ...request,
+    ...known,
     watcher_ids: gmDetail?.watcher_ids ?? [],
     ...(gmDetail?.sensitivity_note === undefined ? {} : { sensitivity_note: gmDetail.sensitivity_note }),
   };
