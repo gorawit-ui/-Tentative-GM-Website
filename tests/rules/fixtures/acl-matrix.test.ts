@@ -187,7 +187,7 @@ describe('ACL matrix — the same policy as the domain predicates', () => {
 });
 
 describe('D-S09 in the matrix', () => {
-  it('D-S09-2: a related Viewer opens the confidential request only with the confirmed grant', () => {
+  it('D-S09-2 (now D-ACL-2): a related Viewer opens the confidential request only with the confirmed grant', () => {
     expect(decide('viewer_related', 'requests.confidential', 'get')).toBe('allow');
     expect(decide('viewer_unconfirmed', 'requests.confidential', 'get')).toBe('deny');
     expect(decide('viewer_unconfirmed', 'requests.general', 'get')).toBe('allow');
@@ -215,3 +215,42 @@ describe('D-S09 in the matrix', () => {
     ).toEqual(['access.self:get']);
   });
 });
+
+describe('D-ACL review changes in the matrix', () => {
+  it('D-ACL-1: people_picker is read by GM Staff and GM Admin only', () => {
+    for (const key of SUBJECT_KEYS) {
+      const expected = key === 'gm_staff' || key === 'gm_admin' ? 'allow' : 'deny';
+      expect(decide(key, 'people_picker', 'get'), key).toBe(expected);
+      expect(decide(key, 'people_picker', 'list'), key).toBe(expected);
+    }
+  });
+
+  it('D-ACL-2: a related person without a confirmed grant (any role) cannot open the confidential request', () => {
+    expect(SUBJECT_KEYS).toContain('related_unconfirmed');
+    expect(decide('related_unconfirmed' as SubjectKey, 'requests.general', 'get')).toBe('allow');
+    expect(decide('related_unconfirmed' as SubjectKey, 'requests.confidential', 'get')).toBe('deny');
+    expect(decide('related_person', 'requests.confidential', 'get')).toBe('allow');
+    expect(decide('requester', 'requests.confidential', 'get')).toBe('allow');
+  });
+
+  it('D-ACL-3: board_counters/public can be opened (get) but the collection cannot be listed', () => {
+    for (const key of SUBJECT_KEYS) {
+      expect(decide(key, 'board_counters', 'list'), key).toBe('deny');
+    }
+    expect(decide('employee', 'board_counters', 'get')).toBe('allow');
+    expect(decide('outsider', 'board_counters', 'get')).toBe('deny');
+  });
+});
+
+describe('S10 fixture fix', () => {
+  it('user_state.other belongs to none of the subjects, so it is someone else’s for every subject', () => {
+    const other = RESOURCES.find((resource) => resource.key === 'user_state.other')!;
+    expect(typeof other.path).toBe('string');
+    for (const key of SUBJECT_KEYS) {
+      const own = SUBJECTS[key].access?.person_id;
+      if (own !== undefined) expect(other.path as string).not.toContain(`user_state/${own}/`);
+    }
+    expect(seedDocuments().has(other.path as string)).toBe(true);
+  });
+});
+

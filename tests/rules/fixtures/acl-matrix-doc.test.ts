@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ACTIVE_SUBJECTS, RESOURCES, SUBJECTS, SUBJECT_KEYS, decide, resourcePattern } from './acl-matrix';
 import { ACL_MATRIX_DOC_PATH, baselineRows, renderAclMatrixMarkdown } from './acl-matrix-doc';
+import { SCREEN_SOURCES, STORAGE_SAMPLE_PATHS } from './screen-sources';
 
 const file = new URL(`../../../${ACL_MATRIX_DOC_PATH}`, import.meta.url);
 
@@ -18,6 +19,8 @@ describe('docs/spec/ACL-MATRIX.md', () => {
     for (const key of SUBJECT_KEYS) expect(text).toContain(`### ${SUBJECTS[key].description} (\`${key}\`)`);
     expect(text).toContain('## งานลับ — ใครเห็นอะไรได้บ้าง');
     expect(text).toContain('## Watcher — เห็นอะไรได้บ้าง');
+    expect(text).toContain('## Storage');
+    expect(text).toContain('## หน้าจอ → แหล่งข้อมูล');
   });
 
   it('lists every allowed cell once — in the baseline or under its role — and nothing that is denied', () => {
@@ -44,6 +47,24 @@ describe('docs/spec/ACL-MATRIX.md', () => {
         expect(covered, `${key} ${resource.key}`).toBe(anyAllowed);
         if (!anyAllowed) expect(listed, `${key} ${resource.key} denied but listed`).toBe(false);
       }
+    }
+  });
+
+  it('D-ACL-5: has a Storage section saying no client reads or writes Storage, and how files are served', () => {
+    const text = renderAclMatrixMarkdown();
+    const storage = text.slice(text.indexOf('## Storage'), text.indexOf('## หน้าจอ → แหล่งข้อมูล'));
+    expect(storage).toContain('ไม่ได้ทุก role');
+    expect(storage).toContain('signed URL แบบ GET เฉพาะ object นั้น อายุสั้น 5 นาที');
+    for (const path of STORAGE_SAMPLE_PATHS) expect(storage).toContain(`\`${path}\``);
+  });
+
+  it('D-ACL-6: has a screen → data source row for every screen, with its open questions', () => {
+    const text = renderAclMatrixMarkdown();
+    const screens = text.slice(text.indexOf('## หน้าจอ → แหล่งข้อมูล'));
+    for (const entry of SCREEN_SOURCES) {
+      const row = screens.split('\n').find((line) => line.startsWith(`| ${entry.screen} |`));
+      expect(row, entry.screen).toBeDefined();
+      for (const question of entry.questions) expect(row).toContain(question.slice(0, 7));
     }
   });
 

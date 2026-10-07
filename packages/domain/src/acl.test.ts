@@ -88,8 +88,9 @@ describe('request detail', () => {
     expect(canReadRequestDetail(who, REQUEST)).toBe(false);
   });
 
-  it('confidential: the same people, nobody else', () => {
-    for (const who of [REQUESTER, RELATED, GM, GM_ADMIN]) expect(canReadRequestDetail(who, SECRET)).toBe(true);
+  it('confidential: GM, the requester and confirmed grants only (D-ACL-2)', () => {
+    const granted: RequestAclFacts = { ...SECRET, confidentialGrantIds: [RELATED.personId] };
+    for (const who of [REQUESTER, RELATED, GM, GM_ADMIN]) expect(canReadRequestDetail(who, granted)).toBe(true);
     for (const who of [WATCHER, EMPLOYEE, VIEWER, INACTIVE_REQUESTER, OUTSIDER]) {
       expect(canReadRequestDetail(who, SECRET)).toBe(false);
     }
@@ -109,26 +110,34 @@ describe('request detail', () => {
   });
 });
 
-describe('D-S09-2: a Viewer and confidential requests', () => {
+describe('D-ACL-2: confidential detail needs GM, the requester or a confirmed grant — for every role', () => {
   const secretWithGrant: RequestAclFacts = { ...SECRET, confidentialGrantIds: [VIEWER_RELATED.personId] };
 
-  it('a Viewer related to a confidential request without a confirmed grant cannot read it', () => {
+  it('a related person (any role) without a confirmed grant cannot read a confidential request', () => {
+    expect(canReadRequestDetail(RELATED, SECRET)).toBe(false);
     expect(canReadRequestDetail(VIEWER_RELATED, SECRET)).toBe(false);
   });
 
-  it('a Viewer added as related with the confidential grant confirmed (C3) can', () => {
+  it('a confirmed grant opens it, for a Viewer as for anyone', () => {
     expect(canReadRequestDetail(VIEWER_RELATED, secretWithGrant)).toBe(true);
+    expect(canReadRequestDetail(RELATED, { ...SECRET, confidentialGrantIds: [RELATED.personId] })).toBe(true);
   });
 
-  it('the Viewer role alone never opens a confidential request, even if listed in the grants', () => {
-    expect(canReadRequestDetail(VIEWER, { ...SECRET, confidentialGrantIds: [VIEWER.personId] })).toBe(false);
+  it('the requester and GM need no grant', () => {
+    for (const who of [REQUESTER, GM, GM_ADMIN]) expect(canReadRequestDetail(who, SECRET)).toBe(true);
   });
 
-  it('a general request still opens for a related Viewer without any grant', () => {
+  it('the grant list decides, not the related list: a granted person reads it, the Viewer role alone does not', () => {
+    expect(canReadRequestDetail(EMPLOYEE, { ...SECRET, confidentialGrantIds: [EMPLOYEE.personId] })).toBe(true);
+    expect(canReadRequestDetail(VIEWER, SECRET)).toBe(false);
+  });
+
+  it('a general request still opens for related persons without any grant', () => {
     expect(canReadRequestDetail(VIEWER_RELATED, REQUEST)).toBe(true);
+    expect(canReadRequestDetail(RELATED, REQUEST)).toBe(true);
   });
 
-  it('other related people are unchanged by the grant list', () => {
-    expect(canReadRequestDetail(RELATED, SECRET)).toBe(true);
+  it('an inactive account with a grant still cannot read it', () => {
+    expect(canReadRequestDetail(INACTIVE_REQUESTER, { ...SECRET, requesterId: 'someone@tdfb.co', confidentialGrantIds: [INACTIVE_REQUESTER.personId] })).toBe(false);
   });
 });

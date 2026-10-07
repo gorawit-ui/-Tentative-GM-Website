@@ -49,9 +49,12 @@ export {
   type RequestStatus,
 } from './lifecycle';
 export {
+  markConfidential,
   removeConfidentialFlag,
   type ConfidentialFlagRemovedEvent,
+  type ConfidentialFlagSetEvent,
   type ConfidentialityState,
+  type FlaggableState,
 } from './confidentiality';
 export {
   DEFAULT_WORKING_MORNING_TIME,

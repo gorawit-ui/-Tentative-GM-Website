@@ -34,7 +34,7 @@ export interface WaitingOnInput {
 export interface WaitingFields {
   readonly isConfidential: boolean;
   readonly relatedPersonIds: readonly string[];
-  /** D-S09-2: people added to a confidential request with the separate grant confirmed (C3). */
+  /** D-ACL-2: people confirmed to read the confidential request (C3); GM and the requester need none. */
   readonly confidentialGrantIds?: readonly string[];
   /** Number of waiting intervals ever opened on the request; never reset. */
   readonly waitingIntervalSeq: number;
@@ -67,6 +67,8 @@ export interface WaitingPlan {
   readonly recipientIds: readonly string[];
   /** Recipients who become related persons (shown to the GM before confirming, C3). */
   readonly newRelatedPersonIds: readonly string[];
+  /** D-ACL-2: on a confidential request, recipients who get the confirmed grant (incl. related without one). */
+  readonly newGrantPersonIds: readonly string[];
   /** Confidential request adding new people: needs its own confirmation (C3, F3). */
   readonly needsConfidentialGrant: boolean;
 }
@@ -220,8 +222,12 @@ function withoutActor(recipientIds: readonly string[], actorId: string): readonl
   return recipientIds.filter((personId) => personId !== actorId);
 }
 
+/** D-ACL-2: detail access of a non-GM: the requester; related (general) or confirmed grant (confidential). */
 function hasDetailAccess(state: WaitingRequestState, personId: string): boolean {
-  return state.requesterId === personId || state.relatedPersonIds.includes(personId);
+  if (state.requesterId === personId) return true;
+  return state.isConfidential
+    ? (state.confidentialGrantIds ?? []).includes(personId)
+    : state.relatedPersonIds.includes(personId);
 }
 
 /** Preview for the confirm sheet (F05 §9.2): party, recipients, new related persons, consent needed. */
@@ -233,14 +239,15 @@ export function planWaiting(
   const recipientIds = recipientsOf(waitingOn, input.notify);
   // D-S06-4: GM Staff/Admin already have access; they are notified but never added or consented.
   const gmPersonIds = input.gmPersonIds ?? [];
-  const newRelatedPersonIds = recipientIds.filter(
-    (personId) => !hasDetailAccess(state, personId) && !gmPersonIds.includes(personId),
-  );
+  const needsAccess = recipientIds.filter((personId) => !hasDetailAccess(state, personId) && !gmPersonIds.includes(personId));
+  const newRelatedPersonIds = needsAccess.filter((personId) => !state.relatedPersonIds.includes(personId));
+  const newGrantPersonIds = state.isConfidential ? needsAccess : [];
   return {
     waitingOn,
     recipientIds,
     newRelatedPersonIds,
-    needsConfidentialGrant: state.isConfidential && newRelatedPersonIds.length > 0,
+    newGrantPersonIds,
+    needsConfidentialGrant: newGrantPersonIds.length > 0,
   };
 }
 
@@ -286,8 +293,8 @@ function openInterval<S extends WaitingRequestState>(
     status: 'waiting' as const,
     relatedPersonIds: [...state.relatedPersonIds, ...plan.newRelatedPersonIds],
     // D-S09-2: on a confidential request the newly added people carry the confirmed grant.
-    ...(state.isConfidential && plan.newRelatedPersonIds.length > 0
-      ? { confidentialGrantIds: [...(state.confidentialGrantIds ?? []), ...plan.newRelatedPersonIds] }
+    ...(plan.newGrantPersonIds.length > 0
+      ? { confidentialGrantIds: [...(state.confidentialGrantIds ?? []), ...plan.newGrantPersonIds] }
       : {}),
     waitingIntervalSeq: intervalId,
     waitingOn: plan.waitingOn,
