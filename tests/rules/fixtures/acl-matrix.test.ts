@@ -26,6 +26,7 @@ const facts = (id: string) => {
     requesterId: request.requester_id,
     relatedPersonIds: request.related_person_ids,
     isConfidential: request.is_confidential,
+    confidentialGrantIds: request.confidential_grant_ids,
   };
 };
 
@@ -69,6 +70,7 @@ describe('ACL matrix — shape', () => {
       'request_summaries',
       'requests',
       'gm_request_summaries',
+      'gm_request_details',
       'people',
       'people_picker',
       'access',
@@ -175,8 +177,41 @@ describe('ACL matrix — the same policy as the domain predicates', () => {
   it('the seed has no public summary for the confidential sample and no private field in the public one', () => {
     const seeded = seedDocuments();
     expect(seeded.has(`request_summaries/${SECRET_REQUEST_ID}`)).toBe(false);
-    expect(toRequestSummaryDocument(SECRET_REQUEST_ID, SAMPLE_REQUESTS[SECRET_REQUEST_ID]!, { personLabel: () => undefined })).toBeNull();
+    expect(toRequestSummaryDocument(SECRET_REQUEST_ID, SAMPLE_REQUESTS[SECRET_REQUEST_ID]!, {
+      personLabel: () => undefined,
+      personTeamLabel: () => undefined,
+    })).toBeNull();
     const text = JSON.stringify(seeded.get(`request_summaries/${GENERAL_REQUEST_ID}`));
     for (const secret of ['@', 'รายละเอียดที่ผู้แจ้งพิมพ์', 'att-acl', 'ทีมบัญชี']) expect(text).not.toContain(secret);
+  });
+});
+
+describe('D-S09 in the matrix', () => {
+  it('D-S09-2: a related Viewer opens the confidential request only with the confirmed grant', () => {
+    expect(decide('viewer_related', 'requests.confidential', 'get')).toBe('allow');
+    expect(decide('viewer_unconfirmed', 'requests.confidential', 'get')).toBe('deny');
+    expect(decide('viewer_unconfirmed', 'requests.general', 'get')).toBe('allow');
+    expect(decide('viewer', 'requests.confidential', 'get')).toBe('deny');
+  });
+
+  it('D-S09-5: the watcher list and the confidential note are only in gm_request_details (GM read)', () => {
+    const seeded = seedDocuments();
+    for (const id of [GENERAL_REQUEST_ID, SECRET_REQUEST_ID]) {
+      expect(seeded.get(`requests/${id}`)).not.toHaveProperty('watcher_ids');
+      expect(seeded.get(`requests/${id}`)).not.toHaveProperty('sensitivity_note');
+    }
+    expect(seeded.get(`gm_request_details/${GENERAL_REQUEST_ID}`)).toEqual({ watcher_ids: ['acl.watcher@tdfb.co'] });
+    expect(seeded.get(`gm_request_details/${SECRET_REQUEST_ID}`)).toMatchObject({ sensitivity_note: expect.any(String) });
+    for (const key of SUBJECT_KEYS) {
+      expect(decide(key, 'gm_request_details', 'get')).toBe(key === 'gm_staff' || key === 'gm_admin' ? 'allow' : 'deny');
+    }
+  });
+
+  it('D-S09-6: an inactive account reads only its own access document', () => {
+    expect(
+      matrixCells()
+        .filter((cell) => cell.subject.key === 'inactive' && cell.expected === 'allow')
+        .map((cell) => `${cell.resource.key}:${cell.operation}`),
+    ).toEqual(['access.self:get']);
   });
 });

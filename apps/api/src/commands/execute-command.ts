@@ -5,7 +5,16 @@
 //   3. a new request takes the next number from `system_counters/request_sequence` in the same
 //      transaction, so concurrent creates never share or skip a number; watching takes none.
 // Routing, outbox, projections and history join this transaction in A01/A03/A13.
-import type { CommandEnvelope, CreateOnBehalfPayload, MaintenanceSelection, RequestDocument } from '@gm/contracts';
+import {
+  joinRequestRecord,
+  splitRequestRecord,
+  type CommandEnvelope,
+  type CreateOnBehalfPayload,
+  type GmRequestDetailDocument,
+  type MaintenanceSelection,
+  type RequestDocument,
+  type RequestRecord,
+} from '@gm/contracts';
 import {
   createRequestDraft,
   formatRequestNumber,
@@ -27,6 +36,8 @@ import type { CommandStore, CommandTransaction } from './transaction-port';
 export const REQUEST_COUNTER_PATH = 'system_counters/request_sequence';
 export const COMMANDS_COLLECTION = 'commands';
 export const REQUESTS_COLLECTION = 'requests';
+/** D-S09-5: watcher list and confidential note, GM only. */
+export const GM_REQUEST_DETAILS_COLLECTION = 'gm_request_details';
 
 /** D-S08-6: `commands/{id}` is kept 30 days through a Firestore TTL policy on `expire_at`. */
 export const COMMAND_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -127,7 +138,9 @@ async function create(
   const sequence = nextRequestSequence(counter?.last_issued as number | undefined);
   const requestNumber = formatRequestNumber(sequence, context.environment);
   transaction.set(REQUEST_COUNTER_PATH, { last_issued: sequence });
-  transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, newRequestDocument(draft, requestNumber, context.now));
+  const { request, gmDetail } = splitRequestRecord(newRequestRecord(draft, requestNumber, context.now));
+  transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, request);
+  transaction.set(`${GM_REQUEST_DETAILS_COLLECTION}/${requestId}`, gmDetail);
   return { request_id: requestId, request_number: requestNumber };
 }
 
@@ -196,8 +209,8 @@ async function onBehalfDetails(
   };
 }
 
-/** Persisted fields of a new request (Part 6 §6.4.1); absent values are left out. */
-function newRequestDocument(draft: RequestDraft, requestNumber: string, now: Instant): RequestDocument {
+/** Fields of a new request (Part 6 §6.4.1); absent values are left out. Split before writing (D-S09-5). */
+function newRequestRecord(draft: RequestDraft, requestNumber: string, now: Instant): RequestRecord {
   if (draft.category === undefined) throw new Error('every new request has a category (D-S04-2, P7-UX-02)');
   const optional = <K extends string, V>(key: K, value: V | undefined) =>
     (value === undefined ? {} : { [key]: value }) as { readonly [P in K]?: V };
@@ -230,9 +243,14 @@ function newRequestDocument(draft: RequestDraft, requestNumber: string, now: Ins
 
 async function watch(transaction: CommandTransaction, requestId: string, context: CommandContext): Promise<CommandResult> {
   const path = `${REQUESTS_COLLECTION}/${requestId}`;
+  const gmDetailPath = `${GM_REQUEST_DETAILS_COLLECTION}/${requestId}`;
   const stored = await transaction.get(path);
+  const storedGmDetail = await transaction.get(gmDetailPath);
   if (stored === undefined) throw new CommandRejected('REQUEST_NOT_FOUND', 'No such request');
-  const request = stored as unknown as RequestDocument;
+  const request = joinRequestRecord(
+    stored as unknown as RequestDocument,
+    storedGmDetail as unknown as GmRequestDetailDocument | undefined,
+  );
   const current: WatchState = {
     type: request.type,
     source: request.source,
@@ -240,9 +258,9 @@ async function watch(transaction: CommandTransaction, requestId: string, context
     ...(request.closed_at === undefined ? {} : { closedAt: request.closed_at }),
     isConfidential: request.is_confidential,
     ...(request.requester_id === undefined ? {} : { requesterId: request.requester_id }),
-    watcherIds: request.watcher_ids ?? [],
+    watcherIds: request.watcher_ids,
   };
   const { state, outcome } = watchRequest(current, { actor: context.actor });
-  if (outcome === 'added') transaction.update(path, { watcher_ids: state.watcherIds });
+  if (outcome === 'added') transaction.set(gmDetailPath, { ...storedGmDetail, watcher_ids: state.watcherIds });
   return { request_id: requestId, request_number: request.request_number, watch: outcome };
 }

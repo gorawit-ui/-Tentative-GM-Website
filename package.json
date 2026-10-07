@@ -22,7 +22,8 @@
     "test:e2e": "node scripts/emulators.mjs e2e",
     "verify": "npm run check:deps && npm run build && npm run test:unit && npm run test:rules && npm run test:e2e",
     "deploy:dev": "node scripts/deploy-dev.mjs",
-    "check:deps": "node scripts/check-deps.mjs"
+    "check:deps": "node scripts/check-deps.mjs",
+    "docs:acl-matrix": "tsx tests/rules/fixtures/write-acl-matrix-doc.ts"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.2",

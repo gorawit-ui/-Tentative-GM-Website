@@ -2,14 +2,17 @@
 // allowlist; zero private fields; a confidential request has no public summary at all.
 // S09: the assignee travels as a display label (person IDs are emails, D-S08-4).
 import { describe, expect, it } from 'vitest';
-import { PRIVATE_REQUEST_FIELDS, REQUEST_SUMMARY_FIELDS, toRequestSummaryDocument, type RequestDocument } from './index';
+import { PRIVATE_REQUEST_FIELDS, REQUEST_SUMMARY_FIELDS, toRequestSummaryDocument, type RequestRecord } from './index';
 
 const T0 = Date.parse('2026-12-28T09:00:00+07:00');
 
-const LABELS = { personLabel: (personId: string) => (personId === 'gm.staff01@tdfb.co' ? 'คุณ GM หนึ่ง' : undefined) };
+const LABELS = {
+  personLabel: (personId: string) => (personId === 'gm.staff01@tdfb.co' ? 'คุณ GM หนึ่ง' : undefined),
+  personTeamLabel: () => undefined,
+};
 
 /** A request with every private field filled with a recognisable value. */
-const FULL: RequestDocument & Record<string, unknown> = {
+const FULL: RequestRecord & Record<string, unknown> = {
   request_number: 'GM-0001',
   type: 'maintenance',
   source: 'web',
@@ -34,7 +37,7 @@ const FULL: RequestDocument & Record<string, unknown> = {
   revision: 3,
   last_updated_at: T0 + 3_600_000,
   completion_cycle_id: 0,
-  // Not part of RequestDocument but must never travel even if present on a stored document.
+  // Not part of RequestRecord but must never travel even if present on a stored document.
   comments: [{ text: 'คอมเมนต์ลับ' }],
   history: [{ kind: 'accepted' }],
   document_drive_url: 'https://drive.google.com/secret',

@@ -1,6 +1,9 @@
-// Persisted `requests/{id}` fields (Part 6 §6.4.1), snake_case like D-S01-1. S08 writes the fields
-// known at creation; later tasks fill the rest (routing A01, lifecycle A03, waiting A04, SLA B01).
-// Instants are UTC epoch milliseconds here; the Firestore adapter maps them to Timestamps (A01).
+// Request fields (Part 6 §6.4.1), snake_case like D-S01-1. S08 writes the fields known at creation;
+// later tasks fill the rest (routing A01, lifecycle A03, waiting A04, SLA B01). Instants are UTC epoch
+// milliseconds here; the Firestore adapter maps them to Timestamps (A01).
+// D-S09-5: a request is stored as two documents. `RequestRecord` is the whole request in memory;
+// `requests/{id}` (`RequestDocument`) leaves out the watcher list and the confidential note, which live
+// in `gm_request_details/{id}` (`GmRequestDetailDocument`, GM only).
 import type {
   ClosureKind,
   GmCategory,
@@ -10,7 +13,7 @@ import type {
   SensitivityReason,
 } from '@gm/domain';
 
-export interface RequestDocument {
+export interface RequestRecord {
   readonly request_number: string;
   readonly type: RequestType;
   readonly source: 'web' | 'trello';
@@ -33,6 +36,8 @@ export interface RequestDocument {
   readonly sensitivity_reason?: SensitivityReason;
   readonly sensitivity_note?: string;
   readonly related_person_ids: readonly string[];
+  /** D-S09-2: people whose access to a confidential request was confirmed separately (C3, F3). */
+  readonly confidential_grant_ids?: readonly string[];
   readonly watcher_ids: readonly string[];
   /** Reporting only; never grants access (C4). */
   readonly team_labels?: readonly string[];
@@ -52,6 +57,19 @@ export interface RequestDocument {
   readonly waiting_since?: number;
   readonly waiting_party_responded?: boolean;
   readonly responded_at?: number;
+}
+
+/** Fields kept out of `requests/{id}` (readable by the requester and related persons), D-S09-5. */
+export const GM_ONLY_REQUEST_FIELDS = ['watcher_ids', 'sensitivity_note'] as const satisfies readonly (keyof RequestRecord)[];
+export type GmOnlyRequestField = (typeof GM_ONLY_REQUEST_FIELDS)[number];
+
+/** `requests/{id}`: the detail layer for GM, the requester and related persons. */
+export type RequestDocument = Omit<RequestRecord, GmOnlyRequestField>;
+
+/** `gm_request_details/{id}`: GM-only part of the request (D-S09-5). */
+export interface GmRequestDetailDocument {
+  readonly watcher_ids: readonly string[];
+  readonly sensitivity_note?: string;
 }
 
 /** Stored `waiting_on` (C3): `{ kind, person_id?, team_label?, name? }` plus the chosen team contacts. */
@@ -83,9 +101,8 @@ export const REQUEST_DOCUMENT_FIELDS = [
   'assignee_id',
   'is_confidential',
   'sensitivity_reason',
-  'sensitivity_note',
   'related_person_ids',
-  'watcher_ids',
+  'confidential_grant_ids',
   'team_labels',
   'status',
   'revision',
@@ -102,3 +119,29 @@ export const REQUEST_DOCUMENT_FIELDS = [
   'waiting_party_responded',
   'responded_at',
 ] as const satisfies readonly (keyof RequestDocument)[];
+
+/** Splits a request into its two stored documents (D-S09-5); unknown fields are dropped. */
+export function splitRequestRecord(record: RequestRecord): {
+  readonly request: RequestDocument;
+  readonly gmDetail: GmRequestDetailDocument;
+} {
+  const request = Object.fromEntries(
+    REQUEST_DOCUMENT_FIELDS.filter((field) => record[field] !== undefined).map((field) => [field, record[field]]),
+  ) as unknown as RequestDocument;
+  return {
+    request,
+    gmDetail: {
+      watcher_ids: record.watcher_ids,
+      ...(record.sensitivity_note === undefined ? {} : { sensitivity_note: record.sensitivity_note }),
+    },
+  };
+}
+
+/** Joins the two stored documents back into the whole request (no GM detail yet = no watchers). */
+export function joinRequestRecord(request: RequestDocument, gmDetail: GmRequestDetailDocument | undefined): RequestRecord {
+  return {
+    ...request,
+    watcher_ids: gmDetail?.watcher_ids ?? [],
+    ...(gmDetail?.sensitivity_note === undefined ? {} : { sensitivity_note: gmDetail.sensitivity_note }),
+  };
+}

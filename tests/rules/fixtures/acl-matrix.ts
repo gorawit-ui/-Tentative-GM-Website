@@ -1,12 +1,12 @@
 // S09 — ACL matrix fixture for the Firestore Rules tests of S10–S11 (Part 6 §6.4/§6.5, C4, C6, U1,
-// A2, D-S06-4, D-S08-4). Every subject × resource × operation has a decision; anything not listed
+// A2, D-S06-4, D-S08-4, D-S09-2/5). Every subject × resource × operation has a decision; anything not listed
 // below as `allow` is `deny` (default deny). Client writes are denied everywhere: every mutation goes
 // through the API, which checks the same domain predicates (`@gm/domain` acl.ts).
 //
 // Usage in S10/S11: seed `seedDocuments()` with an admin context, then for each
 // `matrixCells()` entry run the operation as `subject.auth` (null = signed out) and expect the
 // decision. People are synthetic; person IDs are lowercase @tdfb.co emails (D-S08-4).
-import { buildRequestProjections, type RequestDocument } from '@gm/contracts';
+import { buildRequestProjections, type RequestRecord } from '@gm/contracts';
 import type { AccessViewer, Role } from '@gm/domain';
 import { snapshotCalendar } from '@gm/time';
 
@@ -22,6 +22,7 @@ export const SUBJECT_KEYS = [
   'employee',
   'viewer',
   'viewer_related',
+  'viewer_unconfirmed',
   'team_label_member',
   'gm_staff',
   'gm_admin',
@@ -73,7 +74,18 @@ export const SUBJECTS: Readonly<Record<SubjectKey, AclSubject>> = {
   waiting_party: subject('waiting_party', 'ผู้รับแจ้งของช่วงรอ (ถูกเพิ่มเป็น related ตาม C3)', 'acl.waiting@tdfb.co', 'requester'),
   employee: subject('employee', 'พนักงานทั่วไปที่ไม่เกี่ยวกับงาน', 'acl.employee@tdfb.co', 'requester'),
   viewer: subject('viewer', 'Viewer ที่ไม่เกี่ยวกับงาน', 'acl.viewer@tdfb.co', 'viewer'),
-  viewer_related: subject('viewer_related', 'Viewer ที่ถูกเพิ่มเป็น related ชัดเจน (Part 2 F05)', 'acl.viewer.related@tdfb.co', 'viewer'),
+  viewer_related: subject(
+    'viewer_related',
+    'Viewer ที่ถูกเพิ่มเป็น related ชัดเจน และยืนยันสิทธิ์งานลับแล้ว (Part 2 F05, C3, D-S09-2)',
+    'acl.viewer.related@tdfb.co',
+    'viewer',
+  ),
+  viewer_unconfirmed: subject(
+    'viewer_unconfirmed',
+    'Viewer ที่เป็น related แต่ยังไม่ได้ยืนยันสิทธิ์งานลับ (D-S09-2)',
+    'acl.viewer.unconfirmed@tdfb.co',
+    'viewer',
+  ),
   team_label_member: subject('team_label_member', 'คนในทีมที่ติด team_labels แต่ไม่ใช่ related (C4)', 'acl.accountant@tdfb.co', 'requester'),
   gm_staff: subject('gm_staff', 'GM Staff', 'acl.gm.staff@tdfb.co', 'gm_staff'),
   gm_admin: subject('gm_admin', 'GM Admin', 'acl.gm.admin@tdfb.co', 'gm_admin'),
@@ -92,13 +104,23 @@ export const ACTIVE_SUBJECTS: readonly SubjectKey[] = [
   'employee',
   'viewer',
   'viewer_related',
+  'viewer_unconfirmed',
   'team_label_member',
   'gm_staff',
   'gm_admin',
 ];
 export const GM_SUBJECTS: readonly SubjectKey[] = ['gm_staff', 'gm_admin'];
-/** Who may read the sample requests' detail: GM, requester and related persons (incl. the waiting party). */
-export const DETAIL_SUBJECTS: readonly SubjectKey[] = ['requester', 'related_person', 'waiting_party', 'viewer_related', ...GM_SUBJECTS];
+/** Who may read the general sample's detail: GM, requester and related persons (incl. the waiting party). */
+export const DETAIL_SUBJECTS: readonly SubjectKey[] = [
+  'requester',
+  'related_person',
+  'waiting_party',
+  'viewer_related',
+  'viewer_unconfirmed',
+  ...GM_SUBJECTS,
+];
+/** D-S09-2: a related Viewer needs the confirmed confidential grant. */
+export const CONFIDENTIAL_DETAIL_SUBJECTS: readonly SubjectKey[] = DETAIL_SUBJECTS.filter((key) => key !== 'viewer_unconfirmed');
 
 /** The access-document view of a subject, for the domain predicates. */
 export function accessViewerOf(key: SubjectKey): AccessViewer | undefined {
@@ -121,7 +143,7 @@ export const GENERAL_REQUEST_ID = 'req-acl-general';
 export const SECRET_REQUEST_ID = 'req-acl-secret';
 const T0 = Date.parse('2026-12-28T09:00:00+07:00');
 
-const BASE_REQUEST: RequestDocument = {
+const BASE_REQUEST: RequestRecord = {
   request_number: 'DEV-0901',
   type: 'maintenance',
   source: 'web',
@@ -138,7 +160,13 @@ const BASE_REQUEST: RequestDocument = {
   attachment_ids: ['att-acl-1'],
   assignee_id: personOf('gm_staff'),
   is_confidential: false,
-  related_person_ids: [personOf('related_person'), personOf('waiting_party'), personOf('viewer_related'), personOf('inactive')],
+  related_person_ids: [
+    personOf('related_person'),
+    personOf('waiting_party'),
+    personOf('viewer_related'),
+    personOf('viewer_unconfirmed'),
+    personOf('inactive'),
+  ],
   watcher_ids: [personOf('watcher')],
   team_labels: ['ทีมบัญชี'],
   status: 'waiting',
@@ -151,7 +179,7 @@ const BASE_REQUEST: RequestDocument = {
   waiting_party_responded: false,
 };
 
-export const SAMPLE_REQUESTS: Readonly<Record<string, RequestDocument>> = {
+export const SAMPLE_REQUESTS: Readonly<Record<string, RequestRecord>> = {
   [GENERAL_REQUEST_ID]: BASE_REQUEST,
   [SECRET_REQUEST_ID]: {
     ...BASE_REQUEST,
@@ -161,6 +189,8 @@ export const SAMPLE_REQUESTS: Readonly<Record<string, RequestDocument>> = {
     category: 'documents_admin',
     is_confidential: true,
     sensitivity_reason: 'personnel',
+    sensitivity_note: 'หมายเหตุธงลับ (GM เท่านั้น)',
+    confidential_grant_ids: [personOf('related_person'), personOf('waiting_party'), personOf('viewer_related')],
     watcher_ids: [],
   },
 };
@@ -175,10 +205,12 @@ export function seedDocuments(): ReadonlyMap<string, object> {
       now: T0,
       workCalendar: COMPANY,
       personLabel: (personId) => (personId === personOf('gm_staff') ? 'คุณ GM ตัวอย่าง' : undefined),
+      personTeamLabel: () => undefined,
     });
     docs.set(`requests/${id}`, projections.detail);
     if (projections.public !== null) docs.set(`request_summaries/${id}`, projections.public);
     docs.set(`gm_request_summaries/${id}`, projections.gm);
+    docs.set(`gm_request_details/${id}`, projections.gmDetail);
     for (const child of ['history/evt-1', 'comments/cmt-1', 'gm_history/gmh-1', 'waiting_intervals/1']) {
       docs.set(`requests/${id}/${child}`, { request_id: id });
     }
@@ -254,28 +286,28 @@ const deniedEverywhere = (key: string, path: string, description: string): AclRe
 export const RESOURCES: readonly AclResource[] = [
   {
     key: 'request_summaries',
-    description: 'สรุปสาธารณะของงานไม่ลับ: active corporate อ่านได้ทุกคน (§6.5)',
+    description: 'สรุปสาธารณะของงานไม่ลับ: ทุกบัญชีที่ใช้งานได้ (§6.5)',
     path: `request_summaries/${GENERAL_REQUEST_ID}`,
     collectionPath: 'request_summaries',
     allow: readFor(ACTIVE_SUBJECTS),
   },
   {
     key: 'requests.general',
-    description: 'รายละเอียดงานทั่วไป: GM, ผู้ขอ, related (รวมฝ่ายที่รอ); list ทั้ง collection เฉพาะ GM',
+    description: 'รายละเอียดงาน (ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; list ทั้ง collection ได้เฉพาะ GM',
     path: `requests/${GENERAL_REQUEST_ID}`,
     collectionPath: 'requests',
     allow: { ...readFor(DETAIL_SUBJECTS, ['get']), ...readFor(GM_SUBJECTS) },
   },
   {
     key: 'requests.confidential',
-    description: 'รายละเอียดงานลับ: คนกลุ่มเดียวกับงานทั่วไป (watcher ติดตามงานลับไม่ได้อยู่แล้ว)',
+    description: 'รายละเอียดงานลับ: GM, ผู้ขอ, related; Viewer ต้องได้รับการยืนยันสิทธิ์งานลับแล้ว (D-S09-2)',
     path: `requests/${SECRET_REQUEST_ID}`,
     collectionPath: 'requests',
-    allow: { ...readFor(DETAIL_SUBJECTS, ['get']), ...readFor(GM_SUBJECTS) },
+    allow: { ...readFor(CONFIDENTIAL_DETAIL_SUBJECTS, ['get']), ...readFor(GM_SUBJECTS) },
   },
   {
     key: 'request_summaries.confidential_absent',
-    description: 'งานลับไม่มีสรุปสาธารณะ: อ่าน path นี้ได้ก็ต้องไม่พบ document (seed ไม่มี) — Rules ยังอนุญาตแบบ collection เดียวกัน',
+    description: 'งานลับไม่มี document ที่นี่ เปิดแล้วไม่พบอะไร (กติกาเดียวกับ collection นี้)',
     path: `request_summaries/${SECRET_REQUEST_ID}`,
     collectionPath: 'request_summaries',
     allow: readFor(ACTIVE_SUBJECTS),
@@ -287,6 +319,13 @@ export const RESOURCES: readonly AclResource[] = [
     collectionPath: 'gm_request_summaries',
     allow: readFor(GM_SUBJECTS),
   },
+  {
+    key: 'gm_request_details',
+    description: 'รายชื่อ watcher และหมายเหตุธงลับ: GM เท่านั้น (D-S09-5)',
+    path: `gm_request_details/${SECRET_REQUEST_ID}`,
+    collectionPath: 'gm_request_details',
+    allow: readFor(GM_SUBJECTS),
+  },
   deniedEverywhere('requests.history', `requests/${GENERAL_REQUEST_ID}/history/evt-1`, 'history ผ่าน API ตรวจ parent ACL เท่านั้น'),
   deniedEverywhere('requests.comments', `requests/${GENERAL_REQUEST_ID}/comments/cmt-1`, 'คอมเมนต์ผ่าน API เท่านั้น'),
   deniedEverywhere('requests.gm_history', `requests/${GENERAL_REQUEST_ID}/gm_history/gmh-1`, 'watcher contribution/ข้อมูล GM ผ่าน API'),
@@ -294,14 +333,14 @@ export const RESOURCES: readonly AclResource[] = [
   deniedEverywhere('people', `people/${personOf('employee')}`, 'อีเมล/Slack ID: server เท่านั้น'),
   {
     key: 'people_picker',
-    description: 'ID ชื่อ สำหรับเลือกคน: active อ่านได้',
+    description: 'ชื่อและทีมสำหรับช่องเลือกคน: ทุกบัญชีที่ใช้งานได้',
     path: `people_picker/${personOf('employee')}`,
     collectionPath: 'people_picker',
     allow: readFor(ACTIVE_SUBJECTS),
   },
   {
     key: 'access.self',
-    description: 'access ของตัวเอง: เจ้าของอ่านได้ (รวมบัญชีที่ปิดใช้งาน เพื่อแสดงว่าถูกปิด); นอก @tdfb.co/ไม่ verified ไม่ได้',
+    description: 'access ของตัวเองเท่านั้น (บัญชีที่ปิดใช้งานก็อ่านได้ เพื่อให้หน้าเว็บบอกว่าถูกปิด, D-S09-6)',
     path: ownUid,
     collectionPath: 'access',
     allow: readFor([...ACTIVE_SUBJECTS, 'inactive'], ['get']),
@@ -310,14 +349,14 @@ export const RESOURCES: readonly AclResource[] = [
   deniedEverywhere('gm_profiles', `gm_profiles/${personOf('gm_staff')}`, 'profile GM เต็ม: ผ่าน API'),
   {
     key: 'gm_profile_summaries',
-    description: 'presence/focus แบบปลอดภัย (งานลับเป็น “งานภายใน”): active อ่านได้',
+    description: 'สถานะที่อยู่/งานที่กำลังทำของ GM (งานลับแสดง “งานภายใน”): ทุกบัญชีที่ใช้งานได้',
     path: `gm_profile_summaries/${personOf('gm_staff')}`,
     collectionPath: 'gm_profile_summaries',
     allow: readFor(ACTIVE_SUBJECTS),
   },
   {
     key: 'user_state.own',
-    description: 'สถานะอ่านแล้วของตัวเอง: เจ้าของ (active) อ่านได้',
+    description: 'สถานะอ่านแล้วของตัวเองเท่านั้น',
     path: (s) => `${ownState(s)}/${GENERAL_REQUEST_ID}`,
     collectionPath: ownState,
     allow: readFor(ACTIVE_SUBJECTS),
@@ -325,7 +364,7 @@ export const RESOURCES: readonly AclResource[] = [
   deniedEverywhere('user_state.other', `user_state/${personOf('requester')}/requests/${GENERAL_REQUEST_ID}`, 'ของคนอื่น'),
   {
     key: 'board_counters',
-    description: '“งานภายใน X รายการ”: active อ่านได้',
+    description: 'ตัวเลข “งานภายใน X รายการ” (งานลับที่ยังเปิด, D-S09-4): ทุกบัญชีที่ใช้งานได้',
     path: 'board_counters/public',
     collectionPath: 'board_counters',
     allow: readFor(ACTIVE_SUBJECTS),
@@ -333,7 +372,7 @@ export const RESOURCES: readonly AclResource[] = [
   ...(['locations/loc-wh300', 'areas/area-wh300-pack-1', 'qr_codes/qr-acl-1', 'content_pages/contact', 'announcements/ann-1'] as const).map(
     (path): AclResource => ({
       key: path.slice(0, path.indexOf('/')),
-      description: 'ข้อมูลอ้างอิงที่ active อ่านได้ (§6.4)',
+      description: 'ข้อมูลอ้างอิง: ทุกบัญชีที่ใช้งานได้ (§6.4)',
       path,
       collectionPath: path.slice(0, path.indexOf('/')),
       allow: readFor(ACTIVE_SUBJECTS),
@@ -404,4 +443,35 @@ export function matrixCells(): readonly MatrixCell[] {
       })),
     ),
   );
+}
+
+/** How each resource reads in docs/spec/ACL-MATRIX.md (generic IDs, not the sample IDs). */
+const RESOURCE_PATTERNS: Readonly<Record<string, string>> = {
+  request_summaries: 'request_summaries/{id} (งานไม่ลับ)',
+  'request_summaries.confidential_absent': 'request_summaries/{id} ของงานลับ (ไม่มี document)',
+  'requests.general': 'requests/{id} (งานไม่ลับ)',
+  'requests.confidential': 'requests/{id} (งานลับ)',
+  gm_request_summaries: 'gm_request_summaries/{id}',
+  gm_request_details: 'gm_request_details/{id}',
+  'requests.history': 'requests/{id}/history/{event_id}',
+  'requests.comments': 'requests/{id}/comments/{id}',
+  'requests.gm_history': 'requests/{id}/gm_history/{event_id}',
+  'requests.waiting_intervals': 'requests/{id}/waiting_intervals/{id}',
+  people: 'people/{person_id}',
+  people_picker: 'people_picker/{person_id}',
+  'access.self': 'access/{uid ของตัวเอง}',
+  'access.other': 'access/{uid ของคนอื่น}',
+  gm_profiles: 'gm_profiles/{person_id}',
+  gm_profile_summaries: 'gm_profile_summaries/{person_id}',
+  'user_state.own': 'user_state/{person_id ของตัวเอง}/requests/{id}',
+  'user_state.other': 'user_state/{person_id ของคนอื่น}/requests/{id}',
+  board_counters: 'board_counters/public',
+  'renewal_items.cycles': 'renewal_items/{id}/cycles/{cycle_id}',
+  system_counters: 'system_counters/{id}',
+  unknown_collection: 'path อื่นที่ไม่มีกติกา',
+};
+
+/** The generic path shown to people for a resource. */
+export function resourcePattern(resource: AclResource): string {
+  return RESOURCE_PATTERNS[resource.key] ?? `${resource.key}/{id}`;
 }

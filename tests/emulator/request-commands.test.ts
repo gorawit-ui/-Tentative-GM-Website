@@ -286,7 +286,12 @@ describe('watching a request (U1) is not a new request', () => {
     }
     expect(outcomes).toEqual(['added', 'added', 'already_watching', 'is_requester']);
     const stored = await readDoc(client.db, `requests/${requestId}`);
-    expect(stored?.watcher_ids).toEqual([fac16Employee(2).personId, fac16Employee(3).personId]);
+    // D-S09-5: the watcher list lives in the GM-only document, not in requests/{id}.
+    expect(stored).not.toHaveProperty('watcher_ids');
+    expect((await readDoc(client.db, `gm_request_details/${requestId}`))?.watcher_ids).toEqual([
+      fac16Employee(2).personId,
+      fac16Employee(3).personId,
+    ]);
     expect(stored?.related_person_ids).toEqual([]);
     expect(stored?.last_updated_at).toBe(NOW);
     expect(await counter()).toBe(1);
@@ -336,5 +341,31 @@ describe('D-S08-6 / D-S08-8', () => {
     expect(dev.result.request_number).toBe('DEV-0002');
     await clearFirestore();
     expect((await executeCommand(client.store, gmTask(), context(GM, 'prod'))).result.request_number).toBe('GM-0001');
+  });
+});
+
+describe('D-S09-5: GM-only part of a request', () => {
+  it('a new request is written as requests/{id} without the watcher list or note, plus gm_request_details/{id}', async () => {
+    const created = await executeCommand(
+      client.store,
+      parseCommand({
+        command_id: randomUUID(),
+        type: 'create_gm_task',
+        payload: {
+          summary_title: 'ติดตามเรื่องภายใน',
+          category: 'documents_admin',
+          sensitivity_subject: 'general',
+          mark_confidential: true,
+          confidential_note: 'ข้อพิพาทกับคู่ค้า',
+        },
+      }),
+      context(GM),
+    );
+    const id = String(created.result.request_id);
+    const request = await readDoc(client.db, `requests/${id}`);
+    expect(request).toMatchObject({ is_confidential: true, sensitivity_reason: 'other' });
+    expect(request).not.toHaveProperty('watcher_ids');
+    expect(request).not.toHaveProperty('sensitivity_note');
+    expect(await readDoc(client.db, `gm_request_details/${id}`)).toEqual({ watcher_ids: [], sensitivity_note: 'ข้อพิพาทกับคู่ค้า' });
   });
 });

@@ -8,10 +8,13 @@ import {
   PUBLIC_WAITING_LABELS,
   REQUEST_DOCUMENT_FIELDS,
   REQUEST_SUMMARY_FIELDS,
+  GM_ONLY_REQUEST_FIELDS,
   buildRequestProjections,
+  joinRequestRecord,
+  splitRequestRecord,
   toBoardCountersDocument,
   type ProjectionContext,
-  type RequestDocument,
+  type RequestRecord,
 } from './index';
 
 const bkk = (date: string, time: string): Instant => Date.parse(`${date}T${time}:00+07:00`);
@@ -28,16 +31,23 @@ const NAMES: Record<string, string> = {
   'gm.staff01@tdfb.co': 'คุณ GM หนึ่ง',
   'finance01@tdfb.co': 'คุณการเงิน',
 };
+/** D-S09-1: team labels from people_picker (synthetic). */
+const TEAMS: Record<string, string> = { 'finance01@tdfb.co': 'ทีมการเงิน' };
 
 function context(now: Instant): ProjectionContext {
-  return { now, workCalendar: COMPANY, personLabel: (personId) => NAMES[personId] };
+  return {
+    now,
+    workCalendar: COMPANY,
+    personLabel: (personId) => NAMES[personId],
+    personTeamLabel: (personId) => TEAMS[personId],
+  };
 }
 
 const CREATED = bkk('2026-12-28', '09:00');
 const UPDATED = bkk('2026-12-28', '09:30');
 
 /** An on-behalf repair with every private field filled with something recognisable. */
-const REQUEST: RequestDocument = {
+const REQUEST: RequestRecord = {
   request_number: 'GM-0427',
   type: 'maintenance',
   source: 'web',
@@ -75,20 +85,22 @@ const PRIVATE_TEXTS = [
 
 describe('three projections from one request document', () => {
   it('public summary, GM summary and restricted detail come from the same document', () => {
-    const { public: summary, gm, detail } = buildRequestProjections('req-0427', REQUEST, context(UPDATED + HOUR));
+    const { public: summary, gm, detail, gmDetail } = buildRequestProjections('req-0427', REQUEST, context(UPDATED + HOUR));
     expect(summary).toMatchObject({ request_id: 'req-0427', request_number: 'GM-0427', status: 'in_progress' });
     expect(gm).toMatchObject({ request_id: 'req-0427', request_number: 'GM-0427', status: 'in_progress' });
-    expect(detail).toEqual(REQUEST);
+    const { watcher_ids: watchers, ...requestDocument } = REQUEST;
+    expect(detail).toEqual(requestDocument);
+    expect(gmDetail).toEqual({ watcher_ids: watchers });
   });
 
   it('the restricted detail keeps everything people with access need, and drops unknown fields', () => {
-    const stored = { ...REQUEST, sensitivity_note: 'หมายเหตุลับ', some_future_field: 'x', comments: ['ไม่ใช่ field ของงาน'] };
+    const stored = { ...REQUEST, some_future_field: 'x', comments: ['ไม่ใช่ field ของงาน'] };
     const { detail } = buildRequestProjections('req-0427', stored, context(UPDATED));
     expect(detail).toMatchObject({
       description: REQUEST.description,
       attachment_ids: REQUEST.attachment_ids,
       requester_name_text: REQUEST.requester_name_text,
-      sensitivity_note: 'หมายเหตุลับ',
+      related_person_ids: REQUEST.related_person_ids,
     });
     expect(Object.keys(detail).filter((key) => !(REQUEST_DOCUMENT_FIELDS as readonly string[]).includes(key))).toEqual([]);
   });
@@ -129,7 +141,7 @@ describe('public summary (C11 allowlist, U1, U4)', () => {
   });
 
   it('“มีผู้แจ้งเพิ่ม X คน” counts unique watchers other than the requester, without names', () => {
-    const watched: RequestDocument = {
+    const watched: RequestRecord = {
       ...REQUEST,
       requester_id: 'requester01@tdfb.co',
       watcher_ids: ['watcher01@tdfb.co', 'watcher02@tdfb.co', 'watcher01@tdfb.co', 'requester01@tdfb.co'],
@@ -139,8 +151,8 @@ describe('public summary (C11 allowlist, U1, U4)', () => {
     expect(JSON.stringify(value)).not.toContain('watcher0');
   });
 
-  it('while waiting it shows only a generic label of the waited party', () => {
-    const waiting: RequestDocument = {
+  it('while waiting it does not show a government office name nobody typed for the board', () => {
+    const waiting: RequestRecord = {
       ...REQUEST,
       status: 'waiting',
       waiting_on: { kind: 'government', name: 'สำนักงานเขตบางนา' },
@@ -148,14 +160,9 @@ describe('public summary (C11 allowlist, U1, U4)', () => {
       current_waiting_interval_id: 1,
       waiting_party_responded: false,
     };
-    const value = buildRequestProjections('req-0427', waiting, context(UPDATED)).public;
+    const value = buildRequestProjections('req-0427', { ...waiting, waiting_on: { kind: 'government' } }, context(UPDATED)).public;
     expect(value?.waiting_on_summary).toBe(PUBLIC_WAITING_LABELS.government);
     expect(PUBLIC_WAITING_LABELS.government).toBe('หน่วยงานรัฐ');
-    expect(JSON.stringify(value)).not.toContain('บางนา');
-    const person = { ...waiting, waiting_on: { kind: 'person' as const, person_id: 'finance01@tdfb.co' } };
-    const personValue = buildRequestProjections('req-0427', person, context(UPDATED)).public;
-    expect(personValue?.waiting_on_summary).toBe('พนักงาน');
-    expect(JSON.stringify(personValue)).not.toContain('การเงิน');
   });
 
   it('no waiting label once the request is not waiting', () => {
@@ -165,7 +172,7 @@ describe('public summary (C11 allowlist, U1, U4)', () => {
 
 describe('U3 — enough data for the 7-day frame of completed/cancelled cards', () => {
   const NOW = bkk('2027-01-04', '10:00');
-  const sectionOf = (request: RequestDocument) => {
+  const sectionOf = (request: RequestRecord) => {
     const value = buildRequestProjections('req-0427', request, context(NOW)).public;
     if (value === null) throw new Error('expected a public summary');
     return boardSection(
@@ -238,7 +245,7 @@ describe('GM summary', () => {
   });
 
   it('waiting shows the real party: person name, team label or external name', () => {
-    const waiting = (waitingOn: RequestDocument['waiting_on']): RequestDocument => ({
+    const waiting = (waitingOn: RequestRecord['waiting_on']): RequestRecord => ({
       ...REQUEST,
       status: 'waiting',
       ...(waitingOn === undefined ? {} : { waiting_on: waitingOn }),
@@ -247,7 +254,7 @@ describe('GM summary', () => {
       waiting_party_responded: true,
       responded_at: UPDATED + HOUR,
     });
-    const label = (waitingOn: RequestDocument['waiting_on']) =>
+    const label = (waitingOn: RequestRecord['waiting_on']) =>
       buildRequestProjections('req-0427', waiting(waitingOn), context(UPDATED + 2 * HOUR)).gm;
     expect(label({ kind: 'person', person_id: 'finance01@tdfb.co' })).toMatchObject({
       waiting_on_kind: 'person',
@@ -262,7 +269,7 @@ describe('GM summary', () => {
 
 describe('confidential requests: no public summary, only “งานภายใน X รายการ”', () => {
   const NOW = bkk('2027-01-04', '10:00');
-  const secret = (id: string, change: Partial<RequestDocument>): RequestDocument => ({
+  const secret = (id: string, change: Partial<RequestRecord>): RequestRecord => ({
     ...REQUEST,
     request_number: `GM-${id}`,
     summary_title: `เรื่องลับ ${id}`,
@@ -287,8 +294,17 @@ describe('confidential requests: no public summary, only “งานภาย�
     }
   });
 
-  it('counts confidential requests on the live board (U3 frame) company-wide', () => {
-    expect(toBoardCountersDocument(REQUESTS, NOW)).toEqual({ internal_board_count: 5, as_of: NOW });
+  it('D-S09-4: counts only open confidential requests (queued / in progress / waiting / awaiting confirmation)', () => {
+    expect(toBoardCountersDocument(REQUESTS, NOW)).toEqual({ internal_board_count: 3, as_of: NOW });
+  });
+
+  it('D-S09-4: a request closed or cancelled a minute ago is no longer counted, so time alone never changes it', () => {
+    const justClosed = [
+      secret('9101', { status: 'completed', completed_at: NOW - 2 * MINUTE, closed_at: NOW - MINUTE }),
+      secret('9102', { status: 'cancelled', cancelled_at: NOW - MINUTE }),
+    ];
+    expect(toBoardCountersDocument(justClosed, NOW).internal_board_count).toBe(0);
+    expect(toBoardCountersDocument(REQUESTS, NOW + 30 * 24 * HOUR).internal_board_count).toBe(3);
   });
 
   it('the counter has no titles, numbers or IDs', () => {
@@ -301,5 +317,104 @@ describe('confidential requests: no public summary, only “งานภาย�
 
   it('no confidential requests → 0', () => {
     expect(toBoardCountersDocument([REQUEST], NOW)).toEqual({ internal_board_count: 0, as_of: NOW });
+  });
+});
+
+describe('D-S09-1: public label of the waited party', () => {
+  const waiting = (waitingOn: RequestRecord['waiting_on']): RequestRecord => ({
+    ...REQUEST,
+    status: 'waiting',
+    ...(waitingOn === undefined ? {} : { waiting_on: waitingOn }),
+    waiting_since: UPDATED,
+    current_waiting_interval_id: 1,
+    waiting_party_responded: false,
+  });
+  const publicLabel = (waitingOn: RequestRecord['waiting_on']) =>
+    buildRequestProjections('req-0427', waiting(waitingOn), context(UPDATED)).public?.waiting_on_summary;
+
+  it('a person shows as their team, never their name', () => {
+    expect(publicLabel({ kind: 'person', person_id: 'finance01@tdfb.co' })).toBe('ทีมการเงิน');
+    const text = JSON.stringify(buildRequestProjections('req-0427', waiting({ kind: 'person', person_id: 'finance01@tdfb.co' }), context(UPDATED)).public);
+    expect(text).not.toContain('คุณการเงิน');
+    expect(text).not.toContain('finance01');
+  });
+
+  it('a person without a known team shows “พนักงาน”', () => {
+    expect(publicLabel({ kind: 'person', person_id: 'nobody01@tdfb.co' })).toBe('พนักงาน');
+  });
+
+  it('a team shows its team label', () => {
+    expect(publicLabel({ kind: 'team', team_label: 'ทีม IT', contact_ids: ['it01@tdfb.co'] })).toBe('ทีม IT');
+  });
+
+  it('a contractor shows only “ผู้รับเหมา”, not the company name', () => {
+    expect(publicLabel({ kind: 'contractor', name: 'บริษัทแอร์เย็นสบาย จำกัด' })).toBe('ผู้รับเหมา');
+  });
+
+  it('a government office shows the name the GM typed', () => {
+    expect(publicLabel({ kind: 'government', name: 'สำนักงานเขตบางนา' })).toBe('สำนักงานเขตบางนา');
+  });
+
+  it('other shows “อื่นๆ”, not the typed name', () => {
+    expect(publicLabel({ kind: 'other', name: 'เจ้าของอาคาร' })).toBe('อื่นๆ');
+  });
+});
+
+describe('D-S09-7: “ฝ่ายที่รอตอบกลับแล้ว” on the public summary', () => {
+  const waiting = (responded: boolean): RequestRecord => ({
+    ...REQUEST,
+    status: 'waiting',
+    waiting_on: { kind: 'person', person_id: 'finance01@tdfb.co' },
+    waiting_since: UPDATED,
+    current_waiting_interval_id: 1,
+    waiting_party_responded: responded,
+    ...(responded ? { responded_at: UPDATED + HOUR } : {}),
+  });
+
+  it('is a plain flag while waiting, without who answered or when', () => {
+    const value = buildRequestProjections('req-0427', waiting(true), context(UPDATED + 2 * HOUR)).public;
+    expect(value?.waiting_party_responded).toBe(true);
+    expect(value).not.toHaveProperty('responded_at');
+    expect(JSON.stringify(value)).not.toContain(String(UPDATED + HOUR));
+    expect(buildRequestProjections('req-0427', waiting(false), context(UPDATED)).public?.waiting_party_responded).toBe(false);
+  });
+
+  it('is absent once the request is not waiting', () => {
+    expect(buildRequestProjections('req-0427', REQUEST, context(UPDATED)).public).not.toHaveProperty('waiting_party_responded');
+  });
+});
+
+describe('D-S09-5: watcher list and confidential note live only in the GM detail', () => {
+  const record: RequestRecord = { ...REQUEST, is_confidential: true, sensitivity_reason: 'other', sensitivity_note: 'ข้อพิพาทกับคู่ค้า' };
+
+  it('requests/{id} (read by the requester and related persons) has no watcher list or note', () => {
+    const { detail } = buildRequestProjections('req-0427', record, context(UPDATED));
+    expect(detail).not.toHaveProperty('watcher_ids');
+    expect(detail).not.toHaveProperty('sensitivity_note');
+    expect(detail).toMatchObject({ related_person_ids: REQUEST.related_person_ids, sensitivity_reason: 'other' });
+  });
+
+  it('gm_request_details/{id} has them', () => {
+    expect(buildRequestProjections('req-0427', record, context(UPDATED)).gmDetail).toEqual({
+      watcher_ids: REQUEST.watcher_ids,
+      sensitivity_note: 'ข้อพิพาทกับคู่ค้า',
+    });
+  });
+
+  it('split and join are inverse', () => {
+    const { request, gmDetail } = splitRequestRecord(record);
+    expect(request).not.toHaveProperty('watcher_ids');
+    expect(joinRequestRecord(request, gmDetail)).toEqual(record);
+  });
+
+  it('a request stored before its GM detail existed joins with no watchers', () => {
+    const { request } = splitRequestRecord(REQUEST);
+    expect(joinRequestRecord(request, undefined).watcher_ids).toEqual([]);
+  });
+
+  it('REQUEST_DOCUMENT_FIELDS leaves out the GM-only fields', () => {
+    expect(REQUEST_DOCUMENT_FIELDS).not.toContain('watcher_ids');
+    expect(REQUEST_DOCUMENT_FIELDS).not.toContain('sensitivity_note');
+    expect(GM_ONLY_REQUEST_FIELDS).toEqual(['watcher_ids', 'sensitivity_note']);
   });
 });

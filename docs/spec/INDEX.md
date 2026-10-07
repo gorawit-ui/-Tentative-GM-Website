@@ -43,6 +43,7 @@
 | Build/test/dev deploy command contract | [BUILD-COMMANDS](../BUILD-COMMANDS.md) | S00 scripts; not yet implemented |
 | Gate evidence / viewport / cost bug checklist | [TEST-CHECKLIST](../TEST-CHECKLIST.md) | suites 1–7 |
 | All decisions + source | [DECISIONS](DECISIONS.md) | C/A/U/P/F/R/P7 one line each |
+| ใครอ่าน/เขียนอะไรใน Firestore ได้ (สร้างจาก fixture) | [ACL-MATRIX](ACL-MATRIX.md) | ตรวจด้วย `tests/rules/fixtures/acl-matrix-doc.test.ts`; Rules S10–S11 ใช้ fixture เดียวกัน |
 
 ## แหล่งที่ถอดจากบทสนทนา / ช่องว่าง
 
@@ -61,5 +62,5 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S06](../sessions/S06.md): ผล D-S05 (กฎ `last_updated_at`, รับงานต่อ, ธงลับ `other`/ปลดธง) และ waiting/follow-up/response; คำถามปิดแล้วใน D-S06-1 ถึง D-S06-6
 - [S07](../sessions/S07.md): ผล D-S06 (GM เป็นฝ่ายที่รอ, เตือน 09:00 วันทำการถัดไป) และ routing/leave/presence/focus; คำถามปิดแล้วใน D-S07-1 ถึง D-S07-7
 - [S08](../sessions/S08.md): ผล D-S07 (presence อ้างรายการสถานที่, `gm_task` → ผู้สร้าง, แจ้ง GM ทุกคนยกเว้นคนลา, owner ไม่ active, ปลดหมุดเมื่อออกจาก `in_progress`, Trello ปักไม่ได้) และ contracts/command ID/ตัวนับเลขงาน (emulator); คำถามปิดแล้วใน D-S08-1 ถึง D-S08-8
-- [S09](../sessions/S09.md): ผล D-S08 (`gm_task` ผู้สร้างลาก็ถือเอง, ไม่แจ้งตัวเอง, สถานที่ปิดใช้งาน, `person_id` = อีเมล, TTL `commands`, prefix `DEV-`) และ projection builder / ACL matrix fixture (`tests/rules/fixtures/acl-matrix.ts`); คำถามค้างใน S09
+- [S09](../sessions/S09.md): ผล D-S08 (`gm_task` ผู้สร้างลาก็ถือเอง, ไม่แจ้งตัวเอง, สถานที่ปิดใช้งาน, `person_id` = อีเมล, TTL `commands`, prefix `DEV-`) และ projection builder / ACL matrix fixture (`tests/rules/fixtures/acl-matrix.ts`); คำถามปิดแล้วใน D-S09-1 ถึง D-S09-8; งานต่อ: D-S09 + [ACL-MATRIX](ACL-MATRIX.md) และคำถามค้างใหม่ 3 ข้อ
 - [FOLLOW-UPS](../FOLLOW-UPS.md): งานที่เลื่อนข้าม session
