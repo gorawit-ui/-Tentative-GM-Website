@@ -20,7 +20,10 @@ export default defineConfig({
       { extends: true, test: { name: 'web', include: ['apps/web/src/**/*.test.{ts,tsx}'] } },
       {
         extends: true,
-        test: { name: 'tooling', include: ['scripts/**/*.test.mjs', 'tests/setup/**/*.test.ts'] },
+        test: {
+          name: 'tooling',
+          include: ['scripts/**/*.test.mjs', 'tests/setup/**/*.test.ts', 'tests/rules/fixtures/**/*.test.ts'],
+        },
       },
     ],
   },

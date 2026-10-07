@@ -126,3 +126,12 @@ export {
   type DeploymentEnvironment,
 } from './request-number';
 export { watchRequest, type WatchOutcome, type WatchState } from './watch';
+export { boardSection, isOnLiveBoard, type BoardFacts, type BoardSection } from './board';
+export {
+  canReadGmProjections,
+  canReadPublicSummaries,
+  canReadRequestDetail,
+  isActiveViewer,
+  type AccessViewer,
+  type RequestAclFacts,
+} from './acl';

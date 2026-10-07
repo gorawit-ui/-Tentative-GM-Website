@@ -35,11 +35,23 @@ export {
   type OnBehalfRequesterPayload,
   type WatchRequestPayload,
 } from './commands';
-export { type RequestDocument } from './request-document';
+export { REQUEST_DOCUMENT_FIELDS, type RequestDocument, type WaitingOnDocument } from './request-document';
 export {
   PRIVATE_REQUEST_FIELDS,
+  PUBLIC_WAITING_LABELS,
   REQUEST_SUMMARY_FIELDS,
   toRequestSummaryDocument,
   type RequestSummaryDocument,
 } from './request-summary';
 export { PERSON_EMAIL_DOMAIN, isPersonId, personIdFromCsvEmail } from './person-id';
+export {
+  buildRequestProjections,
+  toBoardCountersDocument,
+  toGmRequestSummaryDocument,
+  toRequestDetailDocument,
+  type BoardCountersDocument,
+  type GmRequestSummaryDocument,
+  type ProjectionContext,
+  type RequestDetailDocument,
+  type RequestProjections,
+} from './projections';

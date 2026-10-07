@@ -14,6 +14,7 @@ export { addBusinessDuration, addDuration, businessDuration } from './business-t
 export { autoCloseDue, isAutoCloseDue, staleState, type StaleState } from './lifecycle-clocks';
 export { businessDateBucket, nextWorkingMorning, type BusinessDateBucket } from './business-date';
 export { bangkokDateOf, presenceExpiresAt } from './presence-clock';
+export { BOARD_RECENT_WINDOW_MS, boardRecentCutoff } from './board-window';
 export { formatBusinessDuration, type DurationTextContext } from './display';
 export {
   mergeIntervals, effectiveWaitingEnd, waitingElapsed, slaElapsed,
