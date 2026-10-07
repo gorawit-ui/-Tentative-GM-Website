@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ATTACHMENT_CONTENT_TYPES,
   MAX_ATTACHMENT_BYTES,
+  MAX_PHOTOS_PER_SUBMISSION,
   UPLOAD_URL_TTL_SECONDS,
   VIEW_URL_TTL_SECONDS,
   attachmentObjectPath,
@@ -20,6 +21,10 @@ describe('attachment limits (D-S10-3, Part 6 §6.10)', () => {
   it('images only: JPEG, PNG, WebP; no SVG (it can carry script)', () => {
     expect(ATTACHMENT_CONTENT_TYPES).toEqual(['image/jpeg', 'image/png', 'image/webp']);
     expect(ATTACHMENT_CONTENT_TYPES).not.toContain('image/svg+xml');
+  });
+
+  it('D-S12-3: at most 3 photos per submission, for the reporter and for a watcher alike', () => {
+    expect(MAX_PHOTOS_PER_SUBMISSION).toBe(3);
   });
 
   it('a photo after client resizing (avg 0.5 MiB) fits well under the cap', () => {

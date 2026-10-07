@@ -6,6 +6,8 @@ export const VIEW_URL_TTL_SECONDS = 5 * 60;
 export const ATTACHMENT_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export type AttachmentContentType = (typeof ATTACHMENT_CONTENT_TYPES)[number];
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+/** D-S12-3 (stub). */
+export const MAX_PHOTOS_PER_SUBMISSION = 0;
 
 /** One path segment: an opaque ID, so `/`, `.`, `%` and empty segments never appear. */
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;

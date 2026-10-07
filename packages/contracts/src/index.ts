@@ -62,6 +62,7 @@ export { isCorporateGoogleToken, type SignInClaims } from './auth-token';
 export {
   ATTACHMENT_CONTENT_TYPES,
   MAX_ATTACHMENT_BYTES,
+  MAX_PHOTOS_PER_SUBMISSION,
   UPLOAD_URL_TTL_SECONDS,
   VIEW_URL_TTL_SECONDS,
   attachmentObjectPath,
