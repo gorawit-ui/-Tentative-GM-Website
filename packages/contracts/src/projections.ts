@@ -76,6 +76,8 @@ export const UNKNOWN_PERSON_DISPLAY_NAME = 'พนักงาน';
 
 /** `requests/{id}` as read by people with detail access: known fields plus the display pairs. */
 export type RequestDetailDocument = RequestDocument & {
+  /** D-S11-1: “เปิดเรื่องโดย [GM]”. */
+  readonly created_by_display?: PersonDisplay;
   readonly requester_display?: PersonDisplay;
   readonly assignee_display?: PersonDisplay;
   readonly related_people_display: readonly PersonDisplay[];

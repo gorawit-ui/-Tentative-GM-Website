@@ -410,6 +410,7 @@ describe('D-S10-1 / FU-07: names and confidential grants are written with the re
     expect(request).toMatchObject({
       requester_id: 'employee03@tdfb.co',
       requester_display: { person_id: 'employee03@tdfb.co', display_name: 'คุณพนักงานสาม' },
+      created_by_display: { person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM ตัวอย่าง' },
       related_person_ids: ['related01@tdfb.co', 'unknown01@tdfb.co'],
       related_people_display: [
         { person_id: 'related01@tdfb.co', display_name: 'คุณผู้เกี่ยวข้องหนึ่ง' },
