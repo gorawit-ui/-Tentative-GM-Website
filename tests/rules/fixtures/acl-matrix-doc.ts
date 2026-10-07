@@ -167,7 +167,7 @@ export function renderAclMatrixMarkdown(): string {
     '',
     `> ไฟล์นี้สร้างอัตโนมัติจาก ${code('tests/rules/fixtures/acl-matrix.ts')} ด้วย ${code('npm run docs:acl-matrix')} — ห้ามแก้ด้วยมือ; ${code('tests/rules/fixtures/acl-matrix-doc.test.ts')} ตรวจว่าเอกสารตรงกับ fixture เสมอ และ Rules tests (S10–S11) ใช้ fixture ชุดเดียวกัน`,
     '',
-    'ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5',
+    'ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5, D-S11-1 ถึง D-S11-3',
     '',
     '## หลักการ',
     '',

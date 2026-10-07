@@ -143,8 +143,8 @@ async function create(
     throw new RangeError('request counter document has no last_issued');
   }
   // D-S10-1: names are written with the request (read before any write in the transaction).
-  const people = [draft.requesterId, ...(draft.relatedPersonIds ?? [])].filter((id): id is string => id !== undefined);
-  const names = people.length === 0 ? new Map<string, string>() : await context.peopleDirectory.displayNames(transaction, people);
+  const people = [draft.createdById, draft.requesterId, ...(draft.relatedPersonIds ?? [])].filter((id): id is string => id !== undefined);
+  const names = await context.peopleDirectory.displayNames(transaction, [...new Set(people)]);
   const sequence = nextRequestSequence(counter?.last_issued as number | undefined);
   const requestNumber = formatRequestNumber(sequence, context.environment);
   transaction.set(REQUEST_COUNTER_PATH, { last_issued: sequence });

@@ -104,13 +104,13 @@ export const SCREEN_SOURCES: readonly ScreenDataSources[] = [
     audience: ['requester'],
     audienceLabel: 'ผู้ขอของงาน',
     firestore: [
-      { resource: 'requests.general', operations: ['get'], use: 'รายละเอียดงาน พร้อมชื่อผู้ขอ ผู้รับผิดชอบ และ related เป็นคู่ person_id + display_name (D-S10-1)' },
+      { resource: 'requests.general', operations: ['get'], use: 'รายละเอียดงาน พร้อมชื่อผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related เป็นคู่ person_id + display_name (D-S10-1, D-S11-1)' },
       { resource: 'requests.confidential', operations: ['get'], use: 'รายละเอียดงานลับของตัวเอง' },
       { resource: 'locations', operations: ['get'], use: 'ชื่อสถานที่' },
       { resource: 'areas', operations: ['get'], use: 'ชื่อบริเวณ' },
     ],
     api: ['คอมเมนต์, history, ช่วงรอ, ลิงก์รูป (signed URL) — API ตรวจ parent ACL', 'ยืนยัน / ยังไม่เรียบร้อย / คอมเมนต์ / แนบรูป เป็น command'],
-    questions: ['Q-S11-1: ชื่อ “ผู้สร้าง” (เปิดเรื่องโดย GM) ไม่อยู่ในคู่ชื่อของ D-S10-1'],
+    questions: [],
   },
   {
     screen: 'รายละเอียด — related (UI-07)',
@@ -123,7 +123,7 @@ export const SCREEN_SOURCES: readonly ScreenDataSources[] = [
       { resource: 'areas', operations: ['get'], use: 'ชื่อบริเวณ' },
     ],
     api: ['คอมเมนต์, history, ช่วงรอ, ลิงก์รูป — API ตรวจ parent ACL', 'คอมเมนต์ เป็น command'],
-    questions: ['Q-S11-1: ชื่อ “ผู้สร้าง” (ข้อเดียวกับผู้ขอ)'],
+    questions: [],
   },
   {
     screen: 'รายละเอียด — ฝ่ายที่ถูกรอ (UI-07)',
@@ -134,7 +134,7 @@ export const SCREEN_SOURCES: readonly ScreenDataSources[] = [
       { resource: 'requests.confidential', operations: ['get'], use: 'งานลับที่ได้รับการยืนยัน' },
     ],
     api: ['ฉันเป็น recipient ของช่วงปัจจุบันหรือไม่ (recipients อยู่ใน waiting_intervals ที่ client อ่านตรงไม่ได้)', '“ฝั่งฉันเรียบร้อยแล้ว” เป็น command'],
-    questions: ['Q-S11-1: ชื่อ “ผู้สร้าง” (ข้อเดียวกับผู้ขอ)'],
+    questions: [],
   },
   {
     screen: 'รายละเอียด — watcher (UI-07 มุมมอง summary-only)',
