@@ -43,7 +43,7 @@
 | Build/test/dev deploy command contract | [BUILD-COMMANDS](../BUILD-COMMANDS.md) | S00 scripts; not yet implemented |
 | Gate evidence / viewport / cost bug checklist | [TEST-CHECKLIST](../TEST-CHECKLIST.md) | suites 1–7 |
 | All decisions + source | [DECISIONS](DECISIONS.md) | C/A/U/P/F/R/P7 one line each |
-| ใครอ่าน/เขียนอะไรใน Firestore ได้ (สร้างจาก fixture), Storage, หน้าจอ → แหล่งข้อมูล | [ACL-MATRIX](ACL-MATRIX.md) | ตรวจด้วย `tests/rules/fixtures/acl-matrix-doc.test.ts` และ `screen-sources.test.ts`; `infra/firestore.rules` ทดสอบทุกช่องใน `tests/rules/firestore-acl-matrix.test.ts` (S10) |
+| ใครอ่าน/เขียนอะไรใน Firestore ได้ (สร้างจาก fixture), Storage, หน้าจอ → แหล่งข้อมูล | [ACL-MATRIX](ACL-MATRIX.md) | ตรวจด้วย `tests/rules/fixtures/acl-matrix-doc.test.ts` และ `screen-sources.test.ts`; `infra/firestore.rules` ทดสอบทุกช่องใน `tests/rules/firestore-acl-matrix.test.ts` (S10); API ทดสอบทุกช่องใน `tests/emulator/api-access.test.ts` (S12) |
 
 ## แหล่งที่ถอดจากบทสนทนา / ช่องว่าง
 
@@ -65,4 +65,5 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S09](../sessions/S09.md): ผล D-S08 (`gm_task` ผู้สร้างลาก็ถือเอง, ไม่แจ้งตัวเอง, สถานที่ปิดใช้งาน, `person_id` = อีเมล, TTL `commands`, prefix `DEV-`) และ projection builder / ACL matrix fixture (`tests/rules/fixtures/acl-matrix.ts`); คำถามปิดแล้วใน D-S09-1 ถึง D-S09-8; งานต่อ: D-S09 + [ACL-MATRIX](ACL-MATRIX.md) และคำถามค้างใหม่ 3 ข้อ
 - [S10](../sessions/S10.md): ผล D-ACL-1 ถึง D-ACL-7 (`people_picker` เฉพาะ GM, งานลับอ่านได้เฉพาะ GM/ผู้ขอ/`confidential_grant_ids` ทุก role + `markConfidential`, `board_counters` get `public` เท่านั้น, หัวข้อ Storage และตารางหน้าจอ → แหล่งข้อมูลใน ACL-MATRIX) และ Firestore Rules ข้อมูลสาธารณะ/access จาก ACL matrix (3900 Rules tests, อีเมลตรงตัว, get() เดียว, Storage ปฏิเสธทุก role); คำถามค้าง Q-S10-1 ถึง Q-S10-4
 - [S11](../sessions/S11.md): ผล D-S10-1 ถึง D-S10-5 (คู่ชื่อ `person_id` + `display_name` ใน `requests/{id}`, แถบรอยืนยันใช้ endpoint ส่วนบุคคล, signed URL PUT 15 / GET 5 นาที, list query ต้องมี limit ≤ 200, อีเมลตรวจหลัง `lower()`), FU-03/FU-07 (`addRelatedPersons` / `removeRelatedPerson`, related ตอนสร้างงานต้องยืนยัน grant) และ Rules ข้อมูลจำกัดสิทธิ์/subcollection (revoke มีผลทันที, history/comments ปฏิเสธทุก role); คำถามค้าง Q-S11-1, Q-S11-2
+- [S12](../sessions/S12.md): ผล D-S11-1 ถึง D-S11-3 (ชื่อผู้สร้างเป็นคู่ชื่อ, แก้สิทธิ์นับเป็น action ของ GM, query บอร์ดแยกส่วน → FU-13), FU-05 (`adminCommandStore` ด้วย firebase-admin; emulator test เดิมผ่านทั้งหมด) และ API/Storage authorization (endpoint อ่าน/ไฟล์ตรวจสิทธิ์เองทุก role × ทุก endpoint ตาม `api-matrix.ts`, signed URL GET 5 / PUT 15 นาที, log ไม่มีข้อมูลส่วนตัว, network guard); gate S10–S12 ผ่าน; คำถามค้าง Q-S12-1 ถึง Q-S12-4
 - [FOLLOW-UPS](../FOLLOW-UPS.md): งานที่เลื่อนข้าม session
