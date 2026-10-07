@@ -8,7 +8,7 @@
 | `npm run dev` | Vite + emulator mode; local notification adapter | ไม่ต่อ prod ไม่แจ้งพนักงานจริง |
 | `npm run build` | typecheck + production web/API/worker builds | exit nonzero เมื่อ TypeScript fail |
 | `npm run test:unit` | Vitest `packages/time`, `packages/domain`, backend units | deterministic fake clock ไม่พึ่ง Firebase/network |
-| `npm run test:rules` | Firebase Emulator + authenticated client test matrix | direct reads/writes ที่ผิดสิทธิ์ต้อง deny |
+| `npm run test:rules` | Firebase Emulator (Auth, Firestore, Storage) + authenticated client test matrix; API/command tests ผ่าน firebase-admin (S12) | direct reads/writes ที่ผิดสิทธิ์ต้อง deny; API ตรวจสิทธิ์เองทุก endpoint; ไม่มี request ออกนอก emulator (network guard) |
 | `npm run test:e2e` | Playwright + emulators seeded Thai fixtures | desktop/mobile sizes + main flows |
 | `npm run verify` | build → unit → rules → e 2 e | fail-fast ใด fail ห้าม release |
 | `npm run deploy:dev` | wrapper ตามวิธีพี่ทิมยืนยัน + `--project` explicit ทุก CLI | dev allowlist และ credential scope fail-closed |

@@ -48,3 +48,18 @@ export function canReadRequestDetail(viewer: AccessViewer | undefined, request: 
   if (request.isConfidential) return (request.confidentialGrantIds ?? []).includes(viewer.personId);
   return request.relatedPersonIds.includes(viewer.personId);
 }
+
+/** S12: GM and the requester attach photos to a request (UI-07); related persons only read/comment (Q-S12-2). */
+export function canAttachToRequest(viewer: AccessViewer | undefined, request: RequestAclFacts): boolean {
+  if (!isActiveViewer(viewer)) return false;
+  return isGm(viewer) || request.requesterId === viewer.personId;
+}
+
+/** S12 / U1: a watcher of a general request sends one contribution (note/photos) when watching. */
+export function canContributeAsWatcher(
+  viewer: AccessViewer | undefined,
+  request: { readonly watcherIds: readonly string[]; readonly isConfidential: boolean },
+): boolean {
+  return isActiveViewer(viewer) && !request.isConfidential && request.watcherIds.includes(viewer.personId);
+}
+

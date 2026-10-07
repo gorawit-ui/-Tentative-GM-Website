@@ -119,7 +119,8 @@ export const PRIVATE_REQUEST_FIELDS = [
   'confidential_grant_ids',
   'auto_close_due_at',
   'revision',
-  // D-S10-1: name pairs in requests/{id}
+  // D-S10-1 / D-S11-1: name pairs in requests/{id}
+  'created_by_display',
   'requester_display',
   'assignee_display',
   'related_people_display',

@@ -26,10 +26,10 @@ const PROFILES = {
     ui: true,
     command: 'npm run dev:apps',
   },
-  // Security Rules test matrix (Firestore + Storage).
+  // Security Rules test matrix (Firestore + Storage) and API/command tests (+ Auth, S12).
   rules: {
     project: 'demo-gm-rules',
-    only: 'firestore,storage',
+    only: 'auth,firestore,storage',
     ui: false,
     command: 'vitest run --config tests/rules/vitest.config.ts',
   },

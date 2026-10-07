@@ -69,13 +69,15 @@ export interface PersonDisplay {
 }
 
 /** D-S10-1: name pairs written into `requests/{id}` so the detail page needs no extra lookup. */
-export const REQUEST_DISPLAY_FIELDS = ['requester_display', 'assignee_display', 'related_people_display'] as const;
+export const REQUEST_DISPLAY_FIELDS = ['created_by_display', 'requester_display', 'assignee_display', 'related_people_display'] as const;
 
 /** Shown when the directory has no usable name for a person (same neutral word as D-S09-1). */
 export const UNKNOWN_PERSON_DISPLAY_NAME = 'พนักงาน';
 
 /** `requests/{id}` as read by people with detail access: known fields plus the display pairs. */
 export type RequestDetailDocument = RequestDocument & {
+  /** D-S11-1: “เปิดเรื่องโดย [GM]”. */
+  readonly created_by_display?: PersonDisplay;
   readonly requester_display?: PersonDisplay;
   readonly assignee_display?: PersonDisplay;
   readonly related_people_display: readonly PersonDisplay[];
@@ -170,6 +172,7 @@ export function toRequestDetailDocument(request: RequestRecord, context: Pick<Pr
   };
   return {
     ...splitRequestRecord(request).request,
+    created_by_display: display(request.created_by_id),
     ...(request.requester_id === undefined ? {} : { requester_display: display(request.requester_id) }),
     ...(request.assignee_id === undefined ? {} : { assignee_display: display(request.assignee_id) }),
     related_people_display: request.related_person_ids.map(display),

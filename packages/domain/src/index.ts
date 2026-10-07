@@ -141,6 +141,8 @@ export {
 } from './related-people';
 export { boardSection, isOnLiveBoard, type BoardFacts, type BoardSection } from './board';
 export {
+  canAttachToRequest,
+  canContributeAsWatcher,
   canReadGmProjections,
   canReadPublicSummaries,
   canReadRequestDetail,

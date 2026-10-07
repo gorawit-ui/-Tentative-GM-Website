@@ -58,6 +58,17 @@ export {
 } from './request-summary';
 export { PERSON_EMAIL_DOMAIN, isPersonId, personIdFromCsvEmail } from './person-id';
 export { ARCHIVE_PAGE_SIZE, MAX_LIST_LIMIT, pageLimit } from './query-limits';
+export { isCorporateGoogleToken, type SignInClaims } from './auth-token';
+export {
+  ATTACHMENT_CONTENT_TYPES,
+  MAX_ATTACHMENT_BYTES,
+  UPLOAD_URL_TTL_SECONDS,
+  VIEW_URL_TTL_SECONDS,
+  attachmentObjectPath,
+  imageTypeFromBytes,
+  parseAttachmentObjectPath,
+  type AttachmentContentType,
+} from './attachments';
 export {
   REQUEST_DISPLAY_FIELDS,
   UNKNOWN_PERSON_DISPLAY_NAME,

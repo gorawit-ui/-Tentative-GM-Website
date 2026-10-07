@@ -14,6 +14,7 @@ import {
   type SubjectKey,
 } from './acl-matrix';
 import { ARCHIVE_PAGE_SIZE, MAX_LIST_LIMIT } from '@gm/contracts';
+import { API_ENDPOINTS, apiDecide } from './api-matrix';
 import { SCREEN_SOURCES, STORAGE_POLICY, STORAGE_SAMPLE_PATHS } from './screen-sources';
 
 export const ACL_MATRIX_DOC_PATH = 'docs/spec/ACL-MATRIX.md';
@@ -157,6 +158,22 @@ function screenSection(): string[] {
   return [...lines, ''];
 }
 
+function apiSection(): string[] {
+  const lines = [
+    '## API (Admin SDK) — ใครเรียก endpoint อ่านข้อมูล/ไฟล์ได้',
+    '',
+    `API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรวจสิทธิ์เอง: ตรวจ ID token (Google, @tdfb.co หลัง lower(), verified) และอ่าน ${code('access/{uid}')} ใหม่ทุกคำขอ แล้วใช้กติกา domain ชุดเดียวกับ Rules; งานที่อ่านไม่ได้ตอบ 404 เหมือนไม่มีงาน — ${code('tests/emulator/api-access.test.ts')} ทดสอบทุก role × ทุก endpoint ตามตารางนี้ (${code('tests/rules/fixtures/api-matrix.ts')})`,
+    '',
+    '| Endpoint | ใครเรียกได้ | เงื่อนไข |',
+    '|---|---|---|',
+  ];
+  for (const endpoint of API_ENDPOINTS) {
+    const allowed = SUBJECT_KEYS.filter((key) => apiDecide(key, endpoint.key) === 'allow');
+    lines.push(`| ${code(endpoint.key)} | ${allowed.map(code).join(', ')} | ${endpoint.description} |`);
+  }
+  return [...lines, ''];
+}
+
 /** The whole document; deterministic (no dates or counts that change by themselves). */
 export function renderAclMatrixMarkdown(): string {
   const cells = matrixCells();
@@ -167,7 +184,7 @@ export function renderAclMatrixMarkdown(): string {
     '',
     `> ไฟล์นี้สร้างอัตโนมัติจาก ${code('tests/rules/fixtures/acl-matrix.ts')} ด้วย ${code('npm run docs:acl-matrix')} — ห้ามแก้ด้วยมือ; ${code('tests/rules/fixtures/acl-matrix-doc.test.ts')} ตรวจว่าเอกสารตรงกับ fixture เสมอ และ Rules tests (S10–S11) ใช้ fixture ชุดเดียวกัน`,
     '',
-    'ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5',
+    'ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5, D-S11-1 ถึง D-S11-3, S12',
     '',
     '## หลักการ',
     '',
@@ -189,6 +206,7 @@ export function renderAclMatrixMarkdown(): string {
     ...confidentialSection(),
     ...watcherSection(),
     ...storageSection(),
+    ...apiSection(),
     ...screenSection(),
   ];
   return `${lines.join('\n').trimEnd()}\n`;

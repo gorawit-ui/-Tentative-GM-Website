@@ -27,6 +27,7 @@ const ALLOWED_LICENSES = new Set([
 const VERIFIED_WITHOUT_LICENSE_FIELD = new Map([
   ['fuzzy@0.1.3', 'MIT (package.json "licenses" array, LICENSE-MIT)'],
   ['valid-url@1.0.9', 'MIT (LICENSE)'],
+  ['limiter@1.1.5', 'MIT (package.json "licenses" array, LICENSE.txt) — via firebase-admin > jwks-rsa (S12)'],
 ]);
 
 /**

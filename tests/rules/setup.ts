@@ -6,3 +6,7 @@ const storage = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
 if (!project.startsWith('demo-') || !firestore || !storage) {
   throw new Error('Run these tests with `npm run test:rules` (Firebase emulators on a demo-* project).');
 }
+
+// Outbound network limited to the local emulators for every test in this project.
+await import('./network-guard');
+

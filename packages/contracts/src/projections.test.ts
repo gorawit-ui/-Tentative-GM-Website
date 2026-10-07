@@ -94,6 +94,7 @@ describe('three projections from one request document', () => {
     const { watcher_ids: watchers, ...requestDocument } = REQUEST;
     expect(detail).toEqual({
       ...requestDocument,
+      created_by_display: { person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM หนึ่ง' },
       assignee_display: { person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM หนึ่ง' },
       related_people_display: [{ person_id: 'related01@tdfb.co', display_name: UNKNOWN_PERSON_DISPLAY_NAME }],
     });
@@ -448,8 +449,10 @@ describe('D-S10-1: display names in requests/{id} (person_id + display_name pair
 
   it('never shows an e-mail as a name: an unknown person gets the neutral label', () => {
     const detail = toRequestDetailDocument(selfService, { personLabel: () => undefined });
-    const names = [detail.requester_display, detail.assignee_display, ...detail.related_people_display].map((pair) => pair?.display_name);
-    expect(names).toEqual(Array(4).fill(UNKNOWN_PERSON_DISPLAY_NAME));
+    const names = [detail.created_by_display, detail.requester_display, detail.assignee_display, ...detail.related_people_display].map(
+      (pair) => pair?.display_name,
+    );
+    expect(names).toEqual(Array(5).fill(UNKNOWN_PERSON_DISPLAY_NAME));
     for (const name of names) expect(name).not.toContain('@');
     expect(UNKNOWN_PERSON_DISPLAY_NAME).toBe('พนักงาน');
   });
@@ -486,6 +489,26 @@ describe('D-S10-1: display names in requests/{id} (person_id + display_name pair
     const record = joinRequestRecord(detail, { watcher_ids: [] });
     for (const field of REQUEST_DISPLAY_FIELDS) expect(record).not.toHaveProperty(field);
     expect(splitRequestRecord(record).request).toEqual(splitRequestRecord(selfService).request);
+  });
+});
+
+describe('D-S11-1: the creator is stored as a name pair too (“เปิดเรื่องโดย [GM]”)', () => {
+  it('created_by_display pairs created_by_id with the directory name', () => {
+    const detail = toRequestDetailDocument(REQUEST, { personLabel: (personId) => NAMES[personId] });
+    expect(detail.created_by_display).toEqual({ person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM หนึ่ง' });
+  });
+
+  it('is a display field: private, never on the public summary, dropped when read back', () => {
+    expect(REQUEST_DISPLAY_FIELDS).toContain('created_by_display');
+    expect(PRIVATE_REQUEST_FIELDS as readonly string[]).toContain('created_by_display');
+    const { public: summary, detail } = buildRequestProjections('req-0427', REQUEST, context(UPDATED));
+    expect(summary).not.toHaveProperty('created_by_display');
+    expect(joinRequestRecord(detail, { watcher_ids: [] })).not.toHaveProperty('created_by_display');
+  });
+
+  it('an unknown creator gets the neutral word, never the e-mail', () => {
+    const detail = toRequestDetailDocument(REQUEST, { personLabel: () => undefined });
+    expect(detail.created_by_display).toEqual({ person_id: 'gm.staff01@tdfb.co', display_name: UNKNOWN_PERSON_DISPLAY_NAME });
   });
 });
 

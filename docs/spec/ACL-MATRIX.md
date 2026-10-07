@@ -2,7 +2,7 @@
 
 > ไฟล์นี้สร้างอัตโนมัติจาก `tests/rules/fixtures/acl-matrix.ts` ด้วย `npm run docs:acl-matrix` — ห้ามแก้ด้วยมือ; `tests/rules/fixtures/acl-matrix-doc.test.ts` ตรวจว่าเอกสารตรงกับ fixture เสมอ และ Rules tests (S10–S11) ใช้ fixture ชุดเดียวกัน
 
-ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5
+ที่มา: Part 6 §6.4/§6.5/§6.10, C3, C4, C6, U1, A2, D-S06-4, D-S08-4, D-S09-1 ถึง D-S09-8, D-ACL-1 ถึง D-ACL-7, D-S10-1 ถึง D-S10-5, D-S11-1 ถึง D-S11-3, S12
 
 ## หลักการ
 
@@ -10,7 +10,7 @@
 - **การเขียนจาก client** (create / update / delete) ปฏิเสธทุก collection ทุก role — ทุกการเปลี่ยนแปลงผ่าน API ซึ่งตรวจสิทธิ์ด้วยกติกา domain ชุดเดียวกัน (Admin SDK ข้าม Rules)
 - **อ่าน**: `get` = เปิด document หนึ่งรายการ, `list` = query ทั้ง collection โดยไม่กรอง (Rules ไม่กรองผลให้) และ**ต้องมี limit ไม่เกิน 200** ไม่มี limit หรือเกินถูกปฏิเสธทุก collection (D-S10-4) หน้า “ดูทั้งหมด” แบ่งหน้าละ 50
 - บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified (ตรวจหลังแปลงเป็นตัวพิมพ์เล็ก TDFB.CO จึงเป็นโดเมนเดียวกัน ส่วนโดเมนหน้าตาคล้ายถูกปฏิเสธ, D-S10-5) และ `access/{uid}.enabled` = true; role อ่านจาก `access/{uid}` ไม่ใช่ custom claim
-- ขนาด matrix: 16 role × 41 collection/path × 5 operation = 3280 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
+- ขนาด matrix: 16 role × 42 collection/path × 5 operation = 3360 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
 
 ## สิทธิ์พื้นฐาน: ทุกบัญชีที่ใช้งานได้
 
@@ -38,7 +38,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 | `requests/{id} (งานลับ)` | get | — | รายละเอียดงานลับ: GM, ผู้ขอ และคนใน confidential_grant_ids เท่านั้น ทุก role (D-ACL-2) |
 
 ### related person ของงานตัวอย่าง และยืนยันสิทธิ์งานลับแล้ว (D-ACL-2) (`related_person`)
@@ -47,7 +47,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 | `requests/{id} (งานลับ)` | get | — | รายละเอียดงานลับ: GM, ผู้ขอ และคนใน confidential_grant_ids เท่านั้น ทุก role (D-ACL-2) |
 
 ### related person ที่ไม่ได้รับการยืนยันให้คงสิทธิ์ตอนติดธงลับ (D-ACL-2) (`related_unconfirmed`)
@@ -56,7 +56,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 
 ### ผู้แจ้งเพิ่ม (watcher) อ่านได้เฉพาะสรุป (`watcher`)
 
@@ -68,7 +68,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 | `requests/{id} (งานลับ)` | get | — | รายละเอียดงานลับ: GM, ผู้ขอ และคนใน confidential_grant_ids เท่านั้น ทุก role (D-ACL-2) |
 
 ### พนักงานทั่วไปที่ไม่เกี่ยวกับงาน (`employee`)
@@ -85,7 +85,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 | `requests/{id} (งานลับ)` | get | — | รายละเอียดงานลับ: GM, ผู้ขอ และคนใน confidential_grant_ids เท่านั้น ทุก role (D-ACL-2) |
 
 ### Viewer ที่เป็น related แต่ยังไม่ได้ยืนยันสิทธิ์งานลับ (D-ACL-2) (`viewer_unconfirmed`)
@@ -94,7 +94,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 
 ### คนในทีมที่ติด team_labels แต่ไม่ใช่ related (C4) (`team_label_member`)
 
@@ -106,7 +106,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get, list | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get, list | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 | `requests/{id} (งานลับ)` | get, list | — | รายละเอียดงานลับ: GM, ผู้ขอ และคนใน confidential_grant_ids เท่านั้น ทุก role (D-ACL-2) |
 | `gm_request_summaries/{id}` | get, list | — | สรุปของ GM รวมงานลับ/stale: GM เท่านั้น |
 | `gm_request_details/{id}` | get, list | — | รายชื่อ watcher และหมายเหตุธงลับ: GM เท่านั้น (D-S09-5) |
@@ -120,7 +120,7 @@
 
 | Collection / path | อ่าน | เขียน | เงื่อนไข |
 |---|---|---|---|
-| `requests/{id} (งานไม่ลับ)` | get, list | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
+| `requests/{id} (งานไม่ลับ)` | get, list | — | รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM |
 | `requests/{id} (งานลับ)` | get, list | — | รายละเอียดงานลับ: GM, ผู้ขอ และคนใน confidential_grant_ids เท่านั้น ทุก role (D-ACL-2) |
 | `gm_request_summaries/{id}` | get, list | — | สรุปของ GM รวมงานลับ/stale: GM เท่านั้น |
 | `gm_request_details/{id}` | get, list | — | รายชื่อ watcher และหมายเหตุธงลับ: GM เท่านั้น (D-S09-5) |
@@ -193,7 +193,7 @@ watcher คือคนที่กด “แจ้งปัญหาเดี�
 
 อ่านไม่ได้ (ตัวอย่างที่เกี่ยวกับงานที่ติดตาม):
 
-- `requests/{id} (งานไม่ลับ)` — รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM
+- `requests/{id} (งานไม่ลับ)` — รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM
 - `requests/{id}/history/{event_id}` — history ผ่าน API ตรวจ parent ACL เท่านั้น
 - `requests/{id}/comments/{id}` — คอมเมนต์ผ่าน API เท่านั้น
 - `gm_request_summaries/{id}` — สรุปของ GM รวมงานลับ/stale: GM เท่านั้น
@@ -215,6 +215,26 @@ watcher คือคนที่กด “แจ้งปัญหาเดี�
 
 ตัวอย่าง path ที่ Rules tests ยืนยันว่าปฏิเสธทุก role: `requests/req-acl-general/attachments/att-acl-1.jpg`, `requests/req-acl-secret/attachments/att-acl-2.jpg`, `pending/uid-requester/upload-1.jpg`, `contributions/req-acl-general/acl.watcher@tdfb.co/photo-1.jpg`, `renewals/ri-1/document.pdf`, `unknown/path.bin`
 
+## API (Admin SDK) — ใครเรียก endpoint อ่านข้อมูล/ไฟล์ได้
+
+API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรวจสิทธิ์เอง: ตรวจ ID token (Google, @tdfb.co หลัง lower(), verified) และอ่าน `access/{uid}` ใหม่ทุกคำขอ แล้วใช้กติกา domain ชุดเดียวกับ Rules; งานที่อ่านไม่ได้ตอบ 404 เหมือนไม่มีงาน — `tests/emulator/api-access.test.ts` ทดสอบทุก role × ทุก endpoint ตามตารางนี้ (`tests/rules/fixtures/api-matrix.ts`)
+
+| Endpoint | ใครเรียกได้ | เงื่อนไข |
+|---|---|---|
+| `request_detail.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | รายละเอียดงาน (งานไม่ลับ) |
+| `request_detail.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | รายละเอียดงานลับ: GM, ผู้ขอ, grant (D-ACL-2) |
+| `history.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | history ตามสิทธิ์รายละเอียดของงาน |
+| `history.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | history ของงานลับ |
+| `comments.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | คอมเมนต์ตามสิทธิ์รายละเอียดของงาน |
+| `comments.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | คอมเมนต์ของงานลับ |
+| `my_requests` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `employee`, `viewer`, `viewer_related`, `viewer_unconfirmed`, `team_label_member`, `gm_staff`, `gm_admin` | คำขอของฉัน: เฉพาะงานที่ยังมีสิทธิ์ ณ ตอนขอ (watcher เห็นแค่สรุป) |
+| `awaiting_confirmation` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `employee`, `viewer`, `viewer_related`, `viewer_unconfirmed`, `team_label_member`, `gm_staff`, `gm_admin` | จำนวนงานรอฉันยืนยัน (D-S10-2) |
+| `view_url.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | ลิงก์ดูรูป GET 5 นาที: คนที่อ่านงานนั้นได้ |
+| `view_url.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | ลิงก์ดูรูปของงานลับ |
+| `upload_url.attachment.general` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลด PUT 15 นาที: GM และผู้ขอ (Q-S12-2) |
+| `upload_url.attachment.confidential` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลดของงานลับ: GM และผู้ขอ |
+| `upload_url.watch_contribution.general` | `watcher` | รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง (U1) — watcher เท่านั้น |
+
 ## หน้าจอ → แหล่งข้อมูล
 
 แต่ละหน้าโหลดข้อมูลจากไหนภายใต้สิทธิ์ในเอกสารนี้ (D-ACL-6) — `screen-sources.test.ts` ตรวจว่าทุกแหล่ง Firestore ในตารางนี้อนุญาตจริงสำหรับทุกคนที่เปิดหน้านั้น ข้อมูลที่โหลดไม่ได้ภายใต้สิทธิ์นี้เขียนเป็นคำถาม (docs/sessions/S10.md) ไม่แก้สิทธิ์เอง
@@ -227,9 +247,9 @@ watcher คือคนที่กด “แจ้งปัญหาเดี�
 | หน้าแรก — แถบ “มี X งานรอคุณยืนยัน” (UI-02) | ผู้ขอ (ทุกบัญชีที่ใช้งานได้) | — | จำนวนงานที่ requester_id = ฉัน, status = completed และยังไม่มี closed_at (Part 2 Addendum) จาก endpoint ส่วนบุคคลเดียวกับคำขอของฉัน (D-S10-2) | — |
 | คำขอของฉัน — แท็บที่ฉันขอ (UI-06) | ทุกบัญชีที่ใช้งานได้ | `user_state/{person_id ของตัวเอง}/requests/{id}` · list: รายการงานของฉัน (relation type) และ last_seen_activity_seq สำหรับจุด “มีอัปเดตใหม่” | สรุปการ์ดของแต่ละงาน (สถานะ ผู้รับผิดชอบ รอใคร กำหนดยืนยัน) — API ตรวจ ACL ปัจจุบันก่อนคืน (§6.4 แถว user_state) | — |
 | คำขอของฉัน — แท็บเกี่ยวข้องกับฉัน รวมงานที่ติดตาม (UI-06) | ทุกบัญชีที่ใช้งานได้ | `user_state/{person_id ของตัวเอง}/requests/{id}` · list: งานที่ฉันเป็น related หรือ watcher (relation type)<br>`request_summaries/{id} (งานไม่ลับ)` · get: งานที่ติดตาม: “ติดตามอยู่ — ดูข้อมูลสรุป” (Part 3 Addendum) | สรุปการ์ดของงานที่ฉันเป็น related — API ตรวจ ACL ปัจจุบัน (งานลับเฉพาะเมื่อได้รับการยืนยัน, D-ACL-2) | — |
-| รายละเอียด — ผู้ขอ (UI-07) | ผู้ขอของงาน | `requests/{id} (งานไม่ลับ)` · get: รายละเอียดงาน พร้อมชื่อผู้ขอ ผู้รับผิดชอบ และ related เป็นคู่ person_id + display_name (D-S10-1)<br>`requests/{id} (งานลับ)` · get: รายละเอียดงานลับของตัวเอง<br>`locations/{id}` · get: ชื่อสถานที่<br>`areas/{id}` · get: ชื่อบริเวณ | คอมเมนต์, history, ช่วงรอ, ลิงก์รูป (signed URL) — API ตรวจ parent ACL<br>ยืนยัน / ยังไม่เรียบร้อย / คอมเมนต์ / แนบรูป เป็น command | Q-S11-1: ชื่อ “ผู้สร้าง” (เปิดเรื่องโดย GM) ไม่อยู่ในคู่ชื่อของ D-S10-1 |
-| รายละเอียด — related (UI-07) | related person ทุก role | `requests/{id} (งานไม่ลับ)` · get: รายละเอียดงานไม่ลับ พร้อมชื่อคนในงาน (D-S10-1; เห็นอีเมล related คนอื่นในงานเดียวกันได้, D-ACL-1)<br>`requests/{id} (งานลับ)` · get: งานลับ: เฉพาะคนใน confidential_grant_ids (D-ACL-2) — เฉพาะ `related_person`, `viewer_related`<br>`locations/{id}` · get: ชื่อสถานที่<br>`areas/{id}` · get: ชื่อบริเวณ | คอมเมนต์, history, ช่วงรอ, ลิงก์รูป — API ตรวจ parent ACL<br>คอมเมนต์ เป็น command | Q-S11-1: ชื่อ “ผู้สร้าง” (ข้อเดียวกับผู้ขอ) |
-| รายละเอียด — ฝ่ายที่ถูกรอ (UI-07) | ผู้รับแจ้งของช่วงรอปัจจุบัน (เป็น related และได้รับการยืนยันในงานลับ) | `requests/{id} (งานไม่ลับ)` · get: รายละเอียดงานและ waiting_on<br>`requests/{id} (งานลับ)` · get: งานลับที่ได้รับการยืนยัน | ฉันเป็น recipient ของช่วงปัจจุบันหรือไม่ (recipients อยู่ใน waiting_intervals ที่ client อ่านตรงไม่ได้)<br>“ฝั่งฉันเรียบร้อยแล้ว” เป็น command | Q-S11-1: ชื่อ “ผู้สร้าง” (ข้อเดียวกับผู้ขอ) |
+| รายละเอียด — ผู้ขอ (UI-07) | ผู้ขอของงาน | `requests/{id} (งานไม่ลับ)` · get: รายละเอียดงาน พร้อมชื่อผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related เป็นคู่ person_id + display_name (D-S10-1, D-S11-1)<br>`requests/{id} (งานลับ)` · get: รายละเอียดงานลับของตัวเอง<br>`locations/{id}` · get: ชื่อสถานที่<br>`areas/{id}` · get: ชื่อบริเวณ | คอมเมนต์, history, ช่วงรอ, ลิงก์รูป (signed URL) — API ตรวจ parent ACL<br>ยืนยัน / ยังไม่เรียบร้อย / คอมเมนต์ / แนบรูป เป็น command | — |
+| รายละเอียด — related (UI-07) | related person ทุก role | `requests/{id} (งานไม่ลับ)` · get: รายละเอียดงานไม่ลับ พร้อมชื่อคนในงาน (D-S10-1; เห็นอีเมล related คนอื่นในงานเดียวกันได้, D-ACL-1)<br>`requests/{id} (งานลับ)` · get: งานลับ: เฉพาะคนใน confidential_grant_ids (D-ACL-2) — เฉพาะ `related_person`, `viewer_related`<br>`locations/{id}` · get: ชื่อสถานที่<br>`areas/{id}` · get: ชื่อบริเวณ | คอมเมนต์, history, ช่วงรอ, ลิงก์รูป — API ตรวจ parent ACL<br>คอมเมนต์ เป็น command | — |
+| รายละเอียด — ฝ่ายที่ถูกรอ (UI-07) | ผู้รับแจ้งของช่วงรอปัจจุบัน (เป็น related และได้รับการยืนยันในงานลับ) | `requests/{id} (งานไม่ลับ)` · get: รายละเอียดงานและ waiting_on<br>`requests/{id} (งานลับ)` · get: งานลับที่ได้รับการยืนยัน | ฉันเป็น recipient ของช่วงปัจจุบันหรือไม่ (recipients อยู่ใน waiting_intervals ที่ client อ่านตรงไม่ได้)<br>“ฝั่งฉันเรียบร้อยแล้ว” เป็น command | — |
 | รายละเอียด — watcher (UI-07 มุมมอง summary-only) | ผู้แจ้งเพิ่ม (watcher) | `request_summaries/{id} (งานไม่ลับ)` · get: มุมมองสรุปเท่านั้น (งานกลายเป็นลับ → ไม่มี document)<br>`locations/{id}` · get: ชื่อสถานที่<br>`areas/{id}` · get: ชื่อบริเวณ | หมายเหตุ/รูปที่ตัวเองแจ้งเพิ่ม (contribution ใน gm_history) — API คืนเฉพาะของตัวเอง | — |
 | ต่ออายุ (Infrastructure R4) | GM Staff / GM Admin | `renewal_items/{id}` · list: รายการ active เรียงตาม expires_on (§6.11)<br>`renewal_items/{id}/cycles/{cycle_id}` · list: รอบต่ออายุของรายการ<br>`gm_request_summaries/{id}` · get: สถานะงานต่ออายุที่เปิดแล้ว | เพิ่ม/แก้/ปิดรอบ/archive/import เป็น command | — |
 | Dashboard / Scorecard / CSV (UI-11, ด่าน B) | GM (full scope) และ Viewer (public scope) | — | aggregate ตาม scope + visibility_epoch — client ไม่อ่าน dashboard_public / dashboard_gm / scorecards ตรง (§6.4) | — |

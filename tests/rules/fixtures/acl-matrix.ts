@@ -264,6 +264,7 @@ export function seedDocuments(): ReadonlyMap<string, object> {
     'imports/imp-1': { state: 'preview' },
     'integration_inbox/in-1': { provider: 'slack' },
     'integration_state/slack': { cursor: 'x' },
+    'uploads/up-acl-1': { request_id: GENERAL_REQUEST_ID, purpose: 'attachment', state: 'pending' },
     'unknown_collection/doc-1': { anything: true },
   };
   for (const [path, data] of Object.entries(singles)) docs.set(path, data);
@@ -308,7 +309,7 @@ export const RESOURCES: readonly AclResource[] = [
   },
   {
     key: 'requests.general',
-    description: 'รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM',
+    description: 'รายละเอียดงาน พร้อมคู่ person_id + display_name ของผู้สร้าง ผู้ขอ ผู้รับผิดชอบ และ related (D-S10-1, D-S11-1; ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; ถอด related แล้วอ่านไม่ได้ทันที (FU-03); list ทั้ง collection ได้เฉพาะ GM',
     path: `requests/${GENERAL_REQUEST_ID}`,
     collectionPath: 'requests',
     allow: { ...readFor(DETAIL_SUBJECTS, ['get']), ...readFor(GM_SUBJECTS) },
@@ -426,6 +427,7 @@ export const RESOURCES: readonly AclResource[] = [
       'imports/imp-1',
       'integration_inbox/in-1',
       'integration_state/slack',
+      'uploads/up-acl-1',
       'unknown_collection/doc-1',
     ] as const
   ).map((path) => deniedEverywhere(path.slice(0, path.indexOf('/')), path, 'server/API เท่านั้น หรือ path ที่ไม่มีกติกา')),

@@ -1,6 +1,7 @@
 // S08 — request number counter and command IDs on the Firestore emulator (A4, Part 6 §6.6).
 // Emulator only (demo-* project); people, places and IDs are synthetic.
 import { randomUUID } from 'node:crypto';
+import { Timestamp } from 'firebase-admin/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Actor, DeploymentEnvironment } from '@gm/domain';
 import { ContractRejected, parseCommand, type CommandEnvelope } from '@gm/contracts';
@@ -18,6 +19,7 @@ import {
   emulatorClient,
   readCollection,
   readDoc,
+  readRaw,
   removeDoc,
   writeDoc,
   type EmulatorClient,
@@ -410,6 +412,7 @@ describe('D-S10-1 / FU-07: names and confidential grants are written with the re
     expect(request).toMatchObject({
       requester_id: 'employee03@tdfb.co',
       requester_display: { person_id: 'employee03@tdfb.co', display_name: 'คุณพนักงานสาม' },
+      created_by_display: { person_id: 'gm.staff01@tdfb.co', display_name: 'คุณ GM ตัวอย่าง' },
       related_person_ids: ['related01@tdfb.co', 'unknown01@tdfb.co'],
       related_people_display: [
         { person_id: 'related01@tdfb.co', display_name: 'คุณผู้เกี่ยวข้องหนึ่ง' },
@@ -441,6 +444,21 @@ describe('D-S10-1 / FU-07: names and confidential grants are written with the re
       'CONFIDENTIAL_GRANT_REQUIRED',
     );
     expect(await counter()).toBe(before);
+  });
+});
+
+describe('FU-05: the Admin SDK adapter stores instants as Firestore Timestamps', () => {
+  it('commands.expire_at (TTL, D-S08-6) and request instants are real Timestamps; the API reads them back as milliseconds', async () => {
+    const commandId = randomUUID();
+    const created = await executeCommand(client.store, gmTask(commandId), context(GM));
+    const raw = await readRaw(client.db, `commands/${commandId}`);
+    expect(raw?.expire_at).toBeInstanceOf(Timestamp);
+    expect((raw?.expire_at as Timestamp).toMillis()).toBe(NOW + COMMAND_RETENTION_MS);
+    const request = await readRaw(client.db, `requests/${String(created.result.request_id)}`);
+    expect(request?.created_at).toBeInstanceOf(Timestamp);
+    expect(request?.last_updated_at).toBeInstanceOf(Timestamp);
+    expect(request?.revision).toBe(1);
+    expect((await readDoc(client.db, `requests/${String(created.result.request_id)}`))?.created_at).toBe(NOW);
   });
 });
 
