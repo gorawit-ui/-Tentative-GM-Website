@@ -286,28 +286,28 @@ const deniedEverywhere = (key: string, path: string, description: string): AclRe
 export const RESOURCES: readonly AclResource[] = [
   {
     key: 'request_summaries',
-    description: 'สรุปสาธารณะของงานไม่ลับ: active corporate อ่านได้ทุกคน (§6.5)',
+    description: 'สรุปสาธารณะของงานไม่ลับ: ทุกบัญชีที่ใช้งานได้ (§6.5)',
     path: `request_summaries/${GENERAL_REQUEST_ID}`,
     collectionPath: 'request_summaries',
     allow: readFor(ACTIVE_SUBJECTS),
   },
   {
     key: 'requests.general',
-    description: 'รายละเอียดงาน (ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; list ทั้ง collection เฉพาะ GM',
+    description: 'รายละเอียดงาน (ไม่มีรายชื่อ watcher/หมายเหตุธงลับ): GM, ผู้ขอ, related รวมฝ่ายที่รอ; list ทั้ง collection ได้เฉพาะ GM',
     path: `requests/${GENERAL_REQUEST_ID}`,
     collectionPath: 'requests',
     allow: { ...readFor(DETAIL_SUBJECTS, ['get']), ...readFor(GM_SUBJECTS) },
   },
   {
     key: 'requests.confidential',
-    description: 'รายละเอียดงานลับ: GM, ผู้ขอ, related; Viewer ต้องยืนยันสิทธิ์งานลับแล้ว (D-S09-2)',
+    description: 'รายละเอียดงานลับ: GM, ผู้ขอ, related; Viewer ต้องได้รับการยืนยันสิทธิ์งานลับแล้ว (D-S09-2)',
     path: `requests/${SECRET_REQUEST_ID}`,
     collectionPath: 'requests',
     allow: { ...readFor(CONFIDENTIAL_DETAIL_SUBJECTS, ['get']), ...readFor(GM_SUBJECTS) },
   },
   {
     key: 'request_summaries.confidential_absent',
-    description: 'งานลับไม่มีสรุปสาธารณะ: อ่าน path นี้ได้ก็ต้องไม่พบ document (seed ไม่มี) — Rules ยังอนุญาตแบบ collection เดียวกัน',
+    description: 'งานลับไม่มี document ที่นี่ เปิดแล้วไม่พบอะไร (กติกาเดียวกับ collection นี้)',
     path: `request_summaries/${SECRET_REQUEST_ID}`,
     collectionPath: 'request_summaries',
     allow: readFor(ACTIVE_SUBJECTS),
@@ -333,14 +333,14 @@ export const RESOURCES: readonly AclResource[] = [
   deniedEverywhere('people', `people/${personOf('employee')}`, 'อีเมล/Slack ID: server เท่านั้น'),
   {
     key: 'people_picker',
-    description: 'ID ชื่อ สำหรับเลือกคน: active อ่านได้',
+    description: 'ชื่อและทีมสำหรับช่องเลือกคน: ทุกบัญชีที่ใช้งานได้',
     path: `people_picker/${personOf('employee')}`,
     collectionPath: 'people_picker',
     allow: readFor(ACTIVE_SUBJECTS),
   },
   {
     key: 'access.self',
-    description: 'access ของตัวเอง: เจ้าของอ่านได้ (รวมบัญชีที่ปิดใช้งาน เพื่อแสดงว่าถูกปิด); นอก @tdfb.co/ไม่ verified ไม่ได้',
+    description: 'access ของตัวเองเท่านั้น (บัญชีที่ปิดใช้งานก็อ่านได้ เพื่อให้หน้าเว็บบอกว่าถูกปิด, D-S09-6)',
     path: ownUid,
     collectionPath: 'access',
     allow: readFor([...ACTIVE_SUBJECTS, 'inactive'], ['get']),
@@ -349,14 +349,14 @@ export const RESOURCES: readonly AclResource[] = [
   deniedEverywhere('gm_profiles', `gm_profiles/${personOf('gm_staff')}`, 'profile GM เต็ม: ผ่าน API'),
   {
     key: 'gm_profile_summaries',
-    description: 'presence/focus แบบปลอดภัย (งานลับเป็น “งานภายใน”): active อ่านได้',
+    description: 'สถานะที่อยู่/งานที่กำลังทำของ GM (งานลับแสดง “งานภายใน”): ทุกบัญชีที่ใช้งานได้',
     path: `gm_profile_summaries/${personOf('gm_staff')}`,
     collectionPath: 'gm_profile_summaries',
     allow: readFor(ACTIVE_SUBJECTS),
   },
   {
     key: 'user_state.own',
-    description: 'สถานะอ่านแล้วของตัวเอง: เจ้าของ (active) อ่านได้',
+    description: 'สถานะอ่านแล้วของตัวเองเท่านั้น',
     path: (s) => `${ownState(s)}/${GENERAL_REQUEST_ID}`,
     collectionPath: ownState,
     allow: readFor(ACTIVE_SUBJECTS),
@@ -364,7 +364,7 @@ export const RESOURCES: readonly AclResource[] = [
   deniedEverywhere('user_state.other', `user_state/${personOf('requester')}/requests/${GENERAL_REQUEST_ID}`, 'ของคนอื่น'),
   {
     key: 'board_counters',
-    description: '“งานภายใน X รายการ”: active อ่านได้',
+    description: 'ตัวเลข “งานภายใน X รายการ” (งานลับที่ยังเปิด, D-S09-4): ทุกบัญชีที่ใช้งานได้',
     path: 'board_counters/public',
     collectionPath: 'board_counters',
     allow: readFor(ACTIVE_SUBJECTS),
@@ -372,7 +372,7 @@ export const RESOURCES: readonly AclResource[] = [
   ...(['locations/loc-wh300', 'areas/area-wh300-pack-1', 'qr_codes/qr-acl-1', 'content_pages/contact', 'announcements/ann-1'] as const).map(
     (path): AclResource => ({
       key: path.slice(0, path.indexOf('/')),
-      description: 'ข้อมูลอ้างอิงที่ active อ่านได้ (§6.4)',
+      description: 'ข้อมูลอ้างอิง: ทุกบัญชีที่ใช้งานได้ (§6.4)',
       path,
       collectionPath: path.slice(0, path.indexOf('/')),
       allow: readFor(ACTIVE_SUBJECTS),

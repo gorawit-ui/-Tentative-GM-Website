@@ -2,6 +2,7 @@
 // file is generated (`npm run docs:acl-matrix`) and `acl-matrix-doc.test.ts` fails when it drifts.
 import {
   ACL_OPERATIONS,
+  ACTIVE_SUBJECTS,
   RESOURCES,
   SUBJECTS,
   SUBJECT_KEYS,
@@ -25,18 +26,42 @@ const code = (text: string) => `\`${text}\``;
 const cell = (operations: readonly AclOperation[]) => (operations.length === 0 ? '—' : operations.join(', '));
 const yes = (allow: boolean) => (allow ? 'ได้' : 'ไม่ได้');
 
-function roleSection(key: SubjectKey): string[] {
-  const subject = SUBJECTS[key];
-  const rows = RESOURCES.map((resource) => ({ resource, reads: allowed(key, resource, READS), writes: allowed(key, resource, WRITES) })).filter(
+type Row = { readonly resource: AclResource; readonly reads: readonly AclOperation[]; readonly writes: readonly AclOperation[] };
+
+function rowsFor(key: SubjectKey): Row[] {
+  return RESOURCES.map((resource) => ({ resource, reads: allowed(key, resource, READS), writes: allowed(key, resource, WRITES) })).filter(
     (row) => row.reads.length > 0 || row.writes.length > 0,
   );
+}
+
+const sameOperations = (a: Row, b: Row) => a.reads.join() === b.reads.join() && a.writes.join() === b.writes.join();
+
+/** What every active account may do identically: shown once instead of under every role. */
+export function baselineRows(): Row[] {
+  const [first, ...others] = ACTIVE_SUBJECTS;
+  if (first === undefined) return [];
+  return rowsFor(first).filter((row) =>
+    others.every((key) => rowsFor(key).some((other) => other.resource.key === row.resource.key && sameOperations(other, row))),
+  );
+}
+
+function table(rows: readonly Row[]): string[] {
+  return [
+    '| Collection / path | อ่าน | เขียน | เงื่อนไข |',
+    '|---|---|---|---|',
+    ...rows.map(({ resource, reads, writes }) => `| ${code(resourcePattern(resource))} | ${cell(reads)} | ${cell(writes)} | ${resource.description} |`),
+  ];
+}
+
+function roleSection(key: SubjectKey, baseline: readonly Row[]): string[] {
+  const subject = SUBJECTS[key];
   const lines = [`### ${subject.description} (${code(key)})`, ''];
-  if (rows.length === 0) return [...lines, 'ไม่มีสิทธิ์อ่านหรือเขียนอะไรเลย — ปฏิเสธทั้งหมด', ''];
-  lines.push('| Collection / path | อ่าน | เขียน | เงื่อนไข |', '|---|---|---|---|');
-  for (const { resource, reads, writes } of rows) {
-    lines.push(`| ${code(resourcePattern(resource))} | ${cell(reads)} | ${cell(writes)} | ${resource.description} |`);
-  }
-  return [...lines, ''];
+  const active = ACTIVE_SUBJECTS.includes(key);
+  const rows = rowsFor(key).filter((row) => !active || !baseline.some((base) => base.resource.key === row.resource.key && sameOperations(base, row)));
+  if (!active && rows.length === 0) return [...lines, 'ไม่มีสิทธิ์อ่านหรือเขียนอะไรเลย — ปฏิเสธทั้งหมด', ''];
+  if (!active) return [...lines, 'ไม่ได้สิทธิ์พื้นฐาน ได้เฉพาะ:', '', ...table(rows), ''];
+  if (rows.length === 0) return [...lines, 'ได้เฉพาะสิทธิ์พื้นฐาน ไม่มีอะไรเพิ่ม', ''];
+  return [...lines, 'สิทธิ์พื้นฐาน และเพิ่ม:', '', ...table(rows), ''];
 }
 
 const byKey = (key: string): AclResource => {
@@ -93,6 +118,7 @@ function watcherSection(): string[] {
 /** The whole document; deterministic (no dates or counts that change by themselves). */
 export function renderAclMatrixMarkdown(): string {
   const cells = matrixCells();
+  const baseline = baselineRows();
   const allowedCount = cells.filter((entry) => entry.expected === 'allow').length;
   const lines = [
     '# ACL matrix — ใครอ่าน/เขียนอะไรใน Firestore ได้ (client)',
@@ -109,9 +135,15 @@ export function renderAclMatrixMarkdown(): string {
     `- บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified และ ${code('access/{uid}.enabled')} = true; role อ่านจาก ${code('access/{uid}')} ไม่ใช่ custom claim`,
     `- ขนาด matrix: ${SUBJECT_KEYS.length} role × ${RESOURCES.length} collection/path × ${ACL_OPERATIONS.length} operation = ${cells.length} ช่อง อนุญาต ${allowedCount} ช่อง ที่เหลือปฏิเสธ`,
     '',
+    '## สิทธิ์พื้นฐาน: ทุกบัญชีที่ใช้งานได้',
+    '',
+    `บัญชีที่ใช้งานได้ (active) = ${ACTIVE_SUBJECTS.map(code).join(', ')} ทุกคนได้สิทธิ์ชุดนี้เหมือนกัน`,
+    '',
+    ...table(baseline),
+    '',
     '## ตาม role',
     '',
-    ...SUBJECT_KEYS.flatMap(roleSection),
+    ...SUBJECT_KEYS.flatMap((key) => roleSection(key, baseline)),
     ...confidentialSection(),
     ...watcherSection(),
   ];
