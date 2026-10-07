@@ -38,10 +38,17 @@ export function canReadGmProjections(viewer: AccessViewer | undefined): boolean 
 
 /**
  * Part 6 §6.5 `canReadRequest`: active GM, the requester, or an explicitly related person (a Viewer
- * included, Part 2 F05). Watching, team labels and the Viewer role alone never grant detail.
+ * included, Part 2 F05; on a confidential request only with the confirmed grant, D-S09-2). Watching,
+ * team labels and the Viewer role alone never grant detail.
  */
 export function canReadRequestDetail(viewer: AccessViewer | undefined, request: RequestAclFacts): boolean {
   if (!isActiveViewer(viewer)) return false;
   if (isGm(viewer)) return true;
-  return request.requesterId === viewer.personId || request.relatedPersonIds.includes(viewer.personId);
+  if (request.requesterId === viewer.personId) return true;
+  if (!request.relatedPersonIds.includes(viewer.personId)) return false;
+  // D-S09-2: a Viewer opens a confidential request only with the separately confirmed grant (C3).
+  if (request.isConfidential && viewer.role === 'viewer') {
+    return (request.confidentialGrantIds ?? []).includes(viewer.personId);
+  }
+  return true;
 }

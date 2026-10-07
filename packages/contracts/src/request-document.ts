@@ -101,10 +101,8 @@ export const REQUEST_DOCUMENT_FIELDS = [
   'assignee_id',
   'is_confidential',
   'sensitivity_reason',
-  'sensitivity_note',
   'related_person_ids',
   'confidential_grant_ids',
-  'watcher_ids',
   'team_labels',
   'status',
   'revision',
@@ -120,17 +118,30 @@ export const REQUEST_DOCUMENT_FIELDS = [
   'waiting_since',
   'waiting_party_responded',
   'responded_at',
-] as const satisfies readonly (keyof RequestRecord)[];
+] as const satisfies readonly (keyof RequestDocument)[];
 
-/** Splits a request into its two stored documents (D-S09-5). */
-export function splitRequestRecord(_record: RequestRecord): {
+/** Splits a request into its two stored documents (D-S09-5); unknown fields are dropped. */
+export function splitRequestRecord(record: RequestRecord): {
   readonly request: RequestDocument;
   readonly gmDetail: GmRequestDetailDocument;
 } {
-  throw new Error('splitRequestRecord: not implemented yet (D-S09-5)');
+  const request = Object.fromEntries(
+    REQUEST_DOCUMENT_FIELDS.filter((field) => record[field] !== undefined).map((field) => [field, record[field]]),
+  ) as unknown as RequestDocument;
+  return {
+    request,
+    gmDetail: {
+      watcher_ids: record.watcher_ids,
+      ...(record.sensitivity_note === undefined ? {} : { sensitivity_note: record.sensitivity_note }),
+    },
+  };
 }
 
-/** Joins the two stored documents back into the whole request. */
-export function joinRequestRecord(_request: RequestDocument, _gmDetail: GmRequestDetailDocument | undefined): RequestRecord {
-  throw new Error('joinRequestRecord: not implemented yet (D-S09-5)');
+/** Joins the two stored documents back into the whole request (no GM detail yet = no watchers). */
+export function joinRequestRecord(request: RequestDocument, gmDetail: GmRequestDetailDocument | undefined): RequestRecord {
+  return {
+    ...request,
+    watcher_ids: gmDetail?.watcher_ids ?? [],
+    ...(gmDetail?.sensitivity_note === undefined ? {} : { sensitivity_note: gmDetail.sensitivity_note }),
+  };
 }

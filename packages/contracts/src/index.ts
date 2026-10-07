@@ -51,6 +51,7 @@ export {
   PUBLIC_WAITING_LABELS,
   REQUEST_SUMMARY_FIELDS,
   isAwaitingConfirmation,
+  publicWaitingLabel,
   toRequestSummaryDocument,
   watcherCount,
   type RequestSummaryDocument,

@@ -285,6 +285,10 @@ function openInterval<S extends WaitingRequestState>(
     ...without(state, CURRENT_INTERVAL_FIELDS),
     status: 'waiting' as const,
     relatedPersonIds: [...state.relatedPersonIds, ...plan.newRelatedPersonIds],
+    // D-S09-2: on a confidential request the newly added people carry the confirmed grant.
+    ...(state.isConfidential && plan.newRelatedPersonIds.length > 0
+      ? { confidentialGrantIds: [...(state.confidentialGrantIds ?? []), ...plan.newRelatedPersonIds] }
+      : {}),
     waitingIntervalSeq: intervalId,
     waitingOn: plan.waitingOn,
     currentWaitingIntervalId: intervalId,

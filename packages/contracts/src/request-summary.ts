@@ -37,14 +37,36 @@ export interface RequestSummaryDocument {
   readonly watcher_count: number;
 }
 
-/** Generic public labels of the waited party; GM-confirmed safe labels do not exist yet (S09 question). */
+/**
+ * D-S09-1 public labels of the waited party: a person shows as their team (“พนักงาน” if unknown), a
+ * team as its label, a contractor only as “ผู้รับเหมา”, a government office as the name the GM typed,
+ * other as “อื่นๆ”. These are the fallbacks when the name is not available.
+ */
 export const PUBLIC_WAITING_LABELS = {
   person: 'พนักงาน',
   team: 'ทีมภายใน',
   contractor: 'ผู้รับเหมา',
   government: 'หน่วยงานรัฐ',
-  other: 'ฝ่ายอื่น',
+  other: 'อื่นๆ',
 } as const satisfies Record<WaitingOnDocument['kind'], string>;
+
+export function publicWaitingLabel(
+  waitingOn: WaitingOnDocument,
+  context: Pick<ProjectionContext, 'personTeamLabel'>,
+): string {
+  const named = (value: string | undefined) => (value === undefined || value.trim() === '' ? undefined : value.trim());
+  switch (waitingOn.kind) {
+    case 'person':
+      return named(waitingOn.person_id === undefined ? undefined : context.personTeamLabel(waitingOn.person_id)) ?? PUBLIC_WAITING_LABELS.person;
+    case 'team':
+      return named(waitingOn.team_label) ?? PUBLIC_WAITING_LABELS.team;
+    case 'government':
+      return named(waitingOn.name) ?? PUBLIC_WAITING_LABELS.government;
+    case 'contractor':
+    case 'other':
+      return PUBLIC_WAITING_LABELS[waitingOn.kind];
+  }
+}
 
 export const REQUEST_SUMMARY_FIELDS = [
   'request_id',
@@ -66,6 +88,7 @@ export const REQUEST_SUMMARY_FIELDS = [
   'is_assigned',
   'assignee_label',
   'waiting_on_summary',
+  'waiting_party_responded',
   'watcher_count',
 ] as const satisfies readonly (keyof RequestSummaryDocument)[];
 
@@ -92,8 +115,8 @@ export const PRIVATE_REQUEST_FIELDS = [
   'assignee_id',
   'is_confidential',
   'current_waiting_interval_id',
-  'waiting_party_responded',
   'responded_at',
+  'confidential_grant_ids',
   'auto_close_due_at',
   'revision',
 ] as const;
@@ -144,7 +167,12 @@ export function toRequestSummaryDocument(
     awaiting_confirmation: isAwaitingConfirmation(request),
     is_assigned: request.assignee_id !== undefined,
     ...(assigneeLabel === undefined ? {} : { assignee_label: assigneeLabel }),
-    ...(waitingOn === undefined ? {} : { waiting_on_summary: PUBLIC_WAITING_LABELS[waitingOn.kind] }),
+    ...(waitingOn === undefined
+      ? {}
+      : {
+          waiting_on_summary: publicWaitingLabel(waitingOn, context),
+          waiting_party_responded: request.waiting_party_responded === true,
+        }),
     watcher_count: watcherCount(request),
   } as RequestSummaryDocument;
 }
