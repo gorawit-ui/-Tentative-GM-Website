@@ -444,3 +444,34 @@ export function matrixCells(): readonly MatrixCell[] {
     ),
   );
 }
+
+/** How each resource reads in docs/spec/ACL-MATRIX.md (generic IDs, not the sample IDs). */
+const RESOURCE_PATTERNS: Readonly<Record<string, string>> = {
+  request_summaries: 'request_summaries/{id} (งานไม่ลับ)',
+  'request_summaries.confidential_absent': 'request_summaries/{id} ของงานลับ (ไม่มี document)',
+  'requests.general': 'requests/{id} (งานไม่ลับ)',
+  'requests.confidential': 'requests/{id} (งานลับ)',
+  gm_request_summaries: 'gm_request_summaries/{id}',
+  gm_request_details: 'gm_request_details/{id}',
+  'requests.history': 'requests/{id}/history/{event_id}',
+  'requests.comments': 'requests/{id}/comments/{id}',
+  'requests.gm_history': 'requests/{id}/gm_history/{event_id}',
+  'requests.waiting_intervals': 'requests/{id}/waiting_intervals/{id}',
+  people: 'people/{person_id}',
+  people_picker: 'people_picker/{person_id}',
+  'access.self': 'access/{uid ของตัวเอง}',
+  'access.other': 'access/{uid ของคนอื่น}',
+  gm_profiles: 'gm_profiles/{person_id}',
+  gm_profile_summaries: 'gm_profile_summaries/{person_id}',
+  'user_state.own': 'user_state/{person_id ของตัวเอง}/requests/{id}',
+  'user_state.other': 'user_state/{person_id ของคนอื่น}/requests/{id}',
+  board_counters: 'board_counters/public',
+  'renewal_items.cycles': 'renewal_items/{id}/cycles/{cycle_id}',
+  system_counters: 'system_counters/{id}',
+  unknown_collection: 'path อื่นที่ไม่มีกติกา',
+};
+
+/** The generic path shown to people for a resource. */
+export function resourcePattern(resource: AclResource): string {
+  return RESOURCE_PATTERNS[resource.key] ?? `${resource.key}/{id}`;
+}
