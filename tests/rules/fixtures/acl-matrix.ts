@@ -147,8 +147,9 @@ export function accessViewerOf(key: SubjectKey): AccessViewer | undefined {
 
 const personOf = (key: SubjectKey): string => SUBJECTS[key].access?.person_id ?? `nobody-${key}`;
 
-/** An access document that belongs to none of the subjects. */
+/** An access document (and person) that belongs to none of the subjects. */
 export const OTHER_UID = 'uid-someone-else';
+export const OTHER_PERSON_ID = 'acl.someone.else@tdfb.co';
 
 export const GENERAL_REQUEST_ID = 'req-acl-general';
 export const SECRET_REQUEST_ID = 'req-acl-secret';
@@ -236,7 +237,8 @@ export function seedDocuments(): ReadonlyMap<string, object> {
       docs.set(`user_state/${access.person_id}/requests/${GENERAL_REQUEST_ID}`, { type: 'requester', last_seen_activity_seq: 0 });
     }
   }
-  docs.set(`access/${OTHER_UID}`, { person_id: 'acl.someone.else@tdfb.co', role: 'requester', enabled: true });
+  docs.set(`access/${OTHER_UID}`, { person_id: OTHER_PERSON_ID, role: 'requester', enabled: true });
+  docs.set(`user_state/${OTHER_PERSON_ID}/requests/${GENERAL_REQUEST_ID}`, { type: 'requester', last_seen_activity_seq: 0 });
   const singles: Record<string, Readonly<Record<string, unknown>>> = {
     [`gm_profiles/${personOf('gm_staff')}`]: { presence_status: { kind: 'off_site' }, focus_request_id: SECRET_REQUEST_ID },
     [`gm_profile_summaries/${personOf('gm_staff')}`]: { presence_label: 'ออกนอกสถานที่', focus_label: 'งานภายใน' },
@@ -374,7 +376,8 @@ export const RESOURCES: readonly AclResource[] = [
     collectionPath: ownState,
     allow: readFor(ACTIVE_SUBJECTS),
   },
-  deniedEverywhere('user_state.other', `user_state/${personOf('requester')}/requests/${GENERAL_REQUEST_ID}`, 'ของคนอื่น'),
+  // A person who is none of the subjects, so the row is someone else's for every subject (S10 fix).
+  deniedEverywhere('user_state.other', `user_state/${OTHER_PERSON_ID}/requests/${GENERAL_REQUEST_ID}`, 'ของคนอื่น'),
   {
     key: 'board_counters',
     description: 'ตัวเลข “งานภายใน X รายการ” (งานลับที่ยังเปิด, D-S09-4): get document public เท่านั้น ไม่ list (D-ACL-3)',

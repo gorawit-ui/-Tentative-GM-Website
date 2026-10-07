@@ -241,3 +241,16 @@ describe('D-ACL review changes in the matrix', () => {
     expect(decide('outsider', 'board_counters', 'get')).toBe('deny');
   });
 });
+
+describe('S10 fixture fix', () => {
+  it('user_state.other belongs to none of the subjects, so it is someone else’s for every subject', () => {
+    const other = RESOURCES.find((resource) => resource.key === 'user_state.other')!;
+    expect(typeof other.path).toBe('string');
+    for (const key of SUBJECT_KEYS) {
+      const own = SUBJECTS[key].access?.person_id;
+      if (own !== undefined) expect(other.path as string).not.toContain(`user_state/${own}/`);
+    }
+    expect(seedDocuments().has(other.path as string)).toBe(true);
+  });
+});
+

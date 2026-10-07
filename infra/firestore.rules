@@ -1,11 +1,119 @@
 rules_version = '2';
 
-// S00 skeleton: deny every client read and write. Real Rules are written test-first in
-// S10–S11 (Part 6 §6.5): summaries allowlist, private requests, server-only collections.
+// S10 — client reads (Part 6 §6.4/§6.5, D-S09, D-ACL-1..3); the policy and its tests live in
+// tests/rules/fixtures/acl-matrix.ts and docs/spec/ACL-MATRIX.md. Every client write is denied:
+// mutations go through the API (Admin SDK), which checks the same domain predicates.
+//
+// Read budget: the only document a rule reads is access/{request.auth.uid}, through accessOf(),
+// called at most once per allow statement (tests/rules/rules-budget.test.ts). Request-level access
+// comes from the fields of the document being read; no team/people lookups.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    // Verified Google sign-in with an exact @tdfb.co address: lookalikes such as tdfb.co.th,
+    // mail.tdfb.co or TDFB.CO fail. `hd` at sign-in is a hint only, never the check.
+    function corporateSignIn() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('^[a-z0-9._%+-]+@tdfb[.]co$');
     }
+
+    // The single dependency read: role and enabled live here, not in custom claims.
+    function accessOf() {
+      return get(/databases/$(database)/documents/access/$(request.auth.uid)).data;
+    }
+
+    function isActive(a) {
+      return a.get('enabled', false) == true;
+    }
+
+    function isGm(a) {
+      return isActive(a) && a.get('role', '') in ['gm_staff', 'gm_admin'];
+    }
+
+    // Part 6 canReadRequest with D-ACL-2: GM or the requester; a general request also opens for
+    // related persons, a confidential one only for confirmed grants (every role).
+    function canReadRequest(a, r) {
+      return isGm(a)
+        || (isActive(a)
+          && (r.get('requester_id', null) == a.person_id
+            || (r.get('is_confidential', true) == false
+              ? a.person_id in r.get('related_person_ids', [])
+              : a.person_id in r.get('confidential_grant_ids', []))));
+    }
+
+    function isOwnState(a, personId) {
+      return isActive(a) && a.person_id == personId;
+    }
+
+    // Summaries and reference data for every active account.
+    match /request_summaries/{requestId} {
+      allow read: if corporateSignIn() && isActive(accessOf());
+    }
+    match /gm_profile_summaries/{personId} {
+      allow read: if corporateSignIn() && isActive(accessOf());
+    }
+    match /locations/{locationId} {
+      allow read: if corporateSignIn() && isActive(accessOf());
+    }
+    match /areas/{areaId} {
+      allow read: if corporateSignIn() && isActive(accessOf());
+    }
+    match /qr_codes/{qrId} {
+      allow read: if corporateSignIn() && isActive(accessOf());
+    }
+    match /content_pages/{pageId} {
+      allow read: if corporateSignIn() && isActive(accessOf());
+    }
+    match /announcements/{announcementId} {
+      allow read: if corporateSignIn() && isActive(accessOf());
+    }
+
+    // D-ACL-3: the public counter document only; no queries over the collection.
+    match /board_counters/{counterId} {
+      allow get: if counterId == 'public' && corporateSignIn() && isActive(accessOf());
+    }
+
+    // Request detail: open one by ID under its own ACL fields; only GM may query the collection
+    // (Rules do not filter results, so a non-GM query is denied even when filtered to their own).
+    // Children (history, comments, gm_history, waiting_intervals) have no rule: API only.
+    match /requests/{requestId} {
+      allow get: if corporateSignIn() && canReadRequest(accessOf(), resource.data);
+      allow list: if corporateSignIn() && isGm(accessOf());
+    }
+
+    // GM only: board projection, watcher list / confidential note (D-S09-5), people picker (D-ACL-1),
+    // renewal register.
+    match /gm_request_summaries/{requestId} {
+      allow read: if corporateSignIn() && isGm(accessOf());
+    }
+    match /gm_request_details/{requestId} {
+      allow read: if corporateSignIn() && isGm(accessOf());
+    }
+    match /people_picker/{personId} {
+      allow read: if corporateSignIn() && isGm(accessOf());
+    }
+    match /renewal_items/{itemId} {
+      allow read: if corporateSignIn() && isGm(accessOf());
+
+      match /cycles/{cycleId} {
+        allow read: if corporateSignIn() && isGm(accessOf());
+      }
+    }
+
+    // Own documents only.
+    match /user_state/{personId}/requests/{requestId} {
+      allow read: if corporateSignIn() && isOwnState(accessOf(), personId);
+    }
+    // D-S09-6: a disabled account still reads its own access document (to show it is disabled).
+    match /access/{uid} {
+      allow get: if corporateSignIn() && uid == request.auth.uid;
+    }
+
+    // Everything else (people, gm_profiles, calendars, sla_policies, settings, dashboards,
+    // scorecards, commands, outbox, scheduled_work, system_counters, imports, integration_*,
+    // request children and unknown paths) has no rule and is denied.
   }
 }
