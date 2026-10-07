@@ -3,6 +3,8 @@
 // inactive and non-corporate accounts get nothing more. Person IDs are emails (D-S08-4).
 import { describe, expect, it } from 'vitest';
 import {
+  canAttachToRequest,
+  canContributeAsWatcher,
   canReadGmProjections,
   canReadPublicSummaries,
   canReadRequestDetail,
@@ -139,5 +141,41 @@ describe('D-ACL-2: confidential detail needs GM, the requester or a confirmed gr
 
   it('an inactive account with a grant still cannot read it', () => {
     expect(canReadRequestDetail(INACTIVE_REQUESTER, { ...SECRET, requesterId: 'someone@tdfb.co', confidentialGrantIds: [INACTIVE_REQUESTER.personId] })).toBe(false);
+  });
+});
+
+describe('S12: who may attach photos (UI-07: requester แนบรูป, GM จัดการ; related อ่าน/คอมเมนต์ — Q-S12-2)', () => {
+  it('GM and the requester may attach, on general and confidential requests', () => {
+    for (const request of [REQUEST, SECRET]) {
+      for (const who of [GM, GM_ADMIN, REQUESTER]) expect(canAttachToRequest(who, request)).toBe(true);
+    }
+  });
+
+  it('related persons (even with a grant), watchers, Viewers, inactive and outside accounts may not', () => {
+    const granted: RequestAclFacts = { ...SECRET, confidentialGrantIds: [RELATED.personId] };
+    for (const who of [RELATED, VIEWER_RELATED, WATCHER, EMPLOYEE, VIEWER, INACTIVE_REQUESTER, INACTIVE_GM, OUTSIDER, undefined]) {
+      expect(canAttachToRequest(who, REQUEST)).toBe(false);
+      expect(canAttachToRequest(who, granted)).toBe(false);
+    }
+  });
+});
+
+describe('S12: a watcher sends one contribution with photos at watch time (U1, Part 6 §6.4.2)', () => {
+  const watched = { watcherIds: [WATCHER.personId], isConfidential: false };
+
+  it('a watcher of a general request may contribute; everyone else may not', () => {
+    expect(canContributeAsWatcher(WATCHER, watched)).toBe(true);
+    for (const who of [REQUESTER, RELATED, EMPLOYEE, GM, VIEWER, INACTIVE_REQUESTER, OUTSIDER, undefined]) {
+      expect(canContributeAsWatcher(who, watched)).toBe(false);
+    }
+  });
+
+  it('a confidential request takes no watcher contributions', () => {
+    expect(canContributeAsWatcher(WATCHER, { ...watched, isConfidential: true })).toBe(false);
+  });
+
+  it('watching never gives detail or attachment access', () => {
+    expect(canReadRequestDetail(WATCHER, REQUEST)).toBe(false);
+    expect(canAttachToRequest(WATCHER, REQUEST)).toBe(false);
   });
 });
