@@ -46,4 +46,59 @@ export interface RequestDocument {
   readonly closure_kind?: ClosureKind;
   readonly cancelled_at?: number;
   readonly auto_close_due_at?: number;
+  /** Current waiting party (C3, Part 6 §6.14); absent unless `status` is `waiting`. */
+  readonly waiting_on?: WaitingOnDocument;
+  readonly current_waiting_interval_id?: number;
+  readonly waiting_since?: number;
+  readonly waiting_party_responded?: boolean;
+  readonly responded_at?: number;
 }
+
+/** Stored `waiting_on` (C3): `{ kind, person_id?, team_label?, name? }` plus the chosen team contacts. */
+export interface WaitingOnDocument {
+  readonly kind: 'person' | 'team' | 'contractor' | 'government' | 'other';
+  readonly person_id?: string;
+  readonly team_label?: string;
+  readonly contact_ids?: readonly string[];
+  readonly name?: string;
+}
+
+/** Every field of `requests/{id}` this codebase knows; anything else on a stored document is dropped. */
+export const REQUEST_DOCUMENT_FIELDS = [
+  'request_number',
+  'type',
+  'source',
+  'origin',
+  'created_by_id',
+  'created_at',
+  'requester_id',
+  'requester_name_text',
+  'summary_title',
+  'description',
+  'category',
+  'location_id',
+  'area_id',
+  'symptom_key',
+  'attachment_ids',
+  'assignee_id',
+  'is_confidential',
+  'sensitivity_reason',
+  'sensitivity_note',
+  'related_person_ids',
+  'watcher_ids',
+  'team_labels',
+  'status',
+  'revision',
+  'last_updated_at',
+  'completion_cycle_id',
+  'completed_at',
+  'closed_at',
+  'closure_kind',
+  'cancelled_at',
+  'auto_close_due_at',
+  'waiting_on',
+  'current_waiting_interval_id',
+  'waiting_since',
+  'waiting_party_responded',
+  'responded_at',
+] as const satisfies readonly (keyof RequestDocument)[];

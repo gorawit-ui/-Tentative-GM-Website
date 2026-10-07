@@ -2,9 +2,10 @@
 // Emulator only (demo-* project); people, places and IDs are synthetic.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Actor } from '@gm/domain';
+import type { Actor, DeploymentEnvironment } from '@gm/domain';
 import { ContractRejected, parseCommand, type CommandEnvelope } from '@gm/contracts';
 import {
+  COMMAND_RETENTION_MS,
   CommandRejected,
   REQUEST_COUNTER_PATH,
   executeCommand,
@@ -24,9 +25,10 @@ import {
 const NOW = Date.parse('2026-12-28T09:00:00+07:00');
 const SAME_ID = '5d0a2c1e-7b3f-4e8a-9c6d-2f1e0b9a8c7d';
 
-const GM: Actor = { personId: 'person-gm-01', role: 'gm_staff' };
-const EMPLOYEE: Actor = { personId: 'person-employee-01', role: 'requester' };
-const fac16Employee = (n: number): Actor => ({ personId: `person-fac16-${String(n).padStart(2, '0')}`, role: 'requester' });
+// D-S08-4: person IDs are lowercase @tdfb.co emails (synthetic people).
+const GM: Actor = { personId: 'gm.staff01@tdfb.co', role: 'gm_staff' };
+const EMPLOYEE: Actor = { personId: 'employee01@tdfb.co', role: 'requester' };
+const fac16Employee = (n: number): Actor => ({ personId: `fac16.staff${String(n).padStart(2, '0')}@tdfb.co`, role: 'requester' });
 
 /** Synthetic catalog standing in for `locations`/`areas`/symptoms (A11/A12). */
 const CATALOG: MaintenanceCatalog = {
@@ -45,8 +47,14 @@ const CATALOG: MaintenanceCatalog = {
 };
 
 let ids = 0;
-function context(actor: Actor): CommandContext {
-  return { actor, now: NOW, newRequestId: () => `req-s08-${String(++ids).padStart(4, '0')}`, maintenanceCatalog: CATALOG };
+function context(actor: Actor, environment: DeploymentEnvironment = 'prod'): CommandContext {
+  return {
+    actor,
+    now: NOW,
+    environment,
+    newRequestId: () => `req-s08-${String(++ids).padStart(4, '0')}`,
+    maintenanceCatalog: CATALOG,
+  };
 }
 
 function internetDown(commandId: string = randomUUID()): CommandEnvelope {
@@ -232,7 +240,7 @@ describe('command ID (Part 6 §6.6 idempotency)', () => {
   it.each([
     ['a different payload', () => gmTask(SAME_ID, 'ชื่ออื่น'), GM],
     ['a different command type', () => watch('req-any', SAME_ID), GM],
-    ['a different actor', () => gmTask(SAME_ID), { personId: 'person-gm-02', role: 'gm_staff' } as Actor],
+    ['a different actor', () => gmTask(SAME_ID), { personId: 'gm.staff02@tdfb.co', role: 'gm_staff' } as Actor],
   ])('the same command ID with %s is refused, and nothing changes', async (_label, makeCommand, actor) => {
     const first = await executeCommand(client.store, gmTask(SAME_ID), context(GM));
     const before = await readDoc(client.db, `commands/${SAME_ID}`);
@@ -310,5 +318,23 @@ describe('contracts at the API boundary (D-S04-1)', () => {
         payload: { summary_title: 'x', category: 'เอกสารและธุรการ', sensitivity_subject: 'general' },
       }),
     ).toThrow(ContractRejected);
+  });
+});
+
+describe('D-S08-6 / D-S08-8', () => {
+  it('the command record carries expire_at = stored time + 30 days for the Firestore TTL policy', async () => {
+    await executeCommand(client.store, gmTask(SAME_ID), context(GM));
+    const record = await readDoc(client.db, `commands/${SAME_ID}`);
+    expect(COMMAND_RETENTION_MS).toBe(30 * 24 * 60 * 60 * 1000);
+    expect(record).toMatchObject({ created_at: NOW, expire_at: NOW + COMMAND_RETENTION_MS });
+  });
+
+  it('dev and local number requests with DEV-, prod with GM-', async () => {
+    const local = await executeCommand(client.store, gmTask(), context(GM, 'local'));
+    const dev = await executeCommand(client.store, gmTask(), context(GM, 'dev'));
+    expect(local.result.request_number).toBe('DEV-0001');
+    expect(dev.result.request_number).toBe('DEV-0002');
+    await clearFirestore();
+    expect((await executeCommand(client.store, gmTask(), context(GM, 'prod'))).result.request_number).toBe('GM-0001');
   });
 });

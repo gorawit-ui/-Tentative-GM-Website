@@ -9,6 +9,8 @@ export default defineConfig({
   test: {
     name: 'rules',
     include: ['tests/rules/**/*.test.ts', 'tests/emulator/**/*.test.ts'],
+    // The ACL matrix fixture is checked by the unit `tooling` project; it needs no emulator.
+    exclude: ['tests/rules/fixtures/**'],
     environment: 'node',
     setupFiles: ['./tests/rules/setup.ts'],
     fileParallelism: false,

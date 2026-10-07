@@ -213,6 +213,11 @@ function recipientsOf(waitingOn: WaitingOn, notify: boolean | undefined): readon
   return notify === false ? [] : candidates;
 }
 
+/** D-S08-2: nobody is notified about their own action. */
+function withoutActor(recipientIds: readonly string[], actorId: string): readonly string[] {
+  return recipientIds.filter((personId) => personId !== actorId);
+}
+
 function hasDetailAccess(state: WaitingRequestState, personId: string): boolean {
   return state.requesterId === personId || state.relatedPersonIds.includes(personId);
 }
@@ -272,6 +277,8 @@ function openInterval<S extends WaitingRequestState>(
   }
   const { now } = command;
   const intervalId = state.waitingIntervalSeq + 1;
+  // D-S08-2: the GM who acts stays a recipient (may answer) but is not notified.
+  const noticeRecipients = withoutActor(plan.recipientIds, command.actor.personId);
   const next = {
     ...without(state, CURRENT_INTERVAL_FIELDS),
     status: 'waiting' as const,
@@ -296,7 +303,7 @@ function openInterval<S extends WaitingRequestState>(
       addedRelatedPersonIds: plan.newRelatedPersonIds,
       ...(endedInterval === undefined ? {} : { endedInterval }),
     },
-    ...(plan.recipientIds.length === 0 ? {} : { notice: { intervalId, recipientIds: plan.recipientIds } }),
+    ...(noticeRecipients.length === 0 ? {} : { notice: { intervalId, recipientIds: noticeRecipients } }),
   };
 }
 
@@ -348,8 +355,8 @@ export function followUp<S extends WaitingRequestState>(
   const followed = { ...state, lastUpdatedAt: now };
   if (command.remind !== true) return { state: followed, event: base };
 
-  const recipientIds = state.waitingRecipientIds ?? [];
-  if (recipientIds.length === 0) reject('REMINDER_NO_RECIPIENTS', 'Nobody was notified for this waiting party');
+  const recipientIds = withoutActor(state.waitingRecipientIds ?? [], command.actor.personId);
+  if (recipientIds.length === 0) reject('REMINDER_NO_RECIPIENTS', 'Nobody else was notified for this waiting party');
   const { businessDate, isOpenDay } = businessDateBucket(now, command.calendar);
   if (state.lastReminderBusinessDate === businessDate) {
     const reminder: ReminderOutcome = { status: 'quota_used', businessDate };

@@ -25,6 +25,11 @@ export const PRESENCE_KIND_LABELS = {
 
 const UNSPECIFIED: PresenceStatus = { kind: 'unspecified' };
 
+/** An entry of the Admin `locations` list; `active: false` = deactivated (absent = active). */
+export interface LocationOption extends Labelled {
+  readonly active?: boolean | undefined;
+}
+
 /** `gm_profiles/{person_id}` (Part 6 §6.4). */
 export interface GmProfile {
   readonly personId: string;
@@ -60,7 +65,7 @@ export type PresenceResetResult<P extends GmProfile> =
  * Display text, built from the current location name (a rename shows at once). `locations` is the
  * Admin list; a stored location missing from it is a caller error (pass every location).
  */
-export function presenceLabel(status: PresenceStatus, locations: readonly Labelled[]): string {
+export function presenceLabel(status: PresenceStatus, locations: readonly LocationOption[]): string {
   if (status.kind !== 'at_location') return PRESENCE_KIND_LABELS[status.kind];
   const location = locations.find((candidate) => candidate.id === status.locationId);
   if (location === undefined) throw new Error('presence location is not in the locations list passed in');
@@ -91,7 +96,7 @@ function withoutPresenceDetails<P extends GmProfile>(profile: P): P {
 
 function validPresence(
   presence: { readonly kind: string; readonly locationId?: string | undefined },
-  locations: readonly Labelled[],
+  locations: readonly LocationOption[],
 ): PresenceStatus {
   const { kind, locationId } = presence;
   if (!(PRESENCE_KINDS as readonly string[]).includes(kind)) reject('PRESENCE_INVALID', 'Unknown presence kind');
@@ -100,9 +105,10 @@ function validPresence(
     return { kind: kind as Exclude<PresenceKind, 'at_location'> };
   }
   if (locationId === undefined || locationId === '') reject('PRESENCE_LOCATION_REQUIRED', 'Choose a location');
-  if (!locations.some((location) => location.id === locationId)) {
-    reject('PRESENCE_LOCATION_UNKNOWN', 'The location is not in the locations list');
-  }
+  const location = locations.find((candidate) => candidate.id === locationId);
+  if (location === undefined) reject('PRESENCE_LOCATION_UNKNOWN', 'The location is not in the locations list');
+  // D-S08-3: a deactivated location cannot be chosen; one set before keeps its name until reset.
+  if (location.active === false) reject('PRESENCE_LOCATION_INACTIVE', 'The location has been deactivated');
   return { kind: 'at_location', locationId };
 }
 
@@ -114,7 +120,7 @@ export function setPresence<P extends GmProfile>(
     readonly now: Instant;
     readonly presence: { readonly kind: string; readonly locationId?: string | undefined };
     /** The current Admin locations list (D-S07-1). */
-    readonly locations: readonly Labelled[];
+    readonly locations: readonly LocationOption[];
     readonly leaveEndsOn?: string | undefined;
   },
 ): { readonly profile: P; readonly event: PresenceChangedEvent } {

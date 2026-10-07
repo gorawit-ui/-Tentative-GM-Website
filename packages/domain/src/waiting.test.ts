@@ -698,3 +698,42 @@ describe('D-S06-4: a GM as the waited party already has access', () => {
     expect(responded.respondedAt).toBe(RESPOND);
   });
 });
+
+describe('D-S08-2: the GM who acts is not notified', () => {
+  const GM_PEOPLE = [GM.personId, GM_ADMIN.personId];
+  const TEAM_WITH_ACTOR = { kind: 'team', teamLabel: 'ทีม GM + IT', contactIds: [GM.personId, IT_1.personId] };
+
+  it('the first notice leaves out the GM who put the request on waiting', () => {
+    const { notice, state } = enterWaiting(inProgress(), {
+      actor: GM,
+      now: ENTER,
+      waitingOn: TEAM_WITH_ACTOR,
+      gmPersonIds: GM_PEOPLE,
+    });
+    expect(notice).toEqual({ intervalId: 1, recipientIds: [IT_1.personId] });
+    // Still a recipient of the interval (may answer for the team); only the notice skips them.
+    expect(state.waitingRecipientIds).toEqual([GM.personId, IT_1.personId]);
+  });
+
+  it('no notice at all when the actor is the only recipient', () => {
+    expect(
+      enterWaiting(inProgress(), {
+        actor: GM,
+        now: ENTER,
+        waitingOn: { kind: 'person', personId: GM.personId },
+        gmPersonIds: GM_PEOPLE,
+      }).notice,
+    ).toBeUndefined();
+  });
+
+  it('a reminder leaves out the GM who sends it', () => {
+    const state = enterWaiting(inProgress(), {
+      actor: GM_ADMIN,
+      now: ENTER,
+      waitingOn: TEAM_WITH_ACTOR,
+      gmPersonIds: GM_PEOPLE,
+    }).state;
+    const { reminder } = followUp(state, { actor: GM, now: bkk('2026-12-29', '10:00'), remind: true, calendar: COMPANY });
+    expect(reminder).toEqual({ status: 'send_now', businessDate: '2026-12-29', recipientIds: [IT_1.personId] });
+  });
+});

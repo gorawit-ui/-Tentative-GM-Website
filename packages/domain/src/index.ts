@@ -91,6 +91,7 @@ export {
   setPresence,
   type EffectivePresence,
   type GmProfile,
+  type LocationOption,
   type PresenceChangedEvent,
   type PresenceKind,
   type PresenceResetResult,
@@ -117,5 +118,20 @@ export {
   type RoutingResult,
   type RoutingSettings,
 } from './routing';
-export { REQUEST_NUMBER_PREFIX, formatRequestNumber, nextRequestSequence } from './request-number';
+export {
+  REQUEST_NUMBER_PREFIXES,
+  formatRequestNumber,
+  nextRequestSequence,
+  requestNumberPrefix,
+  type DeploymentEnvironment,
+} from './request-number';
 export { watchRequest, type WatchOutcome, type WatchState } from './watch';
+export { boardSection, isOnLiveBoard, type BoardFacts, type BoardSection } from './board';
+export {
+  canReadGmProjections,
+  canReadPublicSummaries,
+  canReadRequestDetail,
+  isActiveViewer,
+  type AccessViewer,
+  type RequestAclFacts,
+} from './acl';

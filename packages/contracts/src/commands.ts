@@ -23,6 +23,7 @@ import {
   stringField,
   type JsonObject,
 } from './strict';
+import { personIdField } from './person-id';
 
 /** Mirrors Part 6 §6.6 createMaintenance / createOnBehalf / createGmTask / watchRequest. */
 export const COMMAND_TYPES = ['create_maintenance', 'create_on_behalf', 'create_gm_task', 'watch_request'] as const;
@@ -119,7 +120,7 @@ function onBehalfRequester(value: unknown, path: string): OnBehalfRequesterPaylo
   if (hasPerson === Object.hasOwn(requester, 'name_text')) {
     throw new ContractRejected('FIELD_INVALID', path, 'choose either a directory account or a typed name');
   }
-  return hasPerson ? { person_id: idField(requester, path, 'person_id') } : { name_text: stringField(requester, path, 'name_text') };
+  return hasPerson ? { person_id: personIdField(requester, path, 'person_id') } : { name_text: stringField(requester, path, 'name_text') };
 }
 
 function confidentialChoice(object: JsonObject, path: string) {

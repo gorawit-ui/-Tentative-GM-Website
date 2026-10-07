@@ -268,3 +268,25 @@ describe('resetPresence — scheduler (Part 6 §6.9, F07)', () => {
     });
   });
 });
+
+describe('D-S08-3: a deactivated location', () => {
+  const WITH_FAC17_OFF = LOCATIONS.map((location) => (location.id === 'loc-fac17' ? { ...location, active: false } : location));
+
+  it('cannot be chosen as a new presence', () => {
+    expect(
+      rejectionCode(() => set(blank, { kind: 'at_location', locationId: 'loc-fac17' }, { locations: WITH_FAC17_OFF })),
+    ).toBe('PRESENCE_LOCATION_INACTIVE');
+  });
+
+  it('other locations are still fine', () => {
+    expect(set(blank, AT_FAC16, { locations: WITH_FAC17_OFF }).profile.presenceStatus).toEqual(AT_FAC16);
+  });
+
+  it('a presence set before it was deactivated keeps showing its name until the end-of-day reset', () => {
+    const atFac17 = set(blank, { kind: 'at_location', locationId: 'loc-fac17' }).profile;
+    const lateEvening = bkk('2026-12-28', '23:59');
+    const shown = effectivePresence(atFac17, lateEvening);
+    expect(presenceLabel(shown.status, WITH_FAC17_OFF)).toBe('อยู่ FAC17');
+    expect(effectivePresence(atFac17, bkk('2026-12-29', '00:00')).status).toEqual(UNSPECIFIED);
+  });
+});

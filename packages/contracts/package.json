@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@gm/domain": "0.0.0"
+    "@gm/domain": "0.0.0",
+    "@gm/time": "0.0.0"
   }
 }

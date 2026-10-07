@@ -60,5 +60,6 @@ Part 3 UI spec ฉบับเต็ม และ Part 2 — Addendum ฉบั�
 - [S05](../sessions/S05.md): ผล D-S04 และ lifecycle commands accept/complete/confirm/not resolved/auto-close/cancel/reopen; คำถามปิดแล้วใน D-S05-1 ถึง D-S05-6
 - [S06](../sessions/S06.md): ผล D-S05 (กฎ `last_updated_at`, รับงานต่อ, ธงลับ `other`/ปลดธง) และ waiting/follow-up/response; คำถามปิดแล้วใน D-S06-1 ถึง D-S06-6
 - [S07](../sessions/S07.md): ผล D-S06 (GM เป็นฝ่ายที่รอ, เตือน 09:00 วันทำการถัดไป) และ routing/leave/presence/focus; คำถามปิดแล้วใน D-S07-1 ถึง D-S07-7
-- [S08](../sessions/S08.md): ผล D-S07 (presence อ้างรายการสถานที่, `gm_task` → ผู้สร้าง, แจ้ง GM ทุกคนยกเว้นคนลา, owner ไม่ active, ปลดหมุดเมื่อออกจาก `in_progress`, Trello ปักไม่ได้) และ contracts/command ID/ตัวนับเลขงาน (emulator); คำถามค้างใน S08
+- [S08](../sessions/S08.md): ผล D-S07 (presence อ้างรายการสถานที่, `gm_task` → ผู้สร้าง, แจ้ง GM ทุกคนยกเว้นคนลา, owner ไม่ active, ปลดหมุดเมื่อออกจาก `in_progress`, Trello ปักไม่ได้) และ contracts/command ID/ตัวนับเลขงาน (emulator); คำถามปิดแล้วใน D-S08-1 ถึง D-S08-8
+- [S09](../sessions/S09.md): ผล D-S08 (`gm_task` ผู้สร้างลาก็ถือเอง, ไม่แจ้งตัวเอง, สถานที่ปิดใช้งาน, `person_id` = อีเมล, TTL `commands`, prefix `DEV-`) และ projection builder / ACL matrix fixture (`tests/rules/fixtures/acl-matrix.ts`); คำถามค้างใน S09
 - [FOLLOW-UPS](../FOLLOW-UPS.md): งานที่เลื่อนข้าม session
