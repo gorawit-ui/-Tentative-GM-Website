@@ -107,6 +107,7 @@ export async function executeCommand(
       fingerprint,
       result,
       created_at: context.now,
+      [COMMAND_EXPIRY_FIELD]: context.now + COMMAND_RETENTION_MS,
     });
     return { replayed: false, result };
   });
@@ -124,7 +125,7 @@ async function create(
     throw new RangeError('request counter document has no last_issued');
   }
   const sequence = nextRequestSequence(counter?.last_issued as number | undefined);
-  const requestNumber = formatRequestNumber(sequence);
+  const requestNumber = formatRequestNumber(sequence, context.environment);
   transaction.set(REQUEST_COUNTER_PATH, { last_issued: sequence });
   transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, newRequestDocument(draft, requestNumber, context.now));
   return { request_id: requestId, request_number: requestNumber };

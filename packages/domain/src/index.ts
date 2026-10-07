@@ -91,6 +91,7 @@ export {
   setPresence,
   type EffectivePresence,
   type GmProfile,
+  type LocationOption,
   type PresenceChangedEvent,
   type PresenceKind,
   type PresenceResetResult,
@@ -118,7 +119,6 @@ export {
   type RoutingSettings,
 } from './routing';
 export {
-  REQUEST_NUMBER_PREFIX,
   REQUEST_NUMBER_PREFIXES,
   formatRequestNumber,
   nextRequestSequence,

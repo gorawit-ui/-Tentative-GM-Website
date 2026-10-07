@@ -1,4 +1,5 @@
-// Initial assignment of a new request (S07: PRD §2/§6.9, A3, Part 3 §13.3, Part 6 §6.9; D-S07-2/3/5).
+// Initial assignment of a new request (S07: PRD §2/§6.9, A3, Part 3 §13.3, Part 6 §6.9; D-S07-2/3/5,
+// D-S08-1/2).
 // Pure: the caller passes the latest facts about the default owner and `now`; nothing is sent here.
 import type { Instant } from '@gm/time';
 import { isOnLeave, type GmProfile } from './presence';
@@ -67,7 +68,7 @@ const UNASSIGNED_NOTICE: RoutingNotice = { kind: 'all_gm' };
  * effective leave now → queued, unassigned, all GM notified (A3). Existing work is never moved.
  */
 export function routeNewRequest(input: RouteNewRequestInput): RoutingResult {
-  const { now, chosenAssigneeId } = input;
+  const { now, chosenAssigneeId, createdById } = input;
   if (chosenAssigneeId !== undefined) {
     const chosenProfile = input.chosenAssigneeProfile;
     if (chosenProfile !== undefined && chosenProfile.personId !== chosenAssigneeId) {
@@ -77,12 +78,12 @@ export function routeNewRequest(input: RouteNewRequestInput): RoutingResult {
       status: 'queued',
       assigneeId: chosenAssigneeId,
       reason: 'chosen_by_gm',
-      notice: { kind: 'assignee', personId: chosenAssigneeId },
+      notice: noticeFor(chosenAssigneeId, createdById),
       assigneeOnLeave: isOnLeave(chosenProfile, now),
     };
   }
   const isGmTask = input.type === 'gm_task';
-  const ownerId = input.type === 'gm_task' ? input.createdById : input.settings.defaultOwnerByType[input.type];
+  const ownerId = input.type === 'gm_task' ? createdById : input.settings.defaultOwnerByType[input.type];
   if (ownerId === undefined) return { status: 'queued', reason: 'no_default_owner', notice: UNASSIGNED_NOTICE };
   const owner = input.defaultOwner;
   if (owner === undefined || owner.personId !== ownerId) {
@@ -96,27 +97,36 @@ export function routeNewRequest(input: RouteNewRequestInput): RoutingResult {
     throw new Error('default owner profile does not match the default owner');
   }
   if (!owner.active) return { status: 'queued', reason: 'default_owner_inactive', notice: UNASSIGNED_NOTICE };
-  if (isOnLeave(owner.profile, now)) {
+  // D-S08-1: a GM who creates a gm_task is working, even on leave; A3 applies to type routing only.
+  if (!isGmTask && isOnLeave(owner.profile, now)) {
     return { status: 'queued', reason: 'default_owner_on_leave', notice: UNASSIGNED_NOTICE };
   }
   return {
     status: 'queued',
     assigneeId: ownerId,
     reason: isGmTask ? 'gm_task_creator' : 'default_owner',
-    notice: { kind: 'assignee', personId: ownerId },
+    notice: noticeFor(ownerId, createdById),
   };
+}
+
+/** D-S08-2: nobody is notified about their own action. */
+function noticeFor(assigneeId: string, actorId: string): RoutingNotice {
+  return assigneeId === actorId ? { kind: 'none' } : { kind: 'assignee', personId: assigneeId };
 }
 
 /**
  * D-S07-3: “แจ้ง GM ทุกคน” reaches every active GM not on effective leave now; when every active
- * GM is on leave, all of them are notified so the request does not go silent. Input order kept.
+ * GM is on leave, all of them are notified so the request does not go silent. D-S08-2: the GM who
+ * acted (`actorId`) counts as available but is never in the list. Input order kept.
  */
 export function allGmNoticeRecipients(
   members: readonly GmMember[],
   now: Instant,
-  _actorId?: string | undefined,
+  actorId?: string | undefined,
 ): readonly string[] {
   const active = [...new Map(members.filter((member) => member.active).map((member) => [member.personId, member])).values()];
   const available = active.filter((member) => !isOnLeave(member.profile, now));
-  return (available.length > 0 ? available : active).map((member) => member.personId);
+  return (available.length > 0 ? available : active)
+    .map((member) => member.personId)
+    .filter((personId) => personId !== actorId);
 }

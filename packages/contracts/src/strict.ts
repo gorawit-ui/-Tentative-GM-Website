@@ -24,7 +24,7 @@ export class ContractRejected extends Error {
 
 export type JsonObject = Readonly<Record<string, unknown>>;
 
-const join = (path: string, key: string) => (path === '' ? key : `${path}.${key}`);
+export const join = (path: string, key: string) => (path === '' ? key : `${path}.${key}`);
 
 export function isPlainObject(value: unknown): value is JsonObject {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -80,7 +80,7 @@ export function enumField<T extends string>(object: JsonObject, path: string, ke
 }
 
 /**
- * Opaque document IDs (request, person, location, area, symptom): letters, digits, `_`, `-`, up to
+ * Opaque document IDs (request, location, area, symptom): letters, digits, `_`, `-`, up to
  * 128 characters. They become Firestore path segments, so `/`, `.` and empty values are refused.
  */
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
