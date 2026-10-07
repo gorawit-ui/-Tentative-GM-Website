@@ -17,6 +17,8 @@ export interface RequestAclFacts {
   readonly requesterId?: string | undefined;
   readonly relatedPersonIds: readonly string[];
   readonly isConfidential: boolean;
+  /** D-S09-2: people whose access to the confidential request was confirmed separately (C3). */
+  readonly confidentialGrantIds?: readonly string[] | undefined;
 }
 
 /** Part 6 §6.5 `isActive`: verified corporate Google login AND an enabled access document. */

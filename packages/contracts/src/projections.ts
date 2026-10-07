@@ -5,7 +5,14 @@
 // plus the company-wide `internal_board_count` for confidential requests. Pure: the caller passes
 // `now`, the work calendar and display names; nothing here reads Firestore.
 import { staleState, type CalendarSnapshot, type Instant } from '@gm/time';
-import { REQUEST_DOCUMENT_FIELDS, type RequestDocument, type WaitingOnDocument } from './request-document';
+import {
+  REQUEST_DOCUMENT_FIELDS,
+  splitRequestRecord,
+  type GmRequestDetailDocument,
+  type RequestDocument,
+  type RequestRecord,
+  type WaitingOnDocument,
+} from './request-document';
 import { boardSection } from '@gm/domain';
 import {
   isAwaitingConfirmation,
@@ -20,20 +27,22 @@ export interface ProjectionContext {
   readonly workCalendar: CalendarSnapshot;
   /** Display name for a person ID (from `people_picker`); never an email. */
   readonly personLabel: (personId: string) => string | undefined;
+  /** D-S09-1: the team label of a person (from `people_picker`), shown instead of their name. */
+  readonly personTeamLabel: (personId: string) => string | undefined;
 }
 
 export interface GmRequestSummaryDocument {
   readonly request_id: string;
   readonly request_number: string;
   readonly summary_title: string;
-  readonly type: RequestDocument['type'];
-  readonly category: RequestDocument['category'];
-  readonly source: RequestDocument['source'];
-  readonly origin: RequestDocument['origin'];
+  readonly type: RequestRecord['type'];
+  readonly category: RequestRecord['category'];
+  readonly source: RequestRecord['source'];
+  readonly origin: RequestRecord['origin'];
   readonly location_id?: string;
   readonly area_id?: string;
   readonly symptom_key?: string;
-  readonly status: RequestDocument['status'];
+  readonly status: RequestRecord['status'];
   readonly awaiting_confirmation: boolean;
   readonly is_confidential: boolean;
   readonly assignee_id?: string;
@@ -62,6 +71,8 @@ export interface RequestProjections {
   readonly public: RequestSummaryDocument | null;
   readonly gm: GmRequestSummaryDocument;
   readonly detail: RequestDetailDocument;
+  /** `gm_request_details/{id}`: watcher list and confidential note, GM only (D-S09-5). */
+  readonly gmDetail: GmRequestDetailDocument;
 }
 
 /** `board_counters/public`: company-wide count only, no IDs, titles or per-filter numbers. */
@@ -70,7 +81,7 @@ export interface BoardCountersDocument {
   readonly as_of: number;
 }
 
-const OPEN_STATUSES: readonly RequestDocument['status'][] = ['queued', 'in_progress', 'waiting'];
+const OPEN_STATUSES: readonly RequestRecord['status'][] = ['queued', 'in_progress', 'waiting'];
 
 /** Copied as they are into the GM summary; private detail (text, photos, people, notes) is left behind. */
 const GM_COPIED_FIELDS = [
@@ -94,11 +105,11 @@ const GM_COPIED_FIELDS = [
   'closed_at',
   'cancelled_at',
   'auto_close_due_at',
-] as const satisfies readonly (keyof RequestDocument & keyof GmRequestSummaryDocument)[];
+] as const satisfies readonly (keyof RequestRecord & keyof GmRequestSummaryDocument)[];
 
-function pick<K extends keyof RequestDocument>(request: RequestDocument, fields: readonly K[]): Partial<Pick<RequestDocument, K>> {
+function pick<K extends keyof RequestRecord>(request: RequestRecord, fields: readonly K[]): Partial<Pick<RequestRecord, K>> {
   return Object.fromEntries(fields.filter((field) => request[field] !== undefined).map((field) => [field, request[field]])) as Partial<
-    Pick<RequestDocument, K>
+    Pick<RequestRecord, K>
   >;
 }
 
@@ -111,7 +122,7 @@ function waitingOnLabel(waitingOn: WaitingOnDocument, context: ProjectionContext
 
 export function toGmRequestSummaryDocument(
   requestId: string,
-  request: RequestDocument,
+  request: RequestRecord,
   context: ProjectionContext,
 ): GmRequestSummaryDocument {
   const assigneeLabel = request.assignee_id === undefined ? undefined : context.personLabel(request.assignee_id);
@@ -133,21 +144,22 @@ export function toGmRequestSummaryDocument(
 }
 
 /** The restricted layer: the request's own known fields (unknown stored keys are dropped). */
-export function toRequestDetailDocument(request: RequestDocument): RequestDetailDocument {
+export function toRequestDetailDocument(request: RequestRecord): RequestDetailDocument {
   return pick(request, REQUEST_DOCUMENT_FIELDS) as RequestDetailDocument;
 }
 
 /** All three projections of one request, written together in the command transaction (A01/A03). */
-export function buildRequestProjections(requestId: string, request: RequestDocument, context: ProjectionContext): RequestProjections {
+export function buildRequestProjections(requestId: string, request: RequestRecord, context: ProjectionContext): RequestProjections {
   return {
     public: toRequestSummaryDocument(requestId, request, context),
     gm: toGmRequestSummaryDocument(requestId, request, context),
     detail: toRequestDetailDocument(request),
+    gmDetail: splitRequestRecord(request).gmDetail,
   };
 }
 
 /** “งานภายใน X รายการ”: confidential requests on the live board (U3 frame), company-wide, no detail. */
-export function toBoardCountersDocument(requests: Iterable<RequestDocument>, now: Instant): BoardCountersDocument {
+export function toBoardCountersDocument(requests: Iterable<RequestRecord>, now: Instant): BoardCountersDocument {
   let count = 0;
   for (const request of requests) {
     if (!request.is_confidential) continue;

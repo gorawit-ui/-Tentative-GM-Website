@@ -35,7 +35,17 @@ export {
   type OnBehalfRequesterPayload,
   type WatchRequestPayload,
 } from './commands';
-export { REQUEST_DOCUMENT_FIELDS, type RequestDocument, type WaitingOnDocument } from './request-document';
+export {
+  GM_ONLY_REQUEST_FIELDS,
+  REQUEST_DOCUMENT_FIELDS,
+  joinRequestRecord,
+  splitRequestRecord,
+  type GmOnlyRequestField,
+  type GmRequestDetailDocument,
+  type RequestDocument,
+  type RequestRecord,
+  type WaitingOnDocument,
+} from './request-document';
 export {
   PRIVATE_REQUEST_FIELDS,
   PUBLIC_WAITING_LABELS,

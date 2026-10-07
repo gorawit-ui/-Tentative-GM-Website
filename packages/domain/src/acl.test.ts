@@ -108,3 +108,27 @@ describe('request detail', () => {
     expect(canReadRequestDetail(REQUESTER, task)).toBe(false);
   });
 });
+
+describe('D-S09-2: a Viewer and confidential requests', () => {
+  const secretWithGrant: RequestAclFacts = { ...SECRET, confidentialGrantIds: [VIEWER_RELATED.personId] };
+
+  it('a Viewer related to a confidential request without a confirmed grant cannot read it', () => {
+    expect(canReadRequestDetail(VIEWER_RELATED, SECRET)).toBe(false);
+  });
+
+  it('a Viewer added as related with the confidential grant confirmed (C3) can', () => {
+    expect(canReadRequestDetail(VIEWER_RELATED, secretWithGrant)).toBe(true);
+  });
+
+  it('the Viewer role alone never opens a confidential request, even if listed in the grants', () => {
+    expect(canReadRequestDetail(VIEWER, { ...SECRET, confidentialGrantIds: [VIEWER.personId] })).toBe(false);
+  });
+
+  it('a general request still opens for a related Viewer without any grant', () => {
+    expect(canReadRequestDetail(VIEWER_RELATED, REQUEST)).toBe(true);
+  });
+
+  it('other related people are unchanged by the grant list', () => {
+    expect(canReadRequestDetail(RELATED, SECRET)).toBe(true);
+  });
+});

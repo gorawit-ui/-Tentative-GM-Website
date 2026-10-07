@@ -737,3 +737,19 @@ describe('D-S08-2: the GM who acts is not notified', () => {
     expect(reminder).toEqual({ status: 'send_now', businessDate: '2026-12-29', recipientIds: [IT_1.personId] });
   });
 });
+
+describe('D-S09-2: confirmed confidential grants are recorded', () => {
+  it('people added to a confidential request with the grant confirmed are kept in confidentialGrantIds', () => {
+    const { state } = enterWaiting(inProgress({ isConfidential: true, confidentialGrantIds: [RELATED.personId] }), {
+      actor: GM,
+      now: ENTER,
+      waitingOn: TEAM,
+      confirmConfidentialGrant: true,
+    });
+    expect(state.confidentialGrantIds).toEqual([RELATED.personId, IT_1.personId, IT_2.personId]);
+  });
+
+  it('a general request records no grants', () => {
+    expect(waitingOn(TEAM)).not.toHaveProperty('confidentialGrantIds');
+  });
+});

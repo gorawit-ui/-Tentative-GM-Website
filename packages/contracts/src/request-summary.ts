@@ -4,7 +4,8 @@
 // label, the waited party as a generic kind label. No stale flag (U4): `last_updated_at` feeds the
 // neutral “อัปเดตล่าสุด …” text. Place names come from `locations`/`areas`, read by every active user.
 import type { GmCategory, RequestStatus, RequestType } from '@gm/domain';
-import type { RequestDocument, WaitingOnDocument } from './request-document';
+import type { RequestRecord, WaitingOnDocument } from './request-document';
+import type { ProjectionContext } from './projections';
 
 export interface RequestSummaryDocument {
   readonly request_id: string;
@@ -28,8 +29,10 @@ export interface RequestSummaryDocument {
   readonly is_assigned: boolean;
   /** Display name of the assigned GM (never an ID or email). */
   readonly assignee_label?: string;
-  /** Generic label of the waited party while `waiting` (raw names stay private, Part 6 §6.4.1). */
+  /** Public label of the waited party while `waiting` (D-S09-1). */
   readonly waiting_on_summary?: string;
+  /** D-S09-7: “ฝ่ายที่รอตอบกลับแล้ว” while `waiting`; never who answered or when. */
+  readonly waiting_party_responded?: boolean;
   /** “มีผู้แจ้งเพิ่ม X คน”: unique watchers other than the requester, without names or IDs (U1). */
   readonly watcher_count: number;
 }
@@ -111,23 +114,23 @@ export const PUBLIC_COPIED_FIELDS = [
   'completed_at',
   'closed_at',
   'cancelled_at',
-] as const satisfies readonly (keyof RequestDocument & keyof RequestSummaryDocument)[];
+] as const satisfies readonly (keyof RequestRecord & keyof RequestSummaryDocument)[];
 
 /** Unique watchers other than the requester (the requester never counts as an extra reporter, §6.4.2). */
-export function watcherCount(request: RequestDocument): number {
+export function watcherCount(request: RequestRecord): number {
   return new Set(request.watcher_ids.filter((personId) => personId !== request.requester_id)).size;
 }
 
 /** U3: `completed` that the requester has not confirmed yet (no `closed_at`). */
-export function isAwaitingConfirmation(request: RequestDocument): boolean {
+export function isAwaitingConfirmation(request: RequestRecord): boolean {
   return request.status === 'completed' && request.closed_at === undefined;
 }
 
 /** The public summary of a request, or `null` for a confidential one (no summary document at all). */
 export function toRequestSummaryDocument(
   requestId: string,
-  request: RequestDocument,
-  context: { readonly personLabel: (personId: string) => string | undefined },
+  request: RequestRecord,
+  context: Pick<ProjectionContext, 'personLabel' | 'personTeamLabel'>,
 ): RequestSummaryDocument | null {
   if (request.is_confidential) return null;
   const copied = Object.fromEntries(

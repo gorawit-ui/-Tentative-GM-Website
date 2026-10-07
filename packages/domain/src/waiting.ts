@@ -34,6 +34,8 @@ export interface WaitingOnInput {
 export interface WaitingFields {
   readonly isConfidential: boolean;
   readonly relatedPersonIds: readonly string[];
+  /** D-S09-2: people added to a confidential request with the separate grant confirmed (C3). */
+  readonly confidentialGrantIds?: readonly string[];
   /** Number of waiting intervals ever opened on the request; never reset. */
   readonly waitingIntervalSeq: number;
   readonly waitingOn?: WaitingOn;
