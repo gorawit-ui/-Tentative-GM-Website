@@ -79,14 +79,21 @@ export interface ConfidentialChoice {
 export const SENSITIVITY_REASONS = ['contract', 'personnel', 'other'] as const;
 export type SensitivityReason = (typeof SENSITIVITY_REASONS)[number];
 
+/** FU-07: related persons chosen in a GM form; a confidential request needs the separate confirmation (C3). */
+export interface RelatedChoice {
+  readonly relatedPersonIds?: readonly string[] | undefined;
+  readonly confirmConfidentialGrant?: boolean | undefined;
+}
+
 export type CreateRequestCommand =
-  | ({ readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails } & ConfidentialChoice)
+  | ({ readonly kind: 'self'; readonly actor: Actor; readonly details: ServiceDetails } & ConfidentialChoice & RelatedChoice)
   | ({
       readonly kind: 'on_behalf';
       readonly actor: Actor;
       readonly requester: OnBehalfRequester;
       readonly details: ServiceDetails;
-    } & ConfidentialChoice)
+    } & ConfidentialChoice &
+      RelatedChoice)
   | ({
       readonly kind: 'gm_task';
       readonly actor: Actor;
@@ -95,7 +102,8 @@ export type CreateRequestCommand =
       readonly category?: string | undefined;
       readonly sensitivitySubject: SensitivitySubject;
       readonly description?: string | undefined;
-    } & ConfidentialChoice);
+    } & ConfidentialChoice &
+      RelatedChoice);
 
 /** Domain result of a valid create command; persistence (A01) maps it to Firestore fields. */
 export interface RequestDraft {
@@ -117,6 +125,10 @@ export interface RequestDraft {
   readonly sensitivityReason?: SensitivityReason;
   /** Restricted detail: why a GM marked the item confidential (`other`, D-S05-6). */
   readonly sensitivityNote?: string;
+  /** FU-07: related persons chosen in the GM form (absent when none). */
+  readonly relatedPersonIds?: readonly string[];
+  /** FU-07: on a confidential request, the related persons whose access the GM confirmed (C3, D-ACL-2). */
+  readonly confidentialGrantIds?: readonly string[];
   /** True only when a real requester account must confirm after GM completes (C2, Part 6 §6.6). */
   readonly requiresRequesterConfirmation: boolean;
 }

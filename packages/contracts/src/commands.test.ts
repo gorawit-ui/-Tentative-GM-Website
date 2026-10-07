@@ -199,3 +199,40 @@ describe('parseCommand — envelope, required fields, types and enums', () => {
     expect(() => parseCommand(body)).not.toThrow();
   });
 });
+
+describe('FU-07: related persons at creation (GM forms) travel with an explicit confidential-grant confirmation', () => {
+  it('create_gm_task and create_on_behalf accept related_person_ids and confirm_confidential_grant', () => {
+    const related = ['related01@tdfb.co', 'related02@tdfb.co'];
+    expect(parseCommand(withPayload(GM_TASK, { related_person_ids: related, confirm_confidential_grant: true })).payload).toMatchObject({
+      related_person_ids: related,
+      confirm_confidential_grant: true,
+    });
+    expect(parseCommand(withPayload(ON_BEHALF, { related_person_ids: related })).payload).toMatchObject({ related_person_ids: related });
+  });
+
+  it('a fresh array comes back (the input is not shared)', () => {
+    const related = ['related01@tdfb.co'];
+    const parsed = parseCommand(withPayload(GM_TASK, { related_person_ids: related })).payload as unknown as { related_person_ids: string[] };
+    expect(parsed.related_person_ids).not.toBe(related);
+  });
+
+  it.each([
+    ['not an array', 'related01@tdfb.co', 'FIELD_TYPE'],
+    ['a non-corporate e-mail', ['someone@gmail.com'], 'FIELD_INVALID'],
+    ['an upper-case e-mail (person IDs are lowercase, D-S08-4)', ['Related01@tdfb.co'], 'FIELD_INVALID'],
+    ['a number', [42], 'FIELD_TYPE'],
+  ])('related_person_ids refuses %s', (_label, value, code) => {
+    expect(rejection(withPayload(GM_TASK, { related_person_ids: value })).code).toBe(code);
+  });
+
+  it('confirm_confidential_grant must be a boolean', () => {
+    expect(rejection(withPayload(GM_TASK, { confirm_confidential_grant: 'yes' }))).toEqual({
+      code: 'FIELD_TYPE',
+      path: 'payload.confirm_confidential_grant',
+    });
+  });
+
+  it('create_maintenance (the requester’s own form) has no related persons', () => {
+    expect(rejection(withPayload(MAINTENANCE, { related_person_ids: ['related01@tdfb.co'] })).code).toBe('UNKNOWN_FIELD');
+  });
+});

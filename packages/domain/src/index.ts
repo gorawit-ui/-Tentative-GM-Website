@@ -15,6 +15,7 @@ export {
   type Actor,
   type ConfidentialChoice,
   type CreateRequestCommand,
+  type RelatedChoice,
   type DocumentDetails,
   type GmCategory,
   type Labelled,
@@ -129,6 +130,15 @@ export {
   type DeploymentEnvironment,
 } from './request-number';
 export { watchRequest, type WatchOutcome, type WatchState } from './watch';
+export {
+  addRelatedPersons,
+  planRelatedAddition,
+  removeRelatedPerson,
+  type RelatedAdditionPlan,
+  type RelatedPeopleState,
+  type RelatedPersonRemovedEvent,
+  type RelatedPersonsAddedEvent,
+} from './related-people';
 export { boardSection, isOnLiveBoard, type BoardFacts, type BoardSection } from './board';
 export {
   canReadGmProjections,

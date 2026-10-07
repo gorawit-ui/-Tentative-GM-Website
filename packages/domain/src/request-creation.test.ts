@@ -533,3 +533,58 @@ describe('D-S05-6: GM-marked confidential flag uses sensitivity_reason other wit
     expect(rejectionCode(() => createRequestDraft(command))).toBe('CONFIDENTIAL_NOTE_NOT_APPLICABLE');
   });
 });
+
+describe('FU-07: related persons chosen in the GM forms (Part 2 GM ริเริ่มเอง, UI-04)', () => {
+  const RELATED_A = 'person-related-01';
+  const RELATED_B = 'person-related-02';
+  const generalTask = { kind: 'gm_task', actor: GM, summaryTitle: 'จัดงานปีใหม่', category: 'employee_activities', sensitivitySubject: 'general' } as const;
+  const contractTask = { ...generalTask, summaryTitle: 'ต่อสัญญาเช่ารถส่งของ', category: 'documents_admin', sensitivitySubject: 'contract' } as const;
+
+  it('a general gm_task keeps the chosen related persons without any grant', () => {
+    const draft = createRequestDraft({ ...generalTask, relatedPersonIds: [RELATED_A, RELATED_B, RELATED_A] });
+    expect(draft.relatedPersonIds).toEqual([RELATED_A, RELATED_B]);
+    expect(draft).not.toHaveProperty('confidentialGrantIds');
+  });
+
+  it('a confidential gm_task with related persons needs the separate confirmation (C3), not pre-ticked', () => {
+    expect(rejectionCode(() => createRequestDraft({ ...contractTask, relatedPersonIds: [RELATED_A] }))).toBe('CONFIDENTIAL_GRANT_REQUIRED');
+    expect(rejectionCode(() => createRequestDraft({ ...contractTask, relatedPersonIds: [RELATED_A], confirmConfidentialGrant: false }))).toBe(
+      'CONFIDENTIAL_GRANT_REQUIRED',
+    );
+  });
+
+  it('with the confirmation, every related person is recorded in the grant list', () => {
+    const draft = createRequestDraft({ ...contractTask, relatedPersonIds: [RELATED_A, RELATED_B], confirmConfidentialGrant: true });
+    expect(draft).toMatchObject({ isConfidential: true, relatedPersonIds: [RELATED_A, RELATED_B], confidentialGrantIds: [RELATED_A, RELATED_B] });
+  });
+
+  it('a GM marking a general task confidential at creation also confirms the related persons', () => {
+    const marked = { ...generalTask, markConfidential: true, confidentialNote: 'เรื่องภายในทีม', relatedPersonIds: [RELATED_A] } as const;
+    expect(rejectionCode(() => createRequestDraft(marked))).toBe('CONFIDENTIAL_GRANT_REQUIRED');
+    expect(createRequestDraft({ ...marked, confirmConfidentialGrant: true })).toMatchObject({ confidentialGrantIds: [RELATED_A] });
+  });
+
+  it('on behalf: the real requester is not repeated as a related person and needs no grant', () => {
+    const draft = createRequestDraft({
+      kind: 'on_behalf',
+      actor: GM,
+      requester: { personId: 'person-employee-03' },
+      details: { type: 'document_request', summaryTitle: 'ขอหนังสือรับรองเงินเดือน', sensitivitySubject: 'personnel' },
+      relatedPersonIds: ['person-employee-03', RELATED_A],
+      confirmConfidentialGrant: true,
+    });
+    expect(draft).toMatchObject({ requesterId: 'person-employee-03', relatedPersonIds: [RELATED_A], confidentialGrantIds: [RELATED_A] });
+  });
+
+  it('no related persons: nothing to confirm and no related/grant fields', () => {
+    const draft = createRequestDraft(contractTask);
+    expect(draft).not.toHaveProperty('relatedPersonIds');
+    expect(draft).not.toHaveProperty('confidentialGrantIds');
+  });
+
+  it('the requester’s own form cannot add related persons', () => {
+    expect(rejectionCode(() => createRequestDraft({ kind: 'self', actor: EMPLOYEE, details: AIRCON_FAC16, relatedPersonIds: [RELATED_A] }))).toBe(
+      'RELATED_NOT_ALLOWED',
+    );
+  });
+});

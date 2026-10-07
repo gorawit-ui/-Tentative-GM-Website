@@ -65,6 +65,11 @@ export interface MaintenanceCatalog {
   resolve(transaction: CommandTransaction, selection: MaintenanceSelection): Promise<MaintenanceLabels>;
 }
 
+/** D-S10-1: display names from `people/{person_id}` (read inside the transaction, before any write). */
+export interface PeopleDirectory {
+  displayNames(transaction: CommandTransaction, personIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+}
+
 export interface CommandContext {
   /** From the verified login (A01), never from the body. */
   readonly actor: Actor;
@@ -74,6 +79,7 @@ export interface CommandContext {
   readonly environment: DeploymentEnvironment;
   readonly newRequestId: () => string;
   readonly maintenanceCatalog: MaintenanceCatalog;
+  readonly peopleDirectory: PeopleDirectory;
 }
 
 /** What the client gets back, the same on every retry of the same command ID. */

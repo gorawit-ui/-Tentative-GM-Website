@@ -54,14 +54,20 @@ export interface DocumentDetailsPayload {
 
 export type OnBehalfRequesterPayload = { readonly person_id: string } | { readonly name_text: string };
 
-export interface CreateOnBehalfPayload {
+/** FU-07: related persons chosen in a GM form, and the separate grant confirmation for a confidential request (C3). */
+export interface RelatedChoicePayload {
+  readonly related_person_ids?: readonly string[];
+  readonly confirm_confidential_grant?: boolean;
+}
+
+export interface CreateOnBehalfPayload extends RelatedChoicePayload {
   readonly requester: OnBehalfRequesterPayload;
   readonly details: MaintenanceDetailsPayload | DocumentDetailsPayload;
   readonly mark_confidential?: boolean;
   readonly confidential_note?: string;
 }
 
-export interface CreateGmTaskPayload {
+export interface CreateGmTaskPayload extends RelatedChoicePayload {
   readonly summary_title: string;
   /** One of the 7 category keys; never the Thai label (D-S04-1). */
   readonly category: GmCategory;

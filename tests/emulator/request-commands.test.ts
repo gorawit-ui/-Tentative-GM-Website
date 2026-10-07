@@ -11,6 +11,7 @@ import {
   executeCommand,
   type CommandContext,
   type MaintenanceCatalog,
+  type PeopleDirectory,
 } from '../../apps/api/src/commands/index';
 import {
   clearFirestore,
@@ -46,6 +47,18 @@ const CATALOG: MaintenanceCatalog = {
   },
 };
 
+/** Synthetic people directory standing in for `people/{person_id}` (names only, D-S10-1). */
+const NAMES: Readonly<Record<string, string>> = {
+  'gm.staff01@tdfb.co': 'คุณ GM ตัวอย่าง',
+  'employee03@tdfb.co': 'คุณพนักงานสาม',
+  'related01@tdfb.co': 'คุณผู้เกี่ยวข้องหนึ่ง',
+};
+const PEOPLE: PeopleDirectory = {
+  async displayNames(_tx, personIds) {
+    return new Map(personIds.filter((personId) => NAMES[personId] !== undefined).map((personId) => [personId, NAMES[personId]!]));
+  },
+};
+
 let ids = 0;
 function context(actor: Actor, environment: DeploymentEnvironment = 'prod'): CommandContext {
   return {
@@ -54,6 +67,7 @@ function context(actor: Actor, environment: DeploymentEnvironment = 'prod'): Com
     environment,
     newRequestId: () => `req-s08-${String(++ids).padStart(4, '0')}`,
     maintenanceCatalog: CATALOG,
+    peopleDirectory: PEOPLE,
   };
 }
 
@@ -369,3 +383,64 @@ describe('D-S09-5: GM-only part of a request', () => {
     expect(await readDoc(client.db, `gm_request_details/${id}`)).toEqual({ watcher_ids: [], sensitivity_note: 'ข้อพิพาทกับคู่ค้า' });
   });
 });
+
+describe('D-S10-1 / FU-07: names and confidential grants are written with the request', () => {
+  const contractTask = (extra: Record<string, unknown>) =>
+    parseCommand({
+      command_id: randomUUID(),
+      type: 'create_gm_task',
+      payload: { summary_title: 'ต่อสัญญาเช่ารถส่งของ', category: 'documents_admin', sensitivity_subject: 'contract', ...extra },
+    });
+
+  it('on behalf: requests/{id} carries the requester as person_id + display_name, never an e-mail as the name', async () => {
+    const created = await executeCommand(
+      client.store,
+      parseCommand({
+        command_id: randomUUID(),
+        type: 'create_on_behalf',
+        payload: {
+          requester: { person_id: 'employee03@tdfb.co' },
+          details: { type: 'document_request', summary_title: 'ขอหนังสือรับรองเงินเดือน', sensitivity_subject: 'general' },
+          related_person_ids: ['related01@tdfb.co', 'unknown01@tdfb.co'],
+        },
+      }),
+      context(GM),
+    );
+    const request = await readDoc(client.db, `requests/${String(created.result.request_id)}`);
+    expect(request).toMatchObject({
+      requester_id: 'employee03@tdfb.co',
+      requester_display: { person_id: 'employee03@tdfb.co', display_name: 'คุณพนักงานสาม' },
+      related_person_ids: ['related01@tdfb.co', 'unknown01@tdfb.co'],
+      related_people_display: [
+        { person_id: 'related01@tdfb.co', display_name: 'คุณผู้เกี่ยวข้องหนึ่ง' },
+        { person_id: 'unknown01@tdfb.co', display_name: 'พนักงาน' },
+      ],
+    });
+    expect(request).not.toHaveProperty('confidential_grant_ids');
+  });
+
+  it('a confidential gm_task with related persons and the confirmation stores the grants', async () => {
+    const created = await executeCommand(
+      client.store,
+      contractTask({ related_person_ids: ['related01@tdfb.co'], confirm_confidential_grant: true }),
+      context(GM),
+    );
+    const request = await readDoc(client.db, `requests/${String(created.result.request_id)}`);
+    expect(request).toMatchObject({
+      is_confidential: true,
+      related_person_ids: ['related01@tdfb.co'],
+      confidential_grant_ids: ['related01@tdfb.co'],
+      related_people_display: [{ person_id: 'related01@tdfb.co', display_name: 'คุณผู้เกี่ยวข้องหนึ่ง' }],
+    });
+    expect(request).not.toHaveProperty('requester_display');
+  });
+
+  it('without the confirmation nothing is stored and no number is used', async () => {
+    const before = await counter();
+    expect(await codeOf(executeCommand(client.store, contractTask({ related_person_ids: ['related01@tdfb.co'] }), context(GM)))).toBe(
+      'CONFIDENTIAL_GRANT_REQUIRED',
+    );
+    expect(await counter()).toBe(before);
+  });
+});
+

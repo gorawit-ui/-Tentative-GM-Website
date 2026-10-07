@@ -3,6 +3,7 @@
 // the document being read. No exists()/getAfter()/existsAfter() and no reads of other documents.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { MAX_LIST_LIMIT } from '@gm/contracts';
 import { FIRESTORE_RULES_PATH } from './support/rules-env';
 
 /** The rules source without comments (so a comment that mentions get() does not count). */
@@ -49,3 +50,25 @@ describe('infra/firestore.rules read budget', () => {
     expect(source).not.toMatch(/:\s*if\s+true\s*;/);
   });
 });
+
+describe('D-S10-4: list queries are bounded in the Rules', () => {
+  it('get and list are separate statements (no `allow read`), so every list can carry the bound', () => {
+    expect(source).not.toMatch(/\ballow\s+read\b/);
+  });
+
+  it('every allow list checks boundedList(), and boundedList() caps the limit at MAX_LIST_LIMIT', () => {
+    const lists = [...source.matchAll(/\ballow\s+list\b[^;]*;/g)].map((match) => match[0]);
+    expect(lists.length).toBeGreaterThan(0);
+    for (const statement of lists) expect(statement, statement).toContain('boundedList()');
+    const definition = /function\s+boundedList\s*\(\s*\)\s*\{([^}]*)\}/.exec(source);
+    expect(definition?.[1]).toContain(`request.query.limit <= ${MAX_LIST_LIMIT}`);
+    expect(definition?.[1]).toContain('request.query.limit is int');
+  });
+});
+
+describe('D-S10-5: the e-mail domain is compared after lower()', () => {
+  it('corporateSignIn() lower-cases the e-mail before the exact @tdfb.co match', () => {
+    expect(source).toContain("request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@tdfb[.]co$')");
+  });
+});
+
