@@ -13,7 +13,9 @@ import {
   type CommandContext,
   type MaintenanceCatalog,
   type PeopleDirectory,
+  type RoutingDirectory,
 } from '../../apps/api/src/commands/index';
+import { snapshotCalendar } from '@gm/time';
 import {
   clearFirestore,
   emulatorClient,
@@ -61,6 +63,15 @@ const PEOPLE: PeopleDirectory = {
   },
 };
 
+/** No default owners and no GM members configured: routing leaves requests unassigned, nobody to tell. */
+const ROUTING: RoutingDirectory = {
+  load: async () => ({
+    settings: { defaultOwnerByType: {} },
+    members: [],
+    workCalendar: snapshotCalendar({ timeZone: 'Asia/Bangkok', openWeekdays: [1, 2, 3, 4, 5], holidays: [] }),
+  }),
+};
+
 let ids = 0;
 function context(actor: Actor, environment: DeploymentEnvironment = 'prod'): CommandContext {
   return {
@@ -70,6 +81,7 @@ function context(actor: Actor, environment: DeploymentEnvironment = 'prod'): Com
     newRequestId: () => `req-s08-${String(++ids).padStart(4, '0')}`,
     maintenanceCatalog: CATALOG,
     peopleDirectory: PEOPLE,
+    routingDirectory: ROUTING,
   };
 }
 
@@ -129,7 +141,7 @@ describe('request number (A4)', () => {
   it('starts at GM-0001 and continues one by one', async () => {
     const first = await executeCommand(client.store, internetDown(), context(EMPLOYEE));
     const second = await executeCommand(client.store, gmTask(), context(GM));
-    expect(first).toEqual({ replayed: false, result: { request_id: expect.any(String), request_number: 'GM-0001' } });
+    expect(first).toEqual({ replayed: false, result: { request_id: expect.any(String), request_number: 'GM-0001' }, outboxIds: [] });
     expect(second.result).toMatchObject({ request_number: 'GM-0002' });
     expect(await counter()).toBe(2);
     const stored = await readDoc(client.db, `requests/${String(first.result.request_id)}`);
@@ -226,7 +238,7 @@ describe('command ID (Part 6 §6.6 idempotency)', () => {
     const first = await executeCommand(client.store, command, context(EMPLOYEE));
     const again = await executeCommand(client.store, structuredClone(command), context(EMPLOYEE));
     expect(first.replayed).toBe(false);
-    expect(again).toEqual({ replayed: true, result: first.result });
+    expect(again).toEqual({ replayed: true, result: first.result, outboxIds: [] });
     expect(await requestNumbers()).toEqual(['GM-0001']);
     expect(await counter()).toBe(1);
   });
@@ -250,7 +262,7 @@ describe('command ID (Part 6 §6.6 idempotency)', () => {
     const first = await executeCommand(client.store, command, context(GM));
     const path = `requests/${String(first.result.request_id)}`;
     await writeDoc(client.db, path, { ...(await readDoc(client.db, path)), status: 'cancelled' });
-    expect(await executeCommand(client.store, command, context(GM))).toEqual({ replayed: true, result: first.result });
+    expect(await executeCommand(client.store, command, context(GM))).toEqual({ replayed: true, result: first.result, outboxIds: [] });
   });
 
   it.each([
@@ -285,6 +297,7 @@ describe('watching a request (U1) is not a new request', () => {
     expect(watched).toEqual({
       replayed: false,
       result: { request_id: requestId, request_number: 'GM-0001', watch: 'added' },
+      outboxIds: [],
     });
     expect(await counter()).toBe(1);
     expect(await requestNumbers()).toEqual(['GM-0001']);
@@ -317,7 +330,7 @@ describe('watching a request (U1) is not a new request', () => {
     const reported = await executeCommand(client.store, internetDown(), context(fac16Employee(1)));
     const command = watch(String(reported.result.request_id));
     const first = await executeCommand(client.store, command, context(fac16Employee(2)));
-    expect(await executeCommand(client.store, command, context(fac16Employee(2)))).toEqual({ replayed: true, result: first.result });
+    expect(await executeCommand(client.store, command, context(fac16Employee(2)))).toEqual({ replayed: true, result: first.result, outboxIds: [] });
   });
 
   it('an unknown request or a gm_task cannot be watched, and no number is used', async () => {
