@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import type { Instant } from '@gm/time';
 
 export type OutboxChannel = 'auto';
+export type OutboxAudience = 'gm' | 'requester';
 
 export interface OutboxEntry {
   readonly id: string;
@@ -14,7 +15,11 @@ export interface OutboxEntry {
     readonly event_id: string;
     readonly event_kind: 'request_created';
     readonly request_id: string;
+    /** D-A01-4: the number the recipient sees (also for confidential requests). */
+    readonly request_number: string;
     readonly recipient_id: string;
+    /** `gm`: the routing notice; `requester`: a GM opened the request on their behalf (D-A01-4). */
+    readonly audience: OutboxAudience;
     readonly channel: OutboxChannel;
     /** Confidential requests get the number + neutral text + link only (Part 6 §6.10). */
     readonly confidential: boolean;
@@ -31,13 +36,16 @@ export function outboxId(eventId: string, recipientId: string, channel: OutboxCh
 
 export function newRequestOutbox(input: {
   readonly requestId: string;
+  readonly requestNumber: string;
   readonly actorId: string;
-  readonly recipientIds: readonly string[];
+  readonly gmRecipientIds: readonly string[];
+  readonly requesterId?: string;
   readonly isConfidential: boolean;
   readonly now: Instant;
 }): readonly OutboxEntry[] {
   const eventId = `${input.requestId}:created`;
-  const recipients = [...new Set(input.recipientIds)].filter((personId) => personId !== input.actorId);
+  const recipients = [...new Set(input.gmRecipientIds)].filter((personId) => personId !== input.actorId);
+  // A02 red step: the D-A01-4 fields arrive with the implementation.
   return recipients.map((recipientId) => ({
     id: outboxId(eventId, recipientId, 'auto'),
     data: {
@@ -52,5 +60,5 @@ export function newRequestOutbox(input: {
       next_attempt_at: input.now,
       created_at: input.now,
     },
-  }));
+  })) as unknown as readonly OutboxEntry[];
 }

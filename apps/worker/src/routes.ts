@@ -1,3 +1,13 @@
+// A02 stub — implemented after the failing tests are committed.
+export const TICK_PATH = '';
+export const OUTBOX_TASK_PATH = '';
+export const MAX_TASK_IDS = 0;
+
+export function parseOutboxTask(_body: unknown): string[] {
+  throw new Error('not implemented');
+}
+
+// S00 health route, kept until the A02 handler replaces it.
 import { healthResponse } from '@gm/contracts';
 import type { NotificationMode } from './notification-mode';
 
@@ -7,8 +17,6 @@ export interface JsonResponse {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-// S00 skeleton: health check only. The worker is IAM-only on Cloud Run; there is no public
-// /internal/tick (Part 6 §6.2). Task and tick handlers arrive from A02.
 export function createRoute(notificationMode: NotificationMode) {
   return function route(method: string, path: string): JsonResponse {
     if (path === '/healthz') {

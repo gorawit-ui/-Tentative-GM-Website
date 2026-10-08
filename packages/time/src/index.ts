@@ -15,6 +15,7 @@ export { autoCloseDue, isAutoCloseDue, staleState, type StaleState } from './lif
 export { businessDateBucket, nextWorkingMorning, type BusinessDateBucket } from './business-date';
 export { bangkokDateOf, presenceExpiresAt } from './presence-clock';
 export { BOARD_RECENT_WINDOW_MS, boardRecentCutoff } from './board-window';
+export { MINUTE_MS, addElapsed } from './elapsed';
 export { formatBusinessDuration, type DurationTextContext } from './display';
 export {
   mergeIntervals, effectiveWaitingEnd, waitingElapsed, slaElapsed,

@@ -228,7 +228,15 @@ async function create(
   for (const personId of record.related_person_ids) {
     transaction.set(`user_state/${personId}/requests/${requestId}`, { type: 'related', last_seen_activity_seq: 0, created_at: now });
   }
-  const outbox = newRequestOutbox({ requestId, actorId: actor.personId, recipientIds: recipients, isConfidential: record.is_confidential, now });
+  const outbox = newRequestOutbox({
+    requestId,
+    requestNumber,
+    actorId: actor.personId,
+    gmRecipientIds: recipients,
+    ...(record.requester_id === undefined ? {} : { requesterId: record.requester_id }),
+    isConfidential: record.is_confidential,
+    now,
+  });
   for (const entry of outbox) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, entry.data);
   return { result: { request_id: requestId, request_number: requestNumber }, outboxIds: outbox.map((entry) => entry.id) };
 }
