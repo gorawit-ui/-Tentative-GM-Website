@@ -27,7 +27,7 @@
 | 7 | A07 Slack outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-03 สำหรับ sandbox จริง | FU-17 |
 | 8 | A08 Gmail outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-02 สำหรับ sandbox จริง | FU-17 |
 | 9 | A09 Google login / 4 roles / route shell | S12, A01 | ได้ (Auth emulator) | — | — |
-| 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | — |
+| 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | FU-25 (เวลา tick ล่าสุด, เกิน 30 นาทีสีแดง) |
 | 11 | A10 Admin people CSV / roles | A09 | ได้ (CSV สังเคราะห์) | P7-ADMIN-01 CSV จริง | FU-10, FU-11 |
 | 12 | A12 public QR landing + repair step 1–3 | A09, A11 | ได้ | — | FU-21 (503 ยังตั้งค่าไม่ครบ → ข้อความไทย + ติดต่อ GM) |
 | 13 | A13 duplicate watch backend + interstitial | A12, A01 | ได้ | — | FU-08, FU-15 (contribution) |
@@ -44,7 +44,7 @@
 | 24 | A24 notification degraded mode + privacy transitions E2E | A19, A23, A02 | ได้ (Slack/Gmail disabled) | P7-ADMIN-02/03 สำหรับกรณีอนุมัติแล้วจริง | FU-09 |
 | 25 | A25 mobile/a11y/regression gate | A15, A20, A22, A24 | ได้ | — | — |
 | 26 | A26 dev staging / pilot rehearsal | A25, A05, A10, A11 | **ไม่ได้** (cloud) | **P7-INFRA-01** | FU-16 (IAM), FU-17, FU-20 (Cloud Tasks client), FU-22 (checklist settings/ปฏิทิน), FU-24 (worker IAM/Scheduler/indexes) |
-| 27 | A27 pilot approval / onboarding | A26 + W0 A blockers | **ไม่ได้** | **P7-INFRA-01, P7-ADMIN-01, P7-ADMIN-04** | ปิด follow-up ด่าน A ทั้งหมด |
+| 27 | A27 pilot approval / onboarding | A26 + W0 A blockers | **ไม่ได้** | **P7-INFRA-01, P7-ADMIN-01, P7-ADMIN-04** | ปิด follow-up ด่าน A ทั้งหมด; checklist ก่อน pilot FU-22 (tick ≤ 30 นาที, Cloud Tasks ต่อแล้ว) |
 
 หมายเหตุ
 
