@@ -424,7 +424,9 @@ describe('D-S09-5: watcher list and confidential note live only in the GM detail
   it('REQUEST_DOCUMENT_FIELDS leaves out the GM-only fields', () => {
     expect(REQUEST_DOCUMENT_FIELDS).not.toContain('watcher_ids');
     expect(REQUEST_DOCUMENT_FIELDS).not.toContain('sensitivity_note');
-    expect(GM_ONLY_REQUEST_FIELDS).toEqual(['watcher_ids', 'sensitivity_note']);
+    // A06: the “ผู้ขอยังไม่ได้รับแจ้ง” badge is GM-only too.
+    expect(REQUEST_DOCUMENT_FIELDS).not.toContain('requester_not_notified');
+    expect(GM_ONLY_REQUEST_FIELDS).toEqual(['watcher_ids', 'sensitivity_note', 'requester_not_notified', 'requester_notified_seq']);
   });
 });
 

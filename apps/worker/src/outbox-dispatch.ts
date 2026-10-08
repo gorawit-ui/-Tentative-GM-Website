@@ -11,12 +11,19 @@
 // does nothing. A `processing` entry whose lease ran out means a worker died mid-send: the provider
 // may have it, so it becomes `delivery_unknown` for the GM to check — never sent a second time.
 // A03: watcher notices (status changes, U1) are suppressed once the request is confidential.
+// A06: a status notice overtaken by a newer one to the same person on the same request is suppressed
+// (D-A03-7); results of notices to the requester update the GM-only “ผู้ขอยังไม่ได้รับแจ้ง” badge
+// (gm_request_details + gm_request_summaries) in the same transaction.
+import { STATUS_NOTICE_KINDS } from '@gm/api/commands';
+import { requesterNoticeFields, requesterNoticeStateOf, type RequestRecord } from '@gm/contracts';
 import {
   DELIVERY_LEASE_MS,
   chooseDeliveryChannel,
   claimDelivery,
   isDeliveryState,
+  requesterNoticeAfter,
   settleDelivery,
+  type RequesterNoticeObservation,
   type DeliveryOutcome,
   type DeliverySettlement,
   type DeliveryState,
@@ -34,6 +41,8 @@ export type DispatchResult = 'sent' | 'retry' | 'failed' | 'unknown' | 'suppress
 const MOOT_WHEN_CANCELLED: ReadonlySet<string> = new Set(['request_created']);
 
 interface Entry {
+  readonly revision: number;
+  readonly activitySeq: number;
   readonly state: DeliveryState;
   readonly requestId: string;
   readonly recipientId: string;
@@ -73,7 +82,11 @@ function parseEntry(stored: StoredData): Entry | undefined {
   ) {
     return undefined;
   }
+  // Entries written before A06 carry neither: the creation notice is revision / step 1.
+  const revision = Number.isSafeInteger(stored.revision) ? (stored.revision as number) : 1;
   return {
+    revision,
+    activitySeq: Number.isSafeInteger(stored.activity_seq) ? (stored.activity_seq as number) : revision,
     state,
     requestId,
     recipientId,
@@ -120,11 +133,53 @@ function resultOf(settlement: DeliverySettlement): DispatchResult {
   }
 }
 
+/** The badge documents of one request, read inside the transaction before any write. */
+interface BadgeDocuments {
+  readonly requestId: string;
+  readonly detail: StoredData | undefined;
+  readonly summary: StoredData | undefined;
+}
+
+async function readBadge(transaction: WorkerTransaction, requestId: string): Promise<BadgeDocuments> {
+  return {
+    requestId,
+    detail: await transaction.get(`gm_request_details/${requestId}`),
+    summary: await transaction.get(`gm_request_summaries/${requestId}`),
+  };
+}
+
+/** What a settled requester notice says about the badge; nothing for retries and suppressed notices. */
+function observationOf(entry: Pick<Entry, 'activitySeq'>, settlement: DeliverySettlement, at: Instant): RequesterNoticeObservation | undefined {
+  if (settlement.state === 'provider_accepted') return { kind: 'delivered', activitySeq: entry.activitySeq };
+  if (settlement.state === 'failed' || settlement.state === 'delivery_unknown') {
+    return { kind: 'not_delivered', state: settlement.state, code: settlement.errorCode ?? 'UNKNOWN', activitySeq: entry.activitySeq, at };
+  }
+  return undefined;
+}
+
+/** Writes the badge only when it changes (Part 6 §6.9: no write when the value is the same). */
+function writeBadge(transaction: WorkerTransaction, badge: BadgeDocuments, observation: RequesterNoticeObservation | undefined): void {
+  if (observation === undefined || badge.detail === undefined) return;
+  const before = requesterNoticeStateOf(badge.detail as Pick<RequestRecord, 'requester_not_notified' | 'requester_notified_seq'>);
+  const fields = requesterNoticeFields(requesterNoticeAfter(before, observation));
+  const previous = requesterNoticeFields(before);
+  if (JSON.stringify(fields) === JSON.stringify(previous)) return;
+  const { requester_not_notified: _issue, requester_notified_seq: _seq, ...detail } = badge.detail;
+  transaction.set(`gm_request_details/${badge.requestId}`, { ...detail, ...fields });
+  if (badge.summary !== undefined) {
+    const { requester_not_notified: _shown, ...summary } = badge.summary;
+    transaction.set(`gm_request_summaries/${badge.requestId}`, {
+      ...summary,
+      ...(fields.requester_not_notified === undefined ? {} : { requester_not_notified: fields.requester_not_notified }),
+    });
+  }
+}
+
 type Claim =
   | { readonly kind: 'done'; readonly result: DispatchResult }
-  | { readonly kind: 'send'; readonly message: OutboundMessage; readonly attempts: number; readonly attemptedAt: Instant };
+  | { readonly kind: 'send'; readonly message: OutboundMessage; readonly entry: Entry; readonly attempts: number; readonly attemptedAt: Instant };
 
-async function claim(transaction: WorkerTransaction, path: string, outboxId: string, now: Instant, leaseId: string): Promise<Claim> {
+async function claim(transaction: WorkerTransaction, path: string, outboxId: string, now: Instant, leaseId: string, superseded: boolean): Promise<Claim> {
   const stored = await transaction.get(path);
   if (stored === undefined) return { kind: 'done', result: 'skipped' };
   const entry = parseEntry(stored);
@@ -134,17 +189,23 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   }
   const decision = claimDelivery({ state: entry.state, next_attempt_at: entry.nextAttemptAt, ...(entry.leaseUntil === undefined ? {} : { lease_until: entry.leaseUntil }) }, now);
   if (decision.kind === 'skip') return { kind: 'done', result: 'skipped' };
+  const badge = entry.audience === 'requester' ? await readBadge(transaction, entry.requestId) : undefined;
   const lastAttempt = Number.isSafeInteger(stored.last_attempt_at) ? (stored.last_attempt_at as number) : now;
   if (decision.kind === 'lease_expired') {
-    transaction.set(path, settledEntry(stored, { state: 'delivery_unknown', errorCode: 'LEASE_EXPIRED' }, lastAttempt));
+    const settlement: DeliverySettlement = { state: 'delivery_unknown', errorCode: 'LEASE_EXPIRED' };
+    transaction.set(path, settledEntry(stored, settlement, lastAttempt));
+    if (badge !== undefined) writeBadge(transaction, badge, observationOf(entry, settlement, now));
     return { kind: 'done', result: 'unknown' };
   }
   const request = await transaction.get(`requests/${entry.requestId}`);
   const person = await transaction.get(`people/${entry.recipientId}`);
   const stop = (settlement: DeliverySettlement): Claim => {
     transaction.set(path, { ...settledEntry(stored, settlement, now), last_attempt_at: now });
+    if (badge !== undefined) writeBadge(transaction, badge, observationOf(entry, settlement, now));
     return { kind: 'done', result: resultOf(settlement) };
   };
+  // D-A03-7: a newer status notice to this person exists — only the latest goes out.
+  if (superseded) return stop({ state: 'suppressed', errorCode: 'SUPERSEDED' });
   if (request === undefined) return stop({ state: 'suppressed', errorCode: 'REQUEST_NOT_FOUND' });
   if (request.status === 'cancelled' && MOOT_WHEN_CANCELLED.has(entry.eventKind)) return stop({ state: 'suppressed', errorCode: 'REQUEST_CANCELLED' });
   // A03 / U1: watching alone gives no access to a confidential request, so its watchers hear nothing.
@@ -168,6 +229,7 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   });
   return {
     kind: 'send',
+    entry,
     attempts,
     attemptedAt: now,
     message: {
@@ -184,10 +246,26 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   };
 }
 
+/** Upper bound of notices one person gets about one request that the superseding check reads. */
+const NOTICES_PER_PERSON_LIMIT = 100;
+
+/**
+ * D-A03-7: is there a status notice to the same person on the same request from a later revision?
+ * Read before the claim: once true it stays true, so it needs no transaction.
+ */
+async function isSuperseded(deps: WorkerDeps, path: string): Promise<boolean> {
+  const stored = await deps.store.get(path);
+  const entry = stored === undefined ? undefined : parseEntry(stored);
+  if (entry === undefined || entry.state !== 'pending' || !STATUS_NOTICE_KINDS.has(entry.eventKind)) return false;
+  const notices = await deps.store.outboxWhere({ request_id: entry.requestId, recipient_id: entry.recipientId }, NOTICES_PER_PERSON_LIMIT);
+  return notices.some(({ data }) => typeof data.event_kind === 'string' && STATUS_NOTICE_KINDS.has(data.event_kind) && Number(data.revision) > entry.revision);
+}
+
 export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promise<DispatchResult> {
   const path = `${OUTBOX_COLLECTION}/${outboxId}`;
   const leaseId = deps.newLeaseId();
-  const claimed = await deps.store.runTransaction((transaction) => claim(transaction, path, outboxId, deps.now(), leaseId));
+  const superseded = await isSuperseded(deps, path);
+  const claimed = await deps.store.runTransaction((transaction) => claim(transaction, path, outboxId, deps.now(), leaseId, superseded));
   if (claimed.kind === 'done') {
     if (claimed.result !== 'skipped') deps.log.info('outbox.settled', { outbox_id: outboxId, state: claimed.result });
     return claimed.result;
@@ -204,7 +282,10 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
   const result = await deps.store.runTransaction(async (transaction) => {
     const stored = await transaction.get(path);
     if (stored === undefined || stored.state !== 'processing' || stored.lease_id !== leaseId) return 'lease_lost' as const;
+    const observation = claimed.entry.audience === 'requester' ? observationOf(claimed.entry, settlement, deps.now()) : undefined;
+    const badge = observation === undefined ? undefined : await readBadge(transaction, claimed.entry.requestId);
     transaction.set(path, settledEntry(stored, settlement, claimed.attemptedAt));
+    if (badge !== undefined) writeBadge(transaction, badge, observation);
     return resultOf(settlement);
   });
   const fields = {

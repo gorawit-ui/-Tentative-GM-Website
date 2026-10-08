@@ -266,6 +266,7 @@ describe('D-A03-7: a status notice overtaken by a newer one to the same person i
 
   it('a Cloud Task for the old notice arriving late is suppressed too, not sent', async () => {
     const { accepted } = await seedStatusNotices();
+    now = minutes(1);
     await expect(dispatchOutbox(deps(workerA), accepted[REQUESTER] ?? '')).resolves.toBe('suppressed');
     expect(sends).toEqual([]);
   });

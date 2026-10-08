@@ -6,6 +6,8 @@
 // in `gm_request_details/{id}` (`GmRequestDetailDocument`, GM only).
 import type { CalendarSnapshotDocument } from './calendar';
 import type {
+  RequesterNoticeReason,
+  RequesterNoticeState,
   ClosureKind,
   GmCategory,
   RequestOrigin,
@@ -63,10 +65,22 @@ export interface RequestRecord {
   readonly waiting_since?: number;
   readonly waiting_party_responded?: boolean;
   readonly responded_at?: number;
+  /** A06: “ผู้ขอยังไม่ได้รับแจ้ง” (GM only, A1.2); absent = nothing to show. */
+  readonly requester_not_notified?: RequesterNotNotifiedDocument;
+  /** A06: highest unread step known to have reached the requester (delivered or opened in the web). */
+  readonly requester_notified_seq?: number;
 }
 
-/** Fields kept out of `requests/{id}` (readable by the requester and related persons), D-S09-5. */
-export const GM_ONLY_REQUEST_FIELDS = ['watcher_ids', 'sensitivity_note'] as const satisfies readonly (keyof RequestRecord)[];
+/** A06: the GM-only badge as stored (snake_case of `RequesterNoticeIssue`). */
+export interface RequesterNotNotifiedDocument {
+  readonly reason: RequesterNoticeReason;
+  readonly code?: string;
+  readonly activity_seq: number;
+  readonly at: number;
+}
+
+/** Fields kept out of `requests/{id}` (readable by the requester and related persons), D-S09-5 / A06. */
+export const GM_ONLY_REQUEST_FIELDS = ['watcher_ids', 'sensitivity_note', 'requester_not_notified', 'requester_notified_seq'] as const satisfies readonly (keyof RequestRecord)[];
 export type GmOnlyRequestField = (typeof GM_ONLY_REQUEST_FIELDS)[number];
 
 /** `requests/{id}`: the detail layer for GM, the requester and related persons. */
@@ -76,6 +90,37 @@ export type RequestDocument = Omit<RequestRecord, GmOnlyRequestField>;
 export interface GmRequestDetailDocument {
   readonly watcher_ids: readonly string[];
   readonly sensitivity_note?: string;
+  readonly requester_not_notified?: RequesterNotNotifiedDocument;
+  readonly requester_notified_seq?: number;
+}
+
+/** A06: the stored badge fields as the domain state (`requesterNoticeAfter`). */
+export function requesterNoticeStateOf(record: Pick<RequestRecord, 'requester_not_notified' | 'requester_notified_seq'>): RequesterNoticeState {
+  const stored = record.requester_not_notified;
+  return {
+    notifiedSeq: record.requester_notified_seq ?? 0,
+    ...(stored === undefined
+      ? {}
+      : { issue: { reason: stored.reason, ...(stored.code === undefined ? {} : { code: stored.code }), activitySeq: stored.activity_seq, at: stored.at } }),
+  };
+}
+
+/** A06: the domain state as stored fields; nothing stored for “nothing to show, nothing known”. */
+export function requesterNoticeFields(state: RequesterNoticeState): Pick<RequestRecord, 'requester_not_notified' | 'requester_notified_seq'> {
+  const { issue } = state;
+  return {
+    ...(state.notifiedSeq > 0 ? { requester_notified_seq: state.notifiedSeq } : {}),
+    ...(issue === undefined
+      ? {}
+      : {
+          requester_not_notified: {
+            reason: issue.reason,
+            ...(issue.code === undefined ? {} : { code: issue.code }),
+            activity_seq: issue.activitySeq,
+            at: issue.at,
+          },
+        }),
+  };
 }
 
 /** Stored `waiting_on` (C3): `{ kind, person_id?, team_label?, name? }` plus the chosen team contacts. */
@@ -142,6 +187,8 @@ export function splitRequestRecord(record: RequestRecord): {
     gmDetail: {
       watcher_ids: record.watcher_ids,
       ...(record.sensitivity_note === undefined ? {} : { sensitivity_note: record.sensitivity_note }),
+      ...(record.requester_not_notified === undefined ? {} : { requester_not_notified: record.requester_not_notified }),
+      ...(record.requester_notified_seq === undefined ? {} : { requester_notified_seq: record.requester_notified_seq }),
     },
   };
 }
@@ -156,5 +203,7 @@ export function joinRequestRecord(request: RequestDocument, gmDetail: GmRequestD
     ...known,
     watcher_ids: gmDetail?.watcher_ids ?? [],
     ...(gmDetail?.sensitivity_note === undefined ? {} : { sensitivity_note: gmDetail.sensitivity_note }),
+    ...(gmDetail?.requester_not_notified === undefined ? {} : { requester_not_notified: gmDetail.requester_not_notified }),
+    ...(gmDetail?.requester_notified_seq === undefined ? {} : { requester_notified_seq: gmDetail.requester_notified_seq }),
   };
 }

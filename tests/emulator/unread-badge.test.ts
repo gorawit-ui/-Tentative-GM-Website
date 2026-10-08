@@ -111,7 +111,7 @@ async function step(who: string, type: string, id: string, extra: Record<string,
 
 const accept = (id: string) => step(GM1, 'accept_request', id);
 const complete = (id: string) => step(GM1, 'complete_request', id, { resolution_summary: 'แก้แล้ว' });
-const confirm = (id: string, who = EMPLOYEE) => step(who, 'confirm_completion', id, { completion_cycle_id: 1 });
+const confirm = (id: string, who = EMPLOYEE, cycle = 1) => step(who, 'confirm_completion', id, { completion_cycle_id: cycle });
 const notResolved = (id: string, who = EMPLOYEE) => step(who, 'report_not_resolved', id, { completion_cycle_id: 1, reason: 'ยังไม่หาย' });
 
 interface Card {
@@ -229,8 +229,17 @@ describe('“มีอัปเดตใหม่”: an event the person may se
     await seen(WATCHER, id, await displayedSeq(WATCHER, id));
     await complete(id);
     await seen(WATCHER, id, await displayedSeq(WATCHER, id));
-    await confirm(id);
+    await confirm(id, EMPLOYEE, 2); // the second completion is cycle 2
     expect(await cardOf(WATCHER, id)).toMatchObject({ has_update: false });
+    expect(await cardOf(EMPLOYEE, id)).toMatchObject({ has_update: false });
+  });
+
+  it('acting on the latest step (confirming straight from the notice) leaves me no dot: I acted on what I saw', async () => {
+    const id = await repairBy(EMPLOYEE);
+    await accept(id);
+    await complete(id);
+    expect(await cardOf(EMPLOYEE, id)).toMatchObject({ has_update: true });
+    await confirm(id);
     expect(await cardOf(EMPLOYEE, id)).toMatchObject({ has_update: false });
   });
 

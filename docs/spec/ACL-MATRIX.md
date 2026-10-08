@@ -234,6 +234,8 @@ API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรว
 | `upload_url.attachment.general` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลด PUT 15 นาที: GM และผู้ขอ (related ใช้คอมเมนต์แทน, D-S12-2); งานที่ปิด/ยกเลิกแล้วไม่รับ (D-S12-4) |
 | `upload_url.attachment.confidential` | `requester`, `gm_staff`, `gm_admin` | ลิงก์อัปโหลดของงานลับ: GM และผู้ขอ |
 | `upload_url.watch_contribution.general` | `watcher` | รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง ไม่เกิน 3 รูป (U1, D-S12-3) — watcher เท่านั้น ดูรูปตัวเองหลังส่งไม่ได้ |
+| `mark_seen.general` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `viewer_related`, `viewer_unconfirmed` | บันทึกว่าเปิดดูแล้ว (จุด “มีอัปเดตใหม่”, A06): เจ้าของ user_state ที่ความสัมพันธ์ยังจริง — ผู้ขอ, related ที่อ่านได้, watcher ของงานไม่ลับ; GM ไม่มี user_state |
+| `mark_seen.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related` | บันทึกว่าเปิดดูแล้วของงานลับ: ผู้ขอและ grant (watcher ไม่มีสิทธิ์) |
 
 ## หน้าจอ → แหล่งข้อมูล
 

@@ -7,6 +7,7 @@
 import { staleState, type CalendarSnapshot, type Instant } from '@gm/time';
 import {
   splitRequestRecord,
+  type RequesterNotNotifiedDocument,
   type GmRequestDetailDocument,
   type RequestDocument,
   type RequestRecord,
@@ -60,6 +61,8 @@ export interface GmRequestSummaryDocument {
   readonly stale: boolean;
   /** When an open request becomes stale (for the scheduler); absent once it is not open. */
   readonly stale_threshold_at?: number;
+  /** A06: “ผู้ขอยังไม่ได้รับแจ้ง” — GM board only, never in the public summary or `requests/{id}`. */
+  readonly requester_not_notified?: RequesterNotNotifiedDocument;
 }
 
 /** D-S10-1: a person shown on the detail page — never an e-mail as the name. */
@@ -156,6 +159,7 @@ export function toGmRequestSummaryDocument(
     watcher_count: watcherCount(request),
     stale: stale?.stale ?? false,
     ...(stale === undefined ? {} : { stale_threshold_at: stale.thresholdAt }),
+    ...(request.requester_not_notified === undefined ? {} : { requester_not_notified: request.requester_not_notified }),
   } as GmRequestSummaryDocument;
 }
 

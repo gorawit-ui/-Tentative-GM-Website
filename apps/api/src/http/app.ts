@@ -26,6 +26,7 @@ import {
   listComments,
   listHistory,
   listMyRequests,
+  markSeen,
   type ApiDeps,
   type UploadPurpose,
 } from '../endpoints/index';
@@ -165,6 +166,19 @@ function routes(deps: HttpDeps): readonly Route[] {
       method: 'GET',
       pattern: /^\/api\/me\/requests$/,
       handle: async ({ token }) => ({ status: 200, body: { items: await listMyRequests(api, token) } }),
+    },
+    {
+      // A06: the screen showed the request up to this unread step (Part 2 Addendum A1.1).
+      name: 'requests.seen',
+      method: 'POST',
+      pattern: /^\/api\/requests\/([^/]+)\/seen$/,
+      async handle({ token, body, params }) {
+        const input = await body();
+        const keys = Object.keys(input);
+        const seq = input.activity_seq;
+        if (keys.length !== 1 || keys[0] !== 'activity_seq' || typeof seq !== 'number') throw new ApiError(400, 'BODY_INVALID');
+        return { status: 200, body: await markSeen(api, token, params[0] ?? '', { activitySeq: seq }) };
+      },
     },
     {
       name: 'me.awaiting_confirmation',

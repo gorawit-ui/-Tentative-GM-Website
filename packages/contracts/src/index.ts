@@ -46,6 +46,9 @@ export {
   type WatchRequestPayload,
 } from './commands';
 export {
+  requesterNoticeFields,
+  requesterNoticeStateOf,
+  type RequesterNotNotifiedDocument,
   GM_ONLY_REQUEST_FIELDS,
   REQUEST_DOCUMENT_FIELDS,
   joinRequestRecord,
