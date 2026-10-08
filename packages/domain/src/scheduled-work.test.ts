@@ -11,6 +11,7 @@ import {
   TICK_LEASE_MS,
   TICK_SCHEDULE,
   TICK_STEPS,
+  TICK_WORK_BUDGET_MS,
   claimJob,
   claimTick,
   nextRetryAt,
@@ -35,6 +36,11 @@ describe('one Scheduler job, one tick', () => {
   it('the tick lease is shorter than the interval, so a worker that died never blocks the next tick', () => {
     expect(TICK_LEASE_MS).toBeLessThan(TICK_INTERVAL_MS);
     expect(TICK_LEASE_MS).toBe(10 * MINUTE_MS);
+  });
+
+  it('a tick stops taking new work well before its lease ends (the item in hand has its own lease)', () => {
+    expect(TICK_WORK_BUDGET_MS).toBe(5 * MINUTE_MS);
+    expect(TICK_WORK_BUDGET_MS).toBeLessThan(TICK_LEASE_MS);
   });
 });
 

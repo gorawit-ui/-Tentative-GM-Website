@@ -1,0 +1,19 @@
+{
+  "$comment": "A02 — the one production Cloud Scheduler job (Part 6 §6.2/§6.9, P7-COST budget: one job). Every scheduled task runs from this tick. Documentation for the administrator (P7-INFRA-01): nothing in this repository creates the job; the service account and worker URL are filled in by the administrator. Dev uses `npm run tick:local` against the emulators and never creates a job (paused or otherwise).",
+  "status": "awaiting-P7-INFRA-01",
+  "jobs": [
+    {
+      "name": "gm-tick",
+      "environment": "prod",
+      "schedule": "*/15 * * * *",
+      "time_zone": "Asia/Bangkok",
+      "http_method": "POST",
+      "target_service": "gm-worker",
+      "path": "/internal/tick",
+      "auth": "oidc",
+      "oidc_service_account": null,
+      "attempt_deadline_seconds": 600,
+      "retry_count": 0
+    }
+  ]
+}

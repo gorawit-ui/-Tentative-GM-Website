@@ -34,6 +34,11 @@ export const INSTANT_FIELDS: ReadonlySet<string> = new Set([
   'archived_at',
   'next_run_at',
   'next_attempt_at',
+  // A02: outbox / scheduled_work leases and the tick record.
+  'lease_until',
+  'last_attempt_at',
+  'last_started_at',
+  'last_completed_at',
 ]);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
