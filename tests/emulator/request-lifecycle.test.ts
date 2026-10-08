@@ -376,10 +376,11 @@ describe('races', () => {
     }
     const due = (await request(cases[0]?.id ?? ''))?.auto_close_due_at as number;
     setNow(due + 60_000);
-    const [, ...confirms] = await Promise.all([
+    const [tick, ...confirms] = await Promise.all([
       runTick(workerDeps()),
       ...cases.map(({ id }) => act(EMPLOYEE, 'confirm_completion', { request_id: id, expected_revision: 3, completion_cycle_id: 1 })),
     ]);
+    expect(tick).toMatchObject({ ran: true });
     for (const [index, { id }] of cases.entries()) {
       const stored = await request(id);
       const closes = (await history(id)).filter((event) => event.kind === 'closed');
@@ -405,10 +406,11 @@ describe('races', () => {
     }
     const due = (await request(cases[0]?.id ?? ''))?.auto_close_due_at as number;
     setNow(due);
-    const [, ...answers] = await Promise.all([
+    const [tick, ...answers] = await Promise.all([
       runTick(workerDeps()),
       ...cases.map(({ id }) => act(EMPLOYEE, 'report_not_resolved', { request_id: id, expected_revision: 3, completion_cycle_id: 1, reason: 'ยังไม่หาย' })),
     ]);
+    expect(tick).toMatchObject({ ran: true });
     for (const [index, { id }] of cases.entries()) {
       const stored = await request(id);
       const kinds = (await history(id)).map((event) => event.kind);
@@ -426,6 +428,31 @@ describe('races', () => {
     }
   });
 
+  it('both orders, forced: the answer first → the job is superseded; the tick first → the answer gets 409 with the latest state', async () => {
+    setNow(NOW);
+    const [confirmFirst, tickFirst, notResolvedFirst] = [await newRepair(), await newRepair(), await newRepair()];
+    for (const { id } of [confirmFirst, tickFirst, notResolvedFirst]) {
+      await accepted(id);
+      await completed(id);
+    }
+    const due = (await request(confirmFirst.id))?.auto_close_due_at as number;
+    setNow(due);
+    expect(await act(EMPLOYEE, 'confirm_completion', { request_id: confirmFirst.id, expected_revision: 3, completion_cycle_id: 1 })).toMatchObject({ status: 200 });
+    expect(await act(EMPLOYEE, 'report_not_resolved', { request_id: notResolvedFirst.id, expected_revision: 3, completion_cycle_id: 1, reason: 'ยังไม่หาย' })).toMatchObject({ status: 200 });
+    await expect(runTick(workerDeps())).resolves.toMatchObject({ ran: true });
+    expect(await request(confirmFirst.id)).toMatchObject({ closure_kind: 'requester_confirmed', revision: 4 });
+    expect(await readDoc(harness.db, `scheduled_work/auto_close-${confirmFirst.id}-c1`)).toMatchObject({ state: 'superseded' });
+    expect(await request(notResolvedFirst.id)).toMatchObject({ status: 'in_progress', revision: 4 });
+    expect(await readDoc(harness.db, `scheduled_work/auto_close-${notResolvedFirst.id}-c1`)).toMatchObject({ state: 'superseded' });
+    expect(await request(tickFirst.id)).toMatchObject({ closure_kind: 'auto_closed', revision: 4 });
+    expect(await readDoc(harness.db, `scheduled_work/auto_close-${tickFirst.id}-c1`)).toMatchObject({ state: 'done' });
+    expect(await act(EMPLOYEE, 'confirm_completion', { request_id: tickFirst.id, expected_revision: 3, completion_cycle_id: 1 })).toMatchObject({
+      status: 409,
+      body: { error: 'REVISION_CONFLICT', current: { revision: 4, status: 'completed', closed: true } },
+    });
+    for (const { id } of [confirmFirst, tickFirst]) expect((await history(id)).filter((event) => event.kind === 'closed')).toHaveLength(1);
+  });
+
   it('auto-close on its own: not before the due time; at the due time once (system, last_updated_at untouched); a second tick changes nothing', async () => {
     setNow(NOW);
     const { id } = await newRepair();
@@ -434,10 +461,10 @@ describe('races', () => {
     const stored = await request(id);
     const due = stored?.auto_close_due_at as number;
     setNow(due - 60_000);
-    await runTick(workerDeps());
+    await expect(runTick(workerDeps())).resolves.toMatchObject({ ran: true });
     expect(await request(id)).not.toHaveProperty('closed_at');
     setNow(due);
-    await runTick(workerDeps());
+    await expect(runTick(workerDeps())).resolves.toMatchObject({ ran: true });
     expect(await request(id)).toMatchObject({ closed_at: due, closure_kind: 'auto_closed', last_updated_at: stored?.last_updated_at, revision: 4 });
     expect((await history(id)).filter((event) => event.kind === 'closed')).toEqual([expect.objectContaining({ actor_id: 'system', closure_kind: 'auto_closed' })]);
     setNow(due + 20 * 60_000);
@@ -466,7 +493,8 @@ describe('notices for status changes', () => {
     // The requester answers: the watcher is told the status changed, the requester (actor) is not.
     await act(EMPLOYEE, 'report_not_resolved', { request_id: id, expected_revision: await revisionOf(id), completion_cycle_id: 1, reason: 'ยังไม่หาย' });
     expect((await outboxOf(id)).filter((entry) => entry.event_kind === 'request_not_resolved').map((entry) => entry.recipient_id)).toEqual([WATCHER]);
-    for (const entry of await outboxOf(id)) expect([GM1, GM2]).not.toContain(entry.recipient_id);
+    // The creation notice to the default owner (A01) aside, no status notice goes to the GM who acted.
+    for (const entry of (await outboxOf(id)).filter((notice) => notice.event_kind !== 'request_created')) expect([GM1, GM2]).not.toContain(entry.recipient_id);
   });
 });
 

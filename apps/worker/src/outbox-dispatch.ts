@@ -10,6 +10,7 @@
 // Another pickup of the same entry (Cloud Task + tick, duplicate task) finds it leased or settled and
 // does nothing. A `processing` entry whose lease ran out means a worker died mid-send: the provider
 // may have it, so it becomes `delivery_unknown` for the GM to check — never sent a second time.
+// A03: watcher notices (status changes, U1) are suppressed once the request is confidential.
 import {
   DELIVERY_LEASE_MS,
   chooseDeliveryChannel,
@@ -37,7 +38,7 @@ interface Entry {
   readonly requestId: string;
   readonly recipientId: string;
   readonly eventKind: string;
-  readonly audience: 'gm' | 'requester';
+  readonly audience: 'gm' | 'requester' | 'watcher';
   readonly requestNumber: string;
   readonly confidential: boolean;
   readonly attempts: number;
@@ -57,7 +58,7 @@ function parseEntry(stored: StoredData): Entry | undefined {
   const recipientId = text(stored.recipient_id);
   const eventKind = text(stored.event_kind);
   const requestNumber = text(stored.request_number);
-  const audience = stored.audience === 'requester' ? 'requester' : stored.audience === 'gm' ? 'gm' : undefined;
+  const audience = stored.audience === 'requester' || stored.audience === 'gm' || stored.audience === 'watcher' ? stored.audience : undefined;
   const attempts = Number.isSafeInteger(stored.attempts) ? (stored.attempts as number) : undefined;
   const nextAttemptAt = Number.isSafeInteger(stored.next_attempt_at) ? (stored.next_attempt_at as number) : undefined;
   if (
@@ -146,6 +147,8 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   };
   if (request === undefined) return stop({ state: 'suppressed', errorCode: 'REQUEST_NOT_FOUND' });
   if (request.status === 'cancelled' && MOOT_WHEN_CANCELLED.has(entry.eventKind)) return stop({ state: 'suppressed', errorCode: 'REQUEST_CANCELLED' });
+  // A03 / U1: watching alone gives no access to a confidential request, so its watchers hear nothing.
+  if (entry.audience === 'watcher' && request.is_confidential !== false) return stop({ state: 'suppressed', errorCode: 'NO_ACCESS' });
   const slackUserId = text(person?.slack_user_id);
   const channel = chooseDeliveryChannel(person === undefined ? undefined : { active: person.active === true, ...(slackUserId === undefined ? {} : { slackUserId }) });
   // A1.2: no channel → the GM contacts the person; the entry says why (“ผู้ขอยังไม่ได้รับแจ้ง”).

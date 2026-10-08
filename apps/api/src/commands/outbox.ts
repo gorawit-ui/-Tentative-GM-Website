@@ -8,13 +8,13 @@ import { createHash } from 'node:crypto';
 import type { Instant } from '@gm/time';
 
 export type OutboxChannel = 'auto';
-export type OutboxAudience = 'gm' | 'requester';
+export type OutboxAudience = 'gm' | 'requester' | 'watcher';
 
 export interface OutboxEntry {
   readonly id: string;
   readonly data: {
     readonly event_id: string;
-    readonly event_kind: 'request_created';
+    readonly event_kind: 'request_created' | LifecycleNoticeKind;
     readonly request_id: string;
     /** D-A01-4: the number the recipient sees (also for confidential requests). */
     readonly request_number: string;
@@ -28,6 +28,7 @@ export interface OutboxEntry {
     readonly attempts: number;
     readonly next_attempt_at: Instant;
     readonly created_at: Instant;
+    readonly auto_close_due_at?: Instant;
   };
 }
 
@@ -74,10 +75,16 @@ export function newRequestOutbox(input: {
   }));
 }
 
-/** A03 stub — implemented after the failing tests are committed. */
+/** A03: status-change notices; `closed` (requester confirmed / auto-close) does not change the status. */
 export type LifecycleNoticeKind = 'request_accepted' | 'request_completed' | 'request_not_resolved' | 'request_cancelled' | 'request_reopened';
 
-export function lifecycleOutbox(_input: {
+/**
+ * A03 — who hears about a status change: the requester with an account (PRD §6.9 “requester ได้แจ้ง
+ * เมื่อสถานะเปลี่ยน”, US-08) and the watchers of a general request (U1: summary only, never of a
+ * confidential one), one entry per person per event, never the actor (D-S08-2). The event is the
+ * revision the command produced, so a retried command (same revision) cannot add a second notice.
+ */
+export function lifecycleOutbox(input: {
   readonly requestId: string;
   readonly requestNumber: string;
   readonly revision: number;
@@ -86,8 +93,33 @@ export function lifecycleOutbox(_input: {
   readonly requesterId?: string;
   readonly watcherIds: readonly string[];
   readonly isConfidential: boolean;
-  readonly autoCloseDueAt?: number;
-  readonly now: number;
+  /** `request_completed` awaiting confirmation: the real auto-close time for the message (UI-15). */
+  readonly autoCloseDueAt?: Instant;
+  readonly now: Instant;
 }): readonly OutboxEntry[] {
-  return [];
+  const eventId = `${input.requestId}:r${input.revision}`;
+  const audiences = new Map<string, OutboxAudience>();
+  if (input.requesterId !== undefined) audiences.set(input.requesterId, 'requester');
+  if (!input.isConfidential) {
+    for (const watcherId of input.watcherIds) if (!audiences.has(watcherId)) audiences.set(watcherId, 'watcher');
+  }
+  audiences.delete(input.actorId);
+  return [...audiences].map(([recipientId, audience]) => ({
+    id: outboxId(eventId, recipientId, 'auto'),
+    data: {
+      event_id: eventId,
+      event_kind: input.eventKind,
+      request_id: input.requestId,
+      request_number: input.requestNumber,
+      recipient_id: recipientId,
+      audience,
+      channel: 'auto',
+      confidential: input.isConfidential,
+      state: 'pending',
+      attempts: 0,
+      next_attempt_at: input.now,
+      created_at: input.now,
+      ...(input.autoCloseDueAt === undefined ? {} : { auto_close_due_at: input.autoCloseDueAt }),
+    },
+  }));
 }

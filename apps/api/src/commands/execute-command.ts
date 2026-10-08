@@ -9,8 +9,10 @@
 // the internal board counter for confidential work, a `request_created` history event, user_state
 // references and the outbox entries of who to tell (never the actor, D-S08-2). Nothing is sent in
 // the transaction (Part 6 §6.6); the HTTP layer hands the new outbox IDs to the queue after commit.
+// A03: lifecycle commands on an existing request run in the same wrapper (lifecycle.ts).
 import {
   buildRequestProjections,
+  isLifecycleCommand,
   joinRequestRecord,
   type CommandEnvelope,
   type CreateOnBehalfPayload,
@@ -35,10 +37,12 @@ import {
   type RequestDraft,
   type RoutingResult,
   type RoutingSettings,
+  type RequestStatus,
   type WatchOutcome,
   type WatchState,
 } from '@gm/domain';
 import type { CalendarSnapshot, Instant } from '@gm/time';
+import { runLifecycleCommand } from './lifecycle';
 import { newRequestOutbox } from './outbox';
 import { commandFingerprint } from './fingerprint';
 import type { CommandStore, CommandTransaction } from './transaction-port';
@@ -60,10 +64,13 @@ export const COMMAND_EXPIRY_FIELD = 'expire_at';
 /** Refused by the executor itself; domain refusals keep their own error types and codes. */
 export class CommandRejected extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  /** A03: the latest safe state for a conflict answer (revision, status, who accepted). */
+  readonly details?: Readonly<Record<string, unknown>>;
+  constructor(code: string, message: string, details?: Readonly<Record<string, unknown>>) {
     super(message);
     this.name = 'CommandRejected';
     this.code = code;
+    if (details !== undefined) this.details = details;
   }
 }
 
@@ -76,12 +83,15 @@ export interface MaintenanceLabels {
 
 export interface MaintenanceCatalog {
   /** Reads inside the transaction (before any write); unknown or disabled entries are refused. */
-  resolve(transaction: CommandTransaction, selection: MaintenanceSelection): Promise<MaintenanceLabels>;
+  resolve(transaction: ReadTransaction, selection: MaintenanceSelection): Promise<MaintenanceLabels>;
 }
+
+/** Directories only read, so the worker's transaction (A03 auto-close) can use them too. */
+export type ReadTransaction = Pick<CommandTransaction, 'get'>;
 
 /** D-S10-1: display names from `people/{person_id}` (read inside the transaction, before any write). */
 export interface PeopleDirectory {
-  displayNames(transaction: CommandTransaction, personIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+  displayNames(transaction: ReadTransaction, personIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
 
 /** Routing facts read in the create transaction (settings/routing, GM members, company calendar). */
@@ -94,7 +104,7 @@ export interface RoutingFacts {
 }
 
 export interface RoutingDirectory {
-  load(transaction: CommandTransaction): Promise<RoutingFacts>;
+  load(transaction: ReadTransaction): Promise<RoutingFacts>;
 }
 
 export interface CommandContext {
@@ -116,6 +126,9 @@ export interface CommandResult {
   readonly request_number: string;
   /** watch_request only. */
   readonly watch?: WatchOutcome;
+  /** A03 lifecycle commands: the revision and status the command produced. */
+  readonly revision?: number;
+  readonly status?: RequestStatus;
 }
 
 export interface CommandOutcome {
@@ -140,7 +153,7 @@ export async function executeCommand(
   const fingerprint = commandFingerprint(context.actor.personId, command);
   const commandPath = `${COMMANDS_COLLECTION}/${command.command_id}`;
   // Chosen once, so every attempt of the transaction writes the same request.
-  const requestId = context.newRequestId();
+  const requestId = isCreateCommand(command) ? context.newRequestId() : '';
   return store.runTransaction(async (transaction) => {
     const stored = await transaction.get(commandPath);
     if (stored !== undefined) {
@@ -149,10 +162,11 @@ export async function executeCommand(
       }
       return { replayed: true, result: stored.result as CommandResult, outboxIds: [] };
     }
-    const { result, outboxIds }: Executed =
-      command.type === 'watch_request'
-        ? { result: await watch(transaction, command.payload.request_id, context), outboxIds: [] }
-        : await create(transaction, command, context, requestId);
+    const { result, outboxIds }: Executed = isCreateCommand(command)
+      ? await create(transaction, command, context, requestId)
+      : isLifecycleCommand(command)
+        ? await runLifecycleCommand(transaction, command, context)
+        : { result: await watch(transaction, command.payload.request_id, context), outboxIds: [] };
     transaction.set(commandPath, {
       type: command.type,
       actor_id: context.actor.personId,
@@ -165,9 +179,15 @@ export async function executeCommand(
   });
 }
 
+type CreateCommand = Extract<CommandEnvelope, { readonly type: 'create_maintenance' | 'create_on_behalf' | 'create_gm_task' }>;
+
+function isCreateCommand(command: CommandEnvelope): command is CreateCommand {
+  return command.type === 'create_maintenance' || command.type === 'create_on_behalf' || command.type === 'create_gm_task';
+}
+
 async function create(
   transaction: CommandTransaction,
-  command: Exclude<CommandEnvelope, { readonly type: 'watch_request' }>,
+  command: CreateCommand,
   context: CommandContext,
   requestId: string,
 ): Promise<Executed> {
@@ -269,7 +289,7 @@ async function maintenanceDetails(
 
 async function toDomainCommand(
   transaction: CommandTransaction,
-  command: Exclude<CommandEnvelope, { readonly type: 'watch_request' }>,
+  command: CreateCommand,
   context: CommandContext,
 ): Promise<CreateRequestCommand> {
   const { actor } = context;

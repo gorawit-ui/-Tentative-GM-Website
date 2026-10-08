@@ -94,3 +94,12 @@ export function idField(object: JsonObject, path: string, key: string): string {
 export function optionalId(object: JsonObject, path: string, key: string): string | undefined {
   return present(object, key) ? idField(object, path, key) : undefined;
 }
+
+/** A03: a whole number ≥ 1 (revisions, completion cycles). */
+export function positiveIntegerField(object: JsonObject, path: string, key: string): number {
+  const value = requiredField(object, path, key);
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+    throw new ContractRejected('FIELD_INVALID', join(path, key), `${join(path, key)} must be a whole number of 1 or more`);
+  }
+  return value;
+}

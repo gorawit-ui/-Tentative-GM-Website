@@ -5,10 +5,12 @@
 import { randomUUID } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { transactionPeopleDirectory, transactionRoutingDirectory } from '@gm/api/directories';
 import { notificationAdapter } from './adapters';
 import type { WorkerDeps } from './deps';
 import { adminWorkerStore } from './firestore-store';
 import { createWorkerHandler, workerOperations } from './http';
+import { autoCloseJob } from './jobs/auto-close';
 import { consoleWorkerLogger } from './log';
 import { resolveNotificationMode } from './notification-mode';
 import { startServer } from './server';
@@ -22,8 +24,8 @@ const deps: WorkerDeps = {
   now: () => Date.now(),
   newLeaseId: () => randomUUID(),
   log: consoleWorkerLogger,
-  // Job handlers arrive with their tasks (A05 stale/auto-close/presence, B09 digest, B15 renewal…).
-  jobHandlers: {},
+  // A03 auto-close; the rest arrive with their tasks (A05 stale/presence, B09 digest, B15 renewal…).
+  jobHandlers: { auto_close: autoCloseJob({ peopleDirectory: transactionPeopleDirectory(), routingDirectory: transactionRoutingDirectory() }) },
 };
 startServer({
   name: 'gm-worker',

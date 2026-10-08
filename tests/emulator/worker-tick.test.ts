@@ -288,7 +288,8 @@ describe('single tick lease: one tick at a time; a dead worker never blocks the 
     await expect(runTick(deps(workerA))).resolves.toMatchObject({ ran: true, outbox: { sent: 1 } });
     const lease = await readDoc(workerA.db, TICK_LEASE_PATH);
     expect(lease).toMatchObject({ last_started_at: NOW, last_completed_at: NOW });
-    expect(lease?.lease_until).toBeLessThanOrEqual(NOW);
+    expect(lease).not.toHaveProperty('lease_until');
+    expect(lease).not.toHaveProperty('lease_id');
     now = minutes(1);
     await expect(runTick(deps(workerB))).resolves.toMatchObject({ ran: true, outbox: { sent: 0 } });
   });

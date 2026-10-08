@@ -11,6 +11,7 @@ export {
   RequestRejected,
   createRequestDraft,
   defaultSensitivity,
+  isGm,
   maintenanceTitle,
   type Actor,
   type ConfidentialChoice,

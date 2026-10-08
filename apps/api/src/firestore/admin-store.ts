@@ -39,6 +39,8 @@ export const INSTANT_FIELDS: ReadonlySet<string> = new Set([
   'last_attempt_at',
   'last_started_at',
   'last_completed_at',
+  // A03: unread clock.
+  'last_activity_at',
 ]);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
