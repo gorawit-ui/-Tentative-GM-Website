@@ -22,6 +22,7 @@ import {
   listComments,
   listHistory,
   listMyRequests,
+  markSeen,
 } from '../../apps/api/src/endpoints/index';
 import { GENERAL_REQUEST_ID, SAMPLE_REQUESTS, SECRET_REQUEST_ID, SUBJECTS, SUBJECT_KEYS, accessViewerOf, seedDocuments, type SubjectKey } from '../rules/fixtures/acl-matrix';
 import { API_ENDPOINTS, apiCells, type ApiEndpoint } from '../rules/fixtures/api-matrix';
@@ -179,6 +180,8 @@ async function call(endpoint: ApiEndpoint, token: string | undefined): Promise<u
       return createUploadUrl(deps, token, { requestId, purpose: 'attachment', contentType: 'image/jpeg', sizeBytes: 300_000 });
     case 'upload_url.watch_contribution':
       return createUploadUrl(deps, token, { requestId, purpose: 'watch_contribution', contentType: 'image/jpeg', sizeBytes: 300_000 });
+    case 'mark_seen':
+      return markSeen(deps, token, requestId, { activitySeq: 0 });
   }
 }
 
@@ -247,6 +250,9 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
             expect(expiresSeconds(result.url!)).toBe(String(VIEW_URL_TTL_SECONDS));
             expect(result.expires_at).toBe(NOW + VIEW_URL_TTL_SECONDS * 1000);
             break;
+          case 'mark_seen':
+            expect(result).toMatchObject({ last_seen_activity_seq: 0 });
+            break;
           case 'upload_url.attachment':
           case 'upload_url.watch_contribution':
             expect(result.url).toContain(`pending/${String(result.upload_id)}`);
@@ -259,7 +265,7 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
   });
 
   it('covers every endpoint of the matrix', () => {
-    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(8);
+    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(9);
   });
 });
 

@@ -265,6 +265,7 @@ async function persist(
           requestId,
           requestNumber: next.request_number,
           revision: next.revision,
+          activitySeq: next.activity_seq ?? next.revision,
           eventKind: noticeKind,
           actorId: context.actorId,
           ...(next.requester_id === undefined ? {} : { requesterId: next.requester_id }),

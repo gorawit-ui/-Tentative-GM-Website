@@ -95,6 +95,10 @@ export function lifecycleOutbox(input: {
   readonly isConfidential: boolean;
   /** `request_completed` awaiting confirmation: the real auto-close time for the message (UI-15). */
   readonly autoCloseDueAt?: Instant;
+  /** A06: the request's unread step of this event. */
+  readonly activitySeq: number;
+  /** D-A03-2 / D-A03-4 (A06 red step: not yet used). */
+  readonly gmRecipients?: readonly { readonly personId: string; readonly eventKind: 'request_not_resolved' | 'request_taken_over' }[];
   readonly now: Instant;
 }): readonly OutboxEntry[] {
   const eventId = `${input.requestId}:r${input.revision}`;

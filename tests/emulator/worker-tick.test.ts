@@ -208,6 +208,7 @@ describe('A03: watcher notices (U1)', () => {
       requestId,
       requestNumber: 'DEV-0900',
       revision: 2,
+      activitySeq: 2,
       eventKind: 'request_accepted',
       actorId: GM_MAIL,
       watcherIds: [GM_SLACK],
@@ -230,6 +231,52 @@ describe('A03: watcher notices (U1)', () => {
     await expect(dispatchOutbox(deps(workerA), id)).resolves.toBe('suppressed');
     expect(await entry(id)).toMatchObject({ state: 'suppressed', last_error_code: 'NO_ACCESS' });
     expect(sends).toEqual([]);
+  });
+});
+
+describe('D-A03-7: a status notice overtaken by a newer one to the same person is not sent', () => {
+  async function seedStatusNotices(): Promise<{ requestId: string; accepted: Record<string, string>; completed: Record<string, string> }> {
+    const requestId = `req-a06-s-${++requestCount}`;
+    await writeDoc(workerA.db, `requests/${requestId}`, { request_number: 'DEV-0950', status: 'completed', revision: 3, is_confidential: false });
+    const notices = (revision: number, eventKind: 'request_accepted' | 'request_completed', watcherIds: string[]) =>
+      lifecycleOutbox({ requestId, requestNumber: 'DEV-0950', revision, activitySeq: revision, eventKind, actorId: GM_MAIL, requesterId: REQUESTER, watcherIds, isConfidential: false, now: NOW + revision });
+    const accepted = notices(2, 'request_accepted', [GM_SLACK]);
+    // The watcher stopped watching before completion: their accepted notice has nothing newer.
+    const completed = notices(3, 'request_completed', []);
+    for (const notice of [...accepted, ...completed]) await writeDoc(workerA.db, `outbox/${notice.id}`, notice.data);
+    const byRecipient = (entries: typeof accepted) => Object.fromEntries(entries.map((notice) => [notice.data.recipient_id, notice.id]));
+    return { requestId, accepted: byRecipient(accepted), completed: byRecipient(completed) };
+  }
+
+  it('accepted then completed, both waiting for the tick: the requester gets only “completed”', async () => {
+    const { accepted, completed } = await seedStatusNotices();
+    now = minutes(1);
+    await runTick(deps(workerA));
+    expect(await entry(accepted[REQUESTER] ?? '')).toMatchObject({ state: 'suppressed', last_error_code: 'SUPERSEDED' });
+    expect(await entry(completed[REQUESTER] ?? '')).toMatchObject({ state: 'provider_accepted' });
+    expect(sends.filter((message) => message.audience === 'requester').map((message) => message.eventKind)).toEqual(['request_completed']);
+  });
+
+  it('only the same person on the same request: the watcher’s own latest notice still goes out', async () => {
+    const { accepted } = await seedStatusNotices();
+    now = minutes(1);
+    await runTick(deps(workerA));
+    expect(await entry(accepted[GM_SLACK] ?? '')).toMatchObject({ state: 'provider_accepted' });
+  });
+
+  it('a Cloud Task for the old notice arriving late is suppressed too, not sent', async () => {
+    const { accepted } = await seedStatusNotices();
+    await expect(dispatchOutbox(deps(workerA), accepted[REQUESTER] ?? '')).resolves.toBe('suppressed');
+    expect(sends).toEqual([]);
+  });
+
+  it('the creation notice is not a status notice here: it is sent even if a status notice follows (Q-A06-1)', async () => {
+    const id = await seedEntry(REQUESTER, { audience: 'requester' });
+    const requestId = `req-a02-${String(requestCount).padStart(4, '0')}`;
+    const [later] = lifecycleOutbox({ requestId, requestNumber: 'DEV-0001', revision: 2, activitySeq: 2, eventKind: 'request_accepted', actorId: GM_MAIL, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now: NOW + 1 });
+    if (later === undefined) throw new Error('no notice');
+    await writeDoc(workerA.db, `outbox/${later.id}`, later.data);
+    await expect(dispatchOutbox(deps(workerA), id)).resolves.toBe('sent');
   });
 });
 

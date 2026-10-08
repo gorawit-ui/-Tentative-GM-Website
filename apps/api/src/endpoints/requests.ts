@@ -121,3 +121,13 @@ export function countAwaitingConfirmation(deps: ApiDeps, idToken: string | undef
     return { count: snapshot.docs.filter((document) => document.data().closed_at === undefined).length };
   });
 }
+
+/** A06 stub — implemented after the failing tests are committed. */
+export function markSeen(
+  _deps: ApiDeps,
+  _idToken: string | undefined,
+  _requestId: string,
+  _input: { readonly activitySeq: number },
+): Promise<{ readonly activity_seq: number; readonly last_seen_activity_seq: number; readonly has_update: boolean }> {
+  return Promise.reject(new ApiError(501, 'NOT_IMPLEMENTED'));
+}
