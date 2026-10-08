@@ -5,4 +5,5 @@ export { consoleLogger, type ApiLogger, type LogFields } from './log';
 export type { ApiDeps, SignedUrlRequest, StorageBucket, StorageFile, TokenVerifier, UrlSigner, VerifiedToken } from './deps';
 export { countAwaitingConfirmation, getRequestDetail, listComments, listHistory, listMyRequests, listWaitingIntervals, markSeen, type MyRequestCard } from './requests';
 export { createUploadUrl, createViewUrl, finalizeUpload, type UploadPurpose, type UploadUrl, type ViewUrl } from './files';
+export { previewRelated, previewWaiting } from './previews';
 export { storageUrlSigner } from './url-signer';

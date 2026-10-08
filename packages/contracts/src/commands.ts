@@ -443,3 +443,24 @@ export function parseCommand(body: unknown): CommandEnvelope {
   const payload = payloadOf(type as CommandType, requiredField(envelope, '', 'payload'));
   return { command_id: commandId, type, payload } as CommandEnvelope;
 }
+
+/** A04 — the waiting preview (F05 §9.2): the party and the notify choice, read like enter_waiting. */
+export interface WaitingPreviewBody {
+  readonly waiting_on?: WaitingOnPayload;
+  readonly notify?: boolean;
+}
+
+export function parseWaitingPreview(body: unknown): WaitingPreviewBody {
+  const object = strictObject(body, '', ['waiting_on', 'notify']);
+  return {
+    ...optional('waiting_on', Object.hasOwn(object, 'waiting_on') ? waitingOn(object.waiting_on, 'waiting_on') : undefined),
+    ...optional('notify', optionalBoolean(object, '', 'notify')),
+  };
+}
+
+/** A04 / FU-12 — the related-persons preview (C3): who would become related and who needs the grant. */
+export function parseRelatedPreview(body: unknown): { readonly person_ids: readonly string[] } {
+  const object = strictObject(body, '', ['person_ids']);
+  requiredField(object, '', 'person_ids');
+  return { person_ids: optionalPersonIdList(object, '', 'person_ids') ?? [] };
+}

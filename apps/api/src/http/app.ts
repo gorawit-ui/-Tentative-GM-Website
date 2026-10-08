@@ -28,6 +28,8 @@ import {
   listMyRequests,
   listWaitingIntervals,
   markSeen,
+  previewRelated,
+  previewWaiting,
   type ApiDeps,
   type UploadPurpose,
 } from '../endpoints/index';
@@ -165,6 +167,19 @@ function routes(deps: HttpDeps): readonly Route[] {
       method: 'GET',
       pattern: new RegExp(`^/api/requests/${SEGMENT}/waiting-intervals$`),
       handle: async ({ token, params }) => ({ status: 200, body: { items: await listWaitingIntervals(api, token, params[0]!) } }),
+    },
+    {
+      // A04: confirm-sheet previews (F05 §9.2): read only, GM only; the command decides again.
+      name: 'requests.waiting_preview',
+      method: 'POST',
+      pattern: new RegExp(`^/api/requests/${SEGMENT}/waiting-preview$`),
+      handle: async ({ token, body, params }) => ({ status: 200, body: await previewWaiting(api, token, params[0]!, await body()) }),
+    },
+    {
+      name: 'requests.related_preview',
+      method: 'POST',
+      pattern: new RegExp(`^/api/requests/${SEGMENT}/related-preview$`),
+      handle: async ({ token, body, params }) => ({ status: 200, body: await previewRelated(api, token, params[0]!, await body()) }),
     },
     {
       name: 'requests.comments',

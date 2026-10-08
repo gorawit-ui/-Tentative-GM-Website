@@ -28,6 +28,8 @@ export {
   isLifecycleCommand,
   isWaitingCommand,
   parseCommand,
+  parseRelatedPreview,
+  parseWaitingPreview,
   type AcceptRequestPayload,
   type CommandEnvelope,
   type CommandType,
@@ -55,6 +57,7 @@ export {
   type WaitingCommandType,
   type WaitingOnPayload,
   type WaitingPartyPayload,
+  type WaitingPreviewBody,
 } from './commands';
 export {
   requesterNoticeFields,

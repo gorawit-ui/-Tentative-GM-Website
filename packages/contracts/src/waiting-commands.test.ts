@@ -3,7 +3,7 @@
 // names its waiting interval instead (A2.3: the button checks the interval, access and latest status).
 // `waiting_on` keeps no default (F3): the domain refuses a missing or incomplete party with its own code.
 import { describe, expect, it } from 'vitest';
-import { ContractRejected, isWaitingCommand, parseCommand } from './index';
+import { ContractRejected, isWaitingCommand, parseCommand, parseRelatedPreview, parseWaitingPreview } from './index';
 
 const COMMAND_ID = '0b9d6c43-8a1e-4c55-9e0f-3f7f5f1a2b3c';
 const body = (type: string, payload: Record<string, unknown>) => ({ command_id: COMMAND_ID, type, payload });
@@ -65,5 +65,20 @@ describe('refused at the boundary', () => {
 
   it('the keep list may be left out here; the domain refuses it (KEEP_LIST_REQUIRED, D-ACL-2)', () => {
     expect(parseCommand(body('mark_confidential', { ...at, sensitivity_reason: 'contract' }))).toMatchObject({ payload: { sensitivity_reason: 'contract' } });
+  });
+});
+
+describe('preview bodies (F05 §9.2): read like the commands they preview', () => {
+  it('waiting preview: the party and the notify choice; nothing else', () => {
+    expect(parseWaitingPreview({ waiting_on: { kind: 'person', person_id: 'a@tdfb.co' }, notify: false })).toEqual({ waiting_on: { kind: 'person', person_id: 'a@tdfb.co' }, notify: false });
+    expect(parseWaitingPreview({})).toEqual({});
+    expect(() => parseWaitingPreview({ waiting_on: { kind: 'person', person_id: 'a@tdfb.co' }, request_id: 'req-1' })).toThrow(ContractRejected);
+    expect(() => parseWaitingPreview({ waiting_on: { kind: 'person', person_id: 'Somchai' } })).toThrow(ContractRejected);
+  });
+
+  it('related preview: a list of person IDs', () => {
+    expect(parseRelatedPreview({ person_ids: ['a@tdfb.co'] })).toEqual({ person_ids: ['a@tdfb.co'] });
+    expect(() => parseRelatedPreview({})).toThrow(ContractRejected);
+    expect(() => parseRelatedPreview({ person_ids: ['nope'] })).toThrow(ContractRejected);
   });
 });
