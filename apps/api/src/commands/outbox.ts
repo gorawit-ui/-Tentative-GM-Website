@@ -73,3 +73,21 @@ export function newRequestOutbox(input: {
     },
   }));
 }
+
+/** A03 stub — implemented after the failing tests are committed. */
+export type LifecycleNoticeKind = 'request_accepted' | 'request_completed' | 'request_not_resolved' | 'request_cancelled' | 'request_reopened';
+
+export function lifecycleOutbox(_input: {
+  readonly requestId: string;
+  readonly requestNumber: string;
+  readonly revision: number;
+  readonly eventKind: LifecycleNoticeKind;
+  readonly actorId: string;
+  readonly requesterId?: string;
+  readonly watcherIds: readonly string[];
+  readonly isConfidential: boolean;
+  readonly autoCloseDueAt?: number;
+  readonly now: number;
+}): readonly OutboxEntry[] {
+  return [];
+}

@@ -10,7 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { DeliveryOutcome } from '@gm/domain';
 import { MINUTE_MS } from '@gm/time';
 import { CommandRejected, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
-import { newRequestOutbox } from '../../apps/api/src/commands/outbox';
+import { lifecycleOutbox, newRequestOutbox } from '../../apps/api/src/commands/outbox';
 import { adminCommandStore } from '../../apps/api/src/firestore/admin-store';
 import { transactionPeopleDirectory, transactionRoutingDirectory } from '../../apps/api/src/firestore/directories';
 import { createApiHandler } from '../../apps/api/src/http/app';
@@ -196,6 +196,39 @@ describe('D-A01-3: the worker records the channel it really used and the result 
     await workerA.db.doc(`requests/req-a02-${String(requestCount).padStart(4, '0')}`).delete();
     await expect(dispatchOutbox(deps(workerA), gone)).resolves.toBe('suppressed');
     expect(await entry(gone)).toMatchObject({ state: 'suppressed', last_error_code: 'REQUEST_NOT_FOUND' });
+    expect(sends).toEqual([]);
+  });
+});
+
+describe('A03: watcher notices (U1)', () => {
+  async function seedWatcherNotice(request: Record<string, unknown>): Promise<string> {
+    const requestId = `req-a02-w-${++requestCount}`;
+    await writeDoc(workerA.db, `requests/${requestId}`, { request_number: 'DEV-0900', status: 'in_progress', revision: 2, ...request });
+    const [notice] = lifecycleOutbox({
+      requestId,
+      requestNumber: 'DEV-0900',
+      revision: 2,
+      eventKind: 'request_accepted',
+      actorId: GM_MAIL,
+      watcherIds: [GM_SLACK],
+      isConfidential: false,
+      now: NOW,
+    });
+    if (notice === undefined) throw new Error('no notice');
+    await writeDoc(workerA.db, `outbox/${notice.id}`, notice.data);
+    return notice.id;
+  }
+
+  it('a watcher notice on a general request is sent with audience watcher', async () => {
+    const id = await seedWatcherNotice({ is_confidential: false });
+    await expect(dispatchOutbox(deps(workerA), id)).resolves.toBe('sent');
+    expect(sends).toEqual([expect.objectContaining({ outboxId: id, audience: 'watcher', eventKind: 'request_accepted' })]);
+  });
+
+  it('the request became confidential before the send → suppressed, nothing sent (watching gives no access)', async () => {
+    const id = await seedWatcherNotice({ is_confidential: true });
+    await expect(dispatchOutbox(deps(workerA), id)).resolves.toBe('suppressed');
+    expect(await entry(id)).toMatchObject({ state: 'suppressed', last_error_code: 'NO_ACCESS' });
     expect(sends).toEqual([]);
   });
 });
