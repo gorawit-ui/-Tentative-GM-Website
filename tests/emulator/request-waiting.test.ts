@@ -472,6 +472,21 @@ describe('notices: the waited party by kind, the GM on a response, never the act
     expect((await outboxOf(id)).filter((entry) => entry.recipient_id === GM1).map((entry) => entry.event_kind)).toEqual(['request_created']);
   });
 
+  it('the requester or a watcher who is the waited party gets one message — the one asking them — not a status notice too (Q-A04-1)', async () => {
+    setNow(MON);
+    const asked = await inProgressRepair();
+    expect(await enterWaiting(asked.id, { kind: 'person', person_id: EMPLOYEE })).toMatchObject({ status: 200 });
+    const toRequester = (await outboxOf(asked.id)).filter((entry) => entry.recipient_id === EMPLOYEE && entry.revision === 3);
+    // The requester's badge (A1.2) still follows it: audience requester.
+    expect(toRequester.map((entry) => [entry.event_kind, entry.audience])).toEqual([['waiting_requested', 'requester']]);
+    expect(await act(EMPLOYEE, 'respond_waiting_party', { request_id: asked.id, waiting_interval_id: 1 })).toMatchObject({ status: 200 });
+    const watched = await inProgressRepair();
+    expect(await act(WATCHER, 'watch_request', { request_id: watched.id })).toMatchObject({ status: 200 });
+    expect(await enterWaiting(watched.id, { kind: 'person', person_id: WATCHER })).toMatchObject({ status: 200 });
+    expect((await outboxOf(watched.id)).filter((entry) => entry.recipient_id === WATCHER).map((entry) => [entry.event_kind, entry.audience])).toEqual([['waiting_requested', 'waiting_party']]);
+    expect(recipients(await noticesOf(watched.id, 'request_waiting'))).toEqual([EMPLOYEE]);
+  });
+
   it('team: each chosen contact; a team without contacts and external parties: no DM (notify unavailable)', async () => {
     setNow(MON);
     const team = await inProgressRepair();
