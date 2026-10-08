@@ -3,7 +3,7 @@
 // and D-A01-4 / FU-20 (pending entries left by a failed hand-off are swept by the tick).
 // Two Admin SDK apps stand for two worker instances. The notification adapter is the local one
 // (nothing is sent to Slack or e-mail); people, requests and IDs are synthetic. Emulator only.
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -125,6 +125,15 @@ async function seedEntry(recipient: string, options: { audience?: 'gm' | 'reques
 const entry = (id: string) => readDoc(workerA.db, `outbox/${id}`);
 const sentIds = () => sends.map((message) => message.outboxId);
 
+/** D-A06-6: the head record the notice-creating transaction keeps (person ID → latest status revision). */
+async function writeHead(requestId: string, latest: Readonly<Record<string, number>>): Promise<void> {
+  const key = (personId: string) => createHash('sha256').update(personId, 'utf8').digest('hex').slice(0, 40);
+  await writeDoc(workerA.db, `outbox_heads/${requestId}`, {
+    request_id: requestId,
+    status_revision_by_recipient: Object.fromEntries(Object.entries(latest).map(([personId, revision]) => [key(personId), revision])),
+  });
+}
+
 beforeAll(async () => {
   logs = captureLogs();
   workerA = emulatorClient();
@@ -244,6 +253,8 @@ describe('D-A03-7: a status notice overtaken by a newer one to the same person i
     // The watcher stopped watching before completion: their accepted notice has nothing newer.
     const completed = notices(3, 'request_completed', []);
     for (const notice of [...accepted, ...completed]) await writeDoc(workerA.db, `outbox/${notice.id}`, notice.data);
+    // D-A06-6: what the two notice-creating transactions recorded (latest status revision per person).
+    await writeHead(requestId, { [REQUESTER]: 3, [GM_SLACK]: 2 });
     const byRecipient = (entries: typeof accepted) => Object.fromEntries(entries.map((notice) => [notice.data.recipient_id, notice.id]));
     return { requestId, accepted: byRecipient(accepted), completed: byRecipient(completed) };
   }
@@ -277,7 +288,74 @@ describe('D-A03-7: a status notice overtaken by a newer one to the same person i
     const [later] = lifecycleOutbox({ requestId, requestNumber: 'DEV-0001', revision: 2, activitySeq: 2, eventKind: 'request_accepted', actorId: GM_MAIL, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now: NOW + 1 });
     if (later === undefined) throw new Error('no notice');
     await writeDoc(workerA.db, `outbox/${later.id}`, later.data);
+    await writeHead(requestId, { [REQUESTER]: 2 });
     await expect(dispatchOutbox(deps(workerA), id)).resolves.toBe('sent');
+  });
+
+  it('D-A06-6: the worker decides with one read of the head record, never a query of the outbox', async () => {
+    const { requestId, accepted, completed } = await seedStatusNotices();
+    now = minutes(1);
+    const calls: string[] = [];
+    const reads: string[] = [];
+    const base = adminWorkerStore(workerA.db, { maxAttempts: TEST_MAX_ATTEMPTS });
+    // Records every store method used and every document read inside its transactions.
+    const store = new Proxy(base, {
+      get(target, property, receiver) {
+        const value = Reflect.get(target, property, receiver) as unknown;
+        if (typeof value !== 'function') return value;
+        return (...args: unknown[]) => {
+          calls.push(String(property));
+          if (property !== 'runTransaction') return (value as (...a: unknown[]) => unknown).apply(target, args);
+          const work = args[0] as (transaction: { get(path: string): Promise<unknown>; set(path: string, data: object): void }) => Promise<unknown>;
+          return target.runTransaction((transaction) =>
+            work({
+              get: (path) => {
+                reads.push(path);
+                return transaction.get(path);
+              },
+              set: (path, data) => transaction.set(path, data),
+            }),
+          );
+        };
+      },
+    });
+    await expect(dispatchOutbox(deps(workerA, { store }), accepted[REQUESTER] ?? '')).resolves.toBe('suppressed');
+    expect(await entry(accepted[REQUESTER] ?? '')).toMatchObject({ state: 'suppressed', last_error_code: 'SUPERSEDED' });
+    expect(new Set(calls)).toEqual(new Set(['runTransaction']));
+    expect(reads.filter((path) => path === `outbox_heads/${requestId}`)).toHaveLength(1);
+    expect(reads.filter((path) => path.startsWith('outbox/') && path !== `outbox/${accepted[REQUESTER]}`)).toEqual([]);
+    // The latest notice reads the same record once and is sent.
+    reads.length = 0;
+    calls.length = 0;
+    await expect(dispatchOutbox(deps(workerA, { store }), completed[REQUESTER] ?? '')).resolves.toBe('sent');
+    expect(new Set(calls)).toEqual(new Set(['runTransaction']));
+    expect(reads.filter((path) => path === `outbox_heads/${requestId}`)).toHaveLength(1);
+  });
+
+  it('D-A06-6: more than 100 earlier notices to the same person on the request — the overtaken one is still suppressed', async () => {
+    const requestId = `req-a06-many-${++requestCount}`;
+    await writeDoc(workerA.db, `requests/${requestId}`, { request_number: 'DEV-0960', status: 'in_progress', revision: 103, is_confidential: false });
+    const notice = (revision: number) =>
+      lifecycleOutbox({ requestId, requestNumber: 'DEV-0960', revision, activitySeq: revision, eventKind: 'request_reopened', actorId: GM_MAIL, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now: NOW })[0];
+    // 100 settled notices whose IDs sort first (a request reopened many times), then the pending one and a newer one.
+    const batch = workerA.db.batch();
+    for (let revision = 2; revision <= 101; revision += 1) {
+      const settled = notice(revision);
+      if (settled === undefined) throw new Error('no notice');
+      batch.set(workerA.db.doc(`outbox/a-${String(revision).padStart(4, '0')}`), { ...settled.data, state: 'provider_accepted', next_attempt_at: new Date(NOW), created_at: new Date(NOW) });
+    }
+    await batch.commit();
+    const overtaken = notice(102);
+    const newest = notice(103);
+    if (overtaken === undefined || newest === undefined) throw new Error('no notice');
+    await writeDoc(workerA.db, 'outbox/m-overtaken', overtaken.data);
+    await writeDoc(workerA.db, 'outbox/z-newest', newest.data);
+    await writeHead(requestId, { [REQUESTER]: 103 });
+    now = minutes(1);
+    await expect(dispatchOutbox(deps(workerA), 'm-overtaken')).resolves.toBe('suppressed');
+    expect(await entry('m-overtaken')).toMatchObject({ state: 'suppressed', last_error_code: 'SUPERSEDED' });
+    await expect(dispatchOutbox(deps(workerA), 'z-newest')).resolves.toBe('sent');
+    expect(sends.map((message) => message.outboxId)).toEqual(['z-newest']);
   });
 });
 
