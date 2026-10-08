@@ -206,3 +206,8 @@ export function markSeen(
     });
   });
 }
+
+/** D-A04-8 (stub until implemented). */
+export function listGmHistory(_deps: ApiDeps, _idToken: string | undefined, _requestId: string, _limit?: number): Promise<readonly Record<string, unknown>[]> {
+  return Promise.reject(new Error('not implemented yet (D-A04-8)'));
+}

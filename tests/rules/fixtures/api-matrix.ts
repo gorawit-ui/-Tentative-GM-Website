@@ -25,7 +25,8 @@ export type ApiEndpointKind =
   | 'upload_url.watch_contribution'
   | 'mark_seen'
   | 'waiting_preview'
-  | 'related_preview';
+  | 'related_preview'
+  | 'gm_history';
 
 export interface ApiEndpoint {
   readonly key: string;
@@ -86,6 +87,8 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
   { key: 'waiting_preview.general', kind: 'waiting_preview', requestId: GENERAL_REQUEST_ID, description: 'ดูก่อนยืนยันรอผู้อื่น (A04): ผู้รับแจ้ง/คนที่จะเป็น related/ต้องยืนยัน grant หรือไม่ — GM เท่านั้น', allow: GM_SUBJECTS },
   { key: 'waiting_preview.confidential', kind: 'waiting_preview', requestId: SECRET_REQUEST_ID, description: 'ดูก่อนยืนยันรอผู้อื่นของงานลับ — GM เท่านั้น', allow: GM_SUBJECTS },
   { key: 'related_preview.general', kind: 'related_preview', requestId: GENERAL_REQUEST_ID, description: 'ดูก่อนยืนยันเพิ่มผู้เกี่ยวข้อง (FU-12) — GM เท่านั้น', allow: GM_SUBJECTS },
+  { key: 'gm_history.general', kind: 'gm_history', requestId: GENERAL_REQUEST_ID, description: 'ประวัติเฉพาะ GM (D-A04-8 เหตุผลปลดธงลับ; watcher contribution) — GM เท่านั้น', allow: GM_SUBJECTS },
+  { key: 'gm_history.confidential', kind: 'gm_history', requestId: SECRET_REQUEST_ID, description: 'ประวัติเฉพาะ GM ของงานลับ — GM เท่านั้น', allow: GM_SUBJECTS },
   { key: 'related_preview.confidential', kind: 'related_preview', requestId: SECRET_REQUEST_ID, description: 'ดูก่อนยืนยันเพิ่มผู้เกี่ยวข้องของงานลับ: ใครต้องได้ grant (D-ACL-2) — GM เท่านั้น', allow: GM_SUBJECTS },
 ];
 
