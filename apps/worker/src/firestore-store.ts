@@ -30,14 +30,5 @@ export function adminWorkerStore(db: Firestore, options: { readonly maxAttempts?
       const snapshot = await query.get();
       return snapshot.docs.map((document) => ({ id: document.id, data: fromStored(document.data()) }));
     },
-    async get(path) {
-      const snapshot = await db.doc(path).get();
-      return snapshot.exists ? fromStored(snapshot.data() ?? {}) : undefined;
-    },
-    async outboxWhere(equals, limit) {
-      // Equality on two fields only: served by the single-field indexes, no composite index needed.
-      const snapshot = await db.collection('outbox').where('request_id', '==', equals.request_id).where('recipient_id', '==', equals.recipient_id).limit(limit).get();
-      return snapshot.docs.map((document) => ({ id: document.id, data: fromStored(document.data()) }));
-    },
   };
 }

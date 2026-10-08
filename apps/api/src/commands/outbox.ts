@@ -151,3 +151,42 @@ export function lifecycleOutbox(input: {
     },
   }));
 }
+
+/** D-A06-6: server-only `outbox_heads/{request_id}` — latest status-notice revision per recipient. */
+export const OUTBOX_HEADS_COLLECTION = 'outbox_heads';
+
+/** The recipient's key in the head record: a hash of the person ID, so no e-mail is a field name. */
+export function outboxHeadKey(recipientId: string): string {
+  return createHash('sha256').update(recipientId, 'utf8').digest('hex').slice(0, 40);
+}
+
+const revisionsOf = (head: Readonly<Record<string, unknown>> | undefined): Readonly<Record<string, unknown>> => {
+  const revisions = head?.status_revision_by_recipient;
+  return revisions !== null && typeof revisions === 'object' && !Array.isArray(revisions) ? (revisions as Readonly<Record<string, unknown>>) : {};
+};
+
+/** The revision of the latest status notice to this person on this request (0 = none recorded). */
+export function latestStatusRevision(head: Readonly<Record<string, unknown>> | undefined, recipientId: string): number {
+  const revision = revisionsOf(head)[outboxHeadKey(recipientId)];
+  return Number.isSafeInteger(revision) ? (revision as number) : 0;
+}
+
+/**
+ * D-A06-6: the head record after the entries of one transaction, written in that same transaction;
+ * undefined when none of them is a status notice (nothing to record, no write).
+ */
+export function outboxHeadAfter(
+  requestId: string,
+  previous: Readonly<Record<string, unknown>> | undefined,
+  entries: readonly OutboxEntry[],
+): { readonly request_id: string; readonly status_revision_by_recipient: Readonly<Record<string, number>> } | undefined {
+  const status = entries.filter((entry) => STATUS_NOTICE_KINDS.has(entry.data.event_kind));
+  if (status.length === 0) return undefined;
+  const revisions: Record<string, number> = {};
+  for (const [key, revision] of Object.entries(revisionsOf(previous))) if (Number.isSafeInteger(revision)) revisions[key] = revision as number;
+  for (const entry of status) {
+    const key = outboxHeadKey(entry.data.recipient_id);
+    revisions[key] = Math.max(revisions[key] ?? 0, entry.data.revision);
+  }
+  return { request_id: requestId, status_revision_by_recipient: revisions };
+}

@@ -5,7 +5,8 @@
 //          → routing facts (company calendar, GM pins) → names → counter → user_state refs
 //   write  `requests/{id}` (revision + 1, unread clock) + public/GM summaries, history event,
 //          internal board counter (D-S09-4), user_state unread clock, focus release (D-S07-6),
-//          the auto-close job of a completion that waits for the requester, outbox notices
+//          the auto-close job of a completion that waits for the requester, outbox notices and
+//          (D-A06-6) the latest status-notice revision per recipient in `outbox_heads/{id}`
 // Auto-close is the same pipeline run by the worker's `auto_close` job (actor `system`): it rechecks
 // the latest state (§6.9), so it and the requester's answer close a request once.
 import {
@@ -48,7 +49,7 @@ import {
   type RoutingDirectory,
   type RoutingFacts,
 } from './execute-command';
-import { lifecycleOutbox, type LifecycleNoticeKind } from './outbox';
+import { OUTBOX_HEADS_COLLECTION, lifecycleOutbox, outboxHeadAfter, type LifecycleNoticeKind } from './outbox';
 import type { CommandTransaction, StoredData } from './transaction-port';
 
 /** The part of a transaction this module uses (the worker's transaction has the same two). */
@@ -228,6 +229,27 @@ async function persist(
     const stored = await transaction.get(`gm_profiles/${member.personId}`);
     if (stored !== undefined) unpinned.push({ personId: member.personId, stored });
   }
+  const noticeKind = NOTICE_KIND[event.kind];
+  const notices =
+    noticeKind === undefined
+      ? []
+      : lifecycleOutbox({
+          requestId,
+          requestNumber: next.request_number,
+          revision: next.revision,
+          activitySeq: next.activity_seq ?? next.revision,
+          eventKind: noticeKind,
+          actorId: context.actorId,
+          ...(next.requester_id === undefined ? {} : { requesterId: next.requester_id }),
+          watcherIds: next.watcher_ids,
+          gmRecipients: gmNotices(event, next),
+          isConfidential: next.is_confidential,
+          ...(noticeKind === 'request_completed' && next.auto_close_due_at !== undefined ? { autoCloseDueAt: next.auto_close_due_at } : {}),
+          now,
+        });
+  // D-A06-6: the latest status notice per recipient, kept in one record the worker reads once.
+  const headPath = `${OUTBOX_HEADS_COLLECTION}/${requestId}`;
+  const head = notices.length === 0 ? undefined : outboxHeadAfter(requestId, await transaction.get(headPath), notices);
 
   // Writes.
   const projections = buildRequestProjections(requestId, next, {
@@ -271,25 +293,8 @@ async function persist(
       created_at: now,
     });
   }
-  const noticeKind = NOTICE_KIND[event.kind];
-  const notices =
-    noticeKind === undefined
-      ? []
-      : lifecycleOutbox({
-          requestId,
-          requestNumber: next.request_number,
-          revision: next.revision,
-          activitySeq: next.activity_seq ?? next.revision,
-          eventKind: noticeKind,
-          actorId: context.actorId,
-          ...(next.requester_id === undefined ? {} : { requesterId: next.requester_id }),
-          watcherIds: next.watcher_ids,
-          gmRecipients: gmNotices(event, next),
-          isConfidential: next.is_confidential,
-          ...(noticeKind === 'request_completed' && next.auto_close_due_at !== undefined ? { autoCloseDueAt: next.auto_close_due_at } : {}),
-          now,
-        });
   for (const notice of notices) transaction.set(`${OUTBOX_COLLECTION}/${notice.id}`, notice.data);
+  if (head !== undefined) transaction.set(headPath, head);
   return {
     result: { request_id: requestId, request_number: next.request_number, revision: next.revision, status: next.status },
     outboxIds: notices.map((notice) => notice.id),

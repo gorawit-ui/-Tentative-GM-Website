@@ -91,6 +91,7 @@ describe('ACL matrix — shape', () => {
       'scorecards',
       'commands',
       'outbox',
+      'outbox_heads',
       'scheduled_work',
       'system_counters',
       'imports',
@@ -139,6 +140,7 @@ describe('ACL matrix — default deny', () => {
       'scorecards',
       'commands',
       'outbox',
+      'outbox_heads',
       'system_counters',
     ]) {
       for (const subject of SUBJECT_KEYS) {

@@ -29,5 +29,5 @@ export {
   type RecordTransaction,
 } from './lifecycle';
 export { commandFingerprint } from './fingerprint';
-export { STATUS_NOTICE_KINDS } from './outbox';
+export { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, latestStatusRevision, outboxHeadAfter, outboxHeadKey } from './outbox';
 export type { CommandStore, CommandTransaction, StoredData } from './transaction-port';

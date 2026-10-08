@@ -12,9 +12,11 @@
 // may have it, so it becomes `delivery_unknown` for the GM to check — never sent a second time.
 // A03: watcher notices (status changes, U1) are suppressed once the request is confidential.
 // A06: a status notice overtaken by a newer one to the same person on the same request is suppressed
-// (D-A03-7); results of notices to the requester update the GM-only “ผู้ขอยังไม่ได้รับแจ้ง” badge
-// (gm_request_details + gm_request_summaries) in the same transaction.
-import { STATUS_NOTICE_KINDS } from '@gm/api/commands';
+// (D-A03-7) — decided from one read of `outbox_heads/{request_id}`, which the notice-creating
+// transaction keeps (D-A06-6), never by querying the outbox; results of notices to the requester
+// update the GM-only “ผู้ขอยังไม่ได้รับแจ้ง” badge (gm_request_details + gm_request_summaries) in the
+// same transaction.
+import { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, latestStatusRevision } from '@gm/api/commands';
 import { requesterNoticeFields, requesterNoticeStateOf, type RequestRecord } from '@gm/contracts';
 import {
   DELIVERY_LEASE_MS,
@@ -179,7 +181,7 @@ type Claim =
   | { readonly kind: 'done'; readonly result: DispatchResult }
   | { readonly kind: 'send'; readonly message: OutboundMessage; readonly entry: Entry; readonly attempts: number; readonly attemptedAt: Instant };
 
-async function claim(transaction: WorkerTransaction, path: string, outboxId: string, now: Instant, leaseId: string, superseded: boolean): Promise<Claim> {
+async function claim(transaction: WorkerTransaction, path: string, outboxId: string, now: Instant, leaseId: string): Promise<Claim> {
   const stored = await transaction.get(path);
   if (stored === undefined) return { kind: 'done', result: 'skipped' };
   const entry = parseEntry(stored);
@@ -199,6 +201,10 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   }
   const request = await transaction.get(`requests/${entry.requestId}`);
   const person = await transaction.get(`people/${entry.recipientId}`);
+  // D-A06-6: one read decides whether a newer status notice to this person exists (D-A03-7).
+  const superseded =
+    STATUS_NOTICE_KINDS.has(entry.eventKind) &&
+    latestStatusRevision(await transaction.get(`${OUTBOX_HEADS_COLLECTION}/${entry.requestId}`), entry.recipientId) > entry.revision;
   const stop = (settlement: DeliverySettlement): Claim => {
     transaction.set(path, { ...settledEntry(stored, settlement, now), last_attempt_at: now });
     if (badge !== undefined) writeBadge(transaction, badge, observationOf(entry, settlement, now));
@@ -246,26 +252,10 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   };
 }
 
-/** Upper bound of notices one person gets about one request that the superseding check reads. */
-const NOTICES_PER_PERSON_LIMIT = 100;
-
-/**
- * D-A03-7: is there a status notice to the same person on the same request from a later revision?
- * Read before the claim: once true it stays true, so it needs no transaction.
- */
-async function isSuperseded(deps: WorkerDeps, path: string): Promise<boolean> {
-  const stored = await deps.store.get(path);
-  const entry = stored === undefined ? undefined : parseEntry(stored);
-  if (entry === undefined || entry.state !== 'pending' || !STATUS_NOTICE_KINDS.has(entry.eventKind)) return false;
-  const notices = await deps.store.outboxWhere({ request_id: entry.requestId, recipient_id: entry.recipientId }, NOTICES_PER_PERSON_LIMIT);
-  return notices.some(({ data }) => typeof data.event_kind === 'string' && STATUS_NOTICE_KINDS.has(data.event_kind) && Number(data.revision) > entry.revision);
-}
-
 export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promise<DispatchResult> {
   const path = `${OUTBOX_COLLECTION}/${outboxId}`;
   const leaseId = deps.newLeaseId();
-  const superseded = await isSuperseded(deps, path);
-  const claimed = await deps.store.runTransaction((transaction) => claim(transaction, path, outboxId, deps.now(), leaseId, superseded));
+  const claimed = await deps.store.runTransaction((transaction) => claim(transaction, path, outboxId, deps.now(), leaseId));
   if (claimed.kind === 'done') {
     if (claimed.result !== 'skipped') deps.log.info('outbox.settled', { outbox_id: outboxId, state: claimed.result });
     return claimed.result;

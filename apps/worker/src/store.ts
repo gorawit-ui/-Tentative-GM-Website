@@ -31,8 +31,4 @@ export interface WorkerStore {
   runTransaction<T>(work: (transaction: WorkerTransaction) => Promise<T>): Promise<T>;
   /** `state` = value, due field <= now, ordered by due field then document ID (Part 6 §6.11 queries). */
   due(collection: DueCollection, state: string, now: Instant, limit: number, after?: DueCursor): Promise<readonly DueDocument[]>;
-  /** A06: one document outside a transaction (for a check whose result only ever grows). */
-  get(path: string): Promise<StoredData | undefined>;
-  /** A06: outbox entries with these exact field values (D-A03-7: same request + same recipient), bounded. */
-  outboxWhere(equals: Readonly<Record<'request_id' | 'recipient_id', string>>, limit: number): Promise<readonly DueDocument[]>;
 }
