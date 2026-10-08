@@ -32,10 +32,11 @@ import {
 } from '@gm/domain';
 import type { Instant } from '@gm/time';
 import { CommandRejected, type CommandResult, type RoutingFacts } from './execute-command';
-import { lifecycleOutbox, respondedOutbox, waitingPartyOutbox, type OutboxEntry } from './outbox';
+import { lifecycleOutbox, relatedAddedOutbox, respondedOutbox, waitingPartyOutbox, type OutboxEntry } from './outbox';
 import {
   advanced,
   currentState,
+  gmHistoryPath,
   loadRequest,
   persistChange,
   revisionConflict,
@@ -67,8 +68,8 @@ interface Context {
 
 const event = (kind: string, context: Context, next: RequestRecord) => ({ kind, at: context.now, actor_id: context.actor.personId, revision: next.revision });
 
-/** The requester and watchers hear that the status changed (waiting / resumed); never the actor. */
-function statusNotices(context: Context, next: RequestRecord, eventKind: 'request_waiting' | 'request_resumed', skip: ReadonlySet<string>): readonly OutboxEntry[] {
+/** The requester and watchers hear who the request now waits on; never the actor (D-A04-2: not on resume). */
+function statusNotices(context: Context, next: RequestRecord, eventKind: 'request_waiting', skip: ReadonlySet<string>): readonly OutboxEntry[] {
   return lifecycleOutbox({
     requestId: context.loaded.requestId,
     requestNumber: next.request_number,
@@ -250,7 +251,8 @@ function resumed(context: Context): Step {
     change: {
       next,
       history: { ...event('waiting_ended', context, next), ended_interval: endedIntervalDocument(ended) },
-      notices: statusNotices(context, next, 'request_resumed', new Set()),
+      // D-A04-2: no message; the status change moves the update dot of the requester and watchers.
+      notices: [],
       extraWrites: [{ path: intervalPath(loaded.requestId, ended.intervalId), data: exitedInterval(context.interval, ended, 'resumed') }],
     },
     result: { waiting_interval_id: ended.intervalId },
@@ -268,8 +270,17 @@ function relatedAdded(context: Context, command: Extract<WaitingCommandEnvelope,
     change: {
       next,
       history: { ...event('related_persons_added', context, next), person_ids: added.personIds, granted_person_ids: added.grantedPersonIds },
-      // FU-12 (D-A03-1 spirit): being added is not a message; “คำขอของฉัน” shows the update dot.
-      notices: [],
+      // D-A04-3: the people just added hear it once (confidential: neutral text, the worker rechecks access).
+      notices: relatedAddedOutbox({
+        requestId: loaded.requestId,
+        requestNumber: next.request_number,
+        revision: next.revision,
+        activitySeq: next.activity_seq ?? next.revision,
+        personIds: added.personIds,
+        actorId: actor.personId,
+        isConfidential: next.is_confidential,
+        now,
+      }),
       addedRelatedIds: [...new Set([...added.personIds, ...added.grantedPersonIds])],
     },
   };
@@ -347,8 +358,16 @@ function unflagged(context: Context, command: Extract<WaitingCommandEnvelope, { 
   return {
     change: {
       next,
-      history: { ...event('confidential_flag_removed', context, next), reason: removed.reason, ...optional('previous_sensitivity_reason', removed.previousSensitivityReason) },
+      // D-A04-8: people with detail access see only that it became a general request …
+      history: event('confidential_flag_removed', context, next),
       notices: [],
+      // … the GM Admin's reason (and the earlier sensitivity) stay GM-only, read through the API.
+      extraWrites: [
+        {
+          path: gmHistoryPath(loaded.requestId, next.revision),
+          data: { ...event('confidential_flag_removed', context, next), reason: removed.reason, ...optional('previous_sensitivity_reason', removed.previousSensitivityReason) },
+        },
+      ],
     },
   };
 }

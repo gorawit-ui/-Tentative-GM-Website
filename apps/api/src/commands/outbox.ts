@@ -8,14 +8,14 @@ import { createHash } from 'node:crypto';
 import type { Instant } from '@gm/time';
 
 export type OutboxChannel = 'auto';
-/** A04: `waiting_party` — the person or team contact a request waits on (F05 §9.1). */
-export type OutboxAudience = 'gm' | 'requester' | 'watcher' | 'waiting_party';
+/** A04: `waiting_party` — the person or team contact a request waits on (F05 §9.1); D-A04-3: `related` — a person just added as related. */
+export type OutboxAudience = 'gm' | 'requester' | 'watcher' | 'waiting_party' | 'related';
 
 export interface OutboxEntry {
   readonly id: string;
   readonly data: {
     readonly event_id: string;
-    readonly event_kind: 'request_created' | LifecycleNoticeKind | GmLifecycleNoticeKind | WaitingNoticeKind;
+    readonly event_kind: 'request_created' | LifecycleNoticeKind | GmLifecycleNoticeKind | WaitingNoticeKind | 'related_added';
     readonly request_id: string;
     /** D-A01-4: the number the recipient sees (also for confidential requests). */
     readonly request_number: string;
@@ -87,7 +87,8 @@ export function newRequestOutbox(input: {
 
 /**
  * A03: status-change notices; `closed` (requester confirmed / auto-close) does not change the status.
- * A04: entering waiting and resuming work change the status too (PRD “requester ได้แจ้งเมื่อสถานะเปลี่ยน”).
+ * A04: entering waiting tells who the request waits on; D-A04-2: resuming work sends no message
+ * (the update dot only — nothing to do, and the completion notice follows).
  */
 export type LifecycleNoticeKind =
   | 'request_accepted'
@@ -95,8 +96,7 @@ export type LifecycleNoticeKind =
   | 'request_not_resolved'
   | 'request_cancelled'
   | 'request_reopened'
-  | 'request_waiting'
-  | 'request_resumed';
+  | 'request_waiting';
 /** A04: the waited party is asked / reminded (F05 §9.1, §9.4); the GM hears the party answered (A2.1). */
 export type WaitingNoticeKind = 'waiting_requested' | 'waiting_reminder' | 'waiting_party_responded';
 /** A04: messages to the waited party — sent only while their interval is current and they have access (F05 §9.3). */
@@ -113,7 +113,6 @@ export const STATUS_NOTICE_KINDS: ReadonlySet<string> = new Set<string>([
   'request_reopened',
   'request_taken_over',
   'request_waiting',
-  'request_resumed',
 ]);
 
 /**
@@ -251,6 +250,39 @@ export function respondedOutbox(input: {
         revision: input.revision,
         activity_seq: input.activitySeq,
         waiting_interval_id: input.intervalId,
+      }),
+    );
+}
+
+/**
+ * D-A04-3: one DM to each person just added as related (people who do not know they were added never
+ * open “เกี่ยวข้องกับฉัน”); never on removal, never the actor. Someone made related by being waited on
+ * gets the waiting DM instead (the caller does not call this for them).
+ */
+export function relatedAddedOutbox(input: {
+  readonly requestId: string;
+  readonly requestNumber: string;
+  readonly revision: number;
+  readonly activitySeq: number;
+  readonly personIds: readonly string[];
+  readonly actorId: string;
+  readonly isConfidential: boolean;
+  readonly now: Instant;
+}): readonly OutboxEntry[] {
+  const eventId = `${input.requestId}:r${input.revision}`;
+  return [...new Set(input.personIds)]
+    .filter((recipientId) => recipientId !== input.actorId)
+    .map((recipientId) =>
+      entry(eventId, recipientId, {
+        event_kind: 'related_added',
+        request_id: input.requestId,
+        request_number: input.requestNumber,
+        audience: 'related',
+        confidential: input.isConfidential,
+        next_attempt_at: input.now,
+        created_at: input.now,
+        revision: input.revision,
+        activity_seq: input.activitySeq,
       }),
     );
 }

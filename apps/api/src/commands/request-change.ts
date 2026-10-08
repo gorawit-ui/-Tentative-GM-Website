@@ -81,6 +81,11 @@ export function historyPath(requestId: string, revision: number): string {
   return `${REQUESTS_COLLECTION}/${requestId}/history/r${String(revision).padStart(6, '0')}`;
 }
 
+/** `gm_history/r{revision}`: what only GM read (Part 6 §6.4: through the API), e.g. D-A04-8. */
+export function gmHistoryPath(requestId: string, revision: number): string {
+  return `${REQUESTS_COLLECTION}/${requestId}/gm_history/r${String(revision).padStart(6, '0')}`;
+}
+
 /** “งานภายใน X รายการ” counts confidential requests not closed or cancelled (D-S09-4). */
 function countsAsInternalOpen(record: RequestRecord): boolean {
   return record.is_confidential && record.status !== 'cancelled' && record.closed_at === undefined;
