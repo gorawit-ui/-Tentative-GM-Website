@@ -14,6 +14,8 @@ export {
   type MaintenanceCatalog,
   type MaintenanceLabels,
   type PeopleDirectory,
+  type RoutingDirectory,
+  type RoutingFacts,
 } from './execute-command';
 export { commandFingerprint } from './fingerprint';
 export type { CommandStore, CommandTransaction, StoredData } from './transaction-port';

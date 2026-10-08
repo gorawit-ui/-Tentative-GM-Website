@@ -8,6 +8,7 @@
 import {
   ATTACHMENT_CONTENT_TYPES,
   MAX_ATTACHMENT_BYTES,
+  MAX_PHOTOS_PER_SUBMISSION,
   UPLOAD_URL_TTL_SECONDS,
   VIEW_URL_TTL_SECONDS,
   attachmentObjectPath,
@@ -67,33 +68,45 @@ async function watcherIds(deps: ApiDeps, requestId: string): Promise<readonly st
   return Array.isArray(watchers) ? watchers.filter((item): item is string => typeof item === 'string') : [];
 }
 
+/** D-S12-4: closed or cancelled requests take no new photos; completed-awaiting-confirmation still does. */
+function requireOpen(request: Readonly<Record<string, unknown>>): void {
+  if (request.status === 'cancelled' || request.closed_at !== undefined) throw new ApiError(409, 'REQUEST_CLOSED');
+}
+
 /** Whether the caller may still use this purpose on this request (checked when issuing and when finalizing). */
 async function checkPurpose(deps: ApiDeps, viewer: AccessViewer, requestId: string, purpose: UploadPurpose): Promise<void> {
   requireRequestId(requestId);
   const snapshot = await deps.db.doc(`requests/${requestId}`).get();
   if (!snapshot.exists) throw notFound();
-  const facts = aclFacts(fromStored(snapshot.data() ?? {}));
+  const request = fromStored(snapshot.data() ?? {});
+  const facts = aclFacts(request);
   if (purpose === 'attachment') {
-    if (canAttachToRequest(viewer, facts)) return;
     // Someone who reads the request learns only that attaching is not theirs; others get “not found”.
-    throw canReadRequestDetail(viewer, facts) ? new ApiError(403, 'ATTACH_NOT_ALLOWED') : notFound();
+    if (!canAttachToRequest(viewer, facts)) throw canReadRequestDetail(viewer, facts) ? new ApiError(403, 'ATTACH_NOT_ALLOWED') : notFound();
+    requireOpen(request);
+    return;
   }
   if (facts.isConfidential) throw notFound();
   if (!canContributeAsWatcher(viewer, { watcherIds: await watcherIds(deps, requestId), isConfidential: facts.isConfidential })) {
     throw new ApiError(403, 'NOT_A_WATCHER');
   }
+  requireOpen(request);
 }
 
-async function contributionSent(deps: ApiDeps, uid: string, requestId: string): Promise<boolean> {
-  const sent = await deps.db
+/** D-S12-3: photos already in a watcher's one contribution — finalized, or pending and not yet expired. */
+async function contributionPhotos(deps: ApiDeps, uid: string, requestId: string): Promise<number> {
+  const uploads = await deps.db
     .collection(UPLOADS)
     .where('uid', '==', uid)
     .where('request_id', '==', requestId)
     .where('purpose', '==', 'watch_contribution')
-    .where('state', '==', 'finalized')
-    .limit(1)
+    .limit(MAX_PHOTOS_PER_SUBMISSION * 20)
     .get();
-  return !sent.empty;
+  const now = deps.now();
+  return uploads.docs.filter((upload) => {
+    const data = upload.data();
+    return data.state === 'finalized' || (data.state === 'pending' && Number(data.expire_at) > now);
+  }).length;
 }
 
 export function createUploadUrl(
@@ -106,9 +119,9 @@ export function createUploadUrl(
     if (input.purpose !== 'attachment' && input.purpose !== 'watch_contribution') throw new ApiError(400, 'PURPOSE_INVALID');
     checkFile(input.contentType, input.sizeBytes);
     await checkPurpose(deps, viewer, input.requestId, input.purpose);
-    // U1: one contribution per watcher per request; once sent, no more photos for it.
-    if (input.purpose === 'watch_contribution' && (await contributionSent(deps, uid, input.requestId))) {
-      throw new ApiError(409, 'CONTRIBUTION_ALREADY_SENT');
+    // U1 + D-S12-3: one contribution per watcher per request, with at most 3 photos in it.
+    if (input.purpose === 'watch_contribution' && (await contributionPhotos(deps, uid, input.requestId)) >= MAX_PHOTOS_PER_SUBMISSION) {
+      throw new ApiError(409, 'PHOTO_LIMIT_REACHED');
     }
     const uploadId = deps.newId();
     const issuedAt = deps.now();

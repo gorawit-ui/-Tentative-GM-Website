@@ -4,11 +4,14 @@
 //   2. domain rules (@gm/domain) — a refused command stores nothing and uses no number.
 //   3. a new request takes the next number from `system_counters/request_sequence` in the same
 //      transaction, so concurrent creates never share or skip a number; watching takes none.
-// Routing, outbox, projections and history join this transaction in A01/A03/A13.
+// A01: the same transaction also routes the new request (default owner / leave / all GM), writes
+// its three projections (requests + request_summaries + gm_request_summaries, D-S09-5 gm detail),
+// the internal board counter for confidential work, a `request_created` history event, user_state
+// references and the outbox entries of who to tell (never the actor, D-S08-2). Nothing is sent in
+// the transaction (Part 6 §6.6); the HTTP layer hands the new outbox IDs to the queue after commit.
 import {
+  buildRequestProjections,
   joinRequestRecord,
-  splitRequestRecord,
-  toRequestDetailDocument,
   type CommandEnvelope,
   type CreateOnBehalfPayload,
   type GmRequestDetailDocument,
@@ -17,20 +20,26 @@ import {
   type RequestRecord,
 } from '@gm/contracts';
 import {
+  allGmNoticeRecipients,
   createRequestDraft,
   formatRequestNumber,
+  routeNewRequest,
   nextRequestSequence,
   watchRequest,
   type Actor,
   type CreateRequestCommand,
   type DeploymentEnvironment,
+  type GmMember,
   type Labelled,
   type MaintenanceDetails,
   type RequestDraft,
+  type RoutingResult,
+  type RoutingSettings,
   type WatchOutcome,
   type WatchState,
 } from '@gm/domain';
-import type { Instant } from '@gm/time';
+import type { CalendarSnapshot, Instant } from '@gm/time';
+import { newRequestOutbox } from './outbox';
 import { commandFingerprint } from './fingerprint';
 import type { CommandStore, CommandTransaction } from './transaction-port';
 
@@ -39,6 +48,10 @@ export const COMMANDS_COLLECTION = 'commands';
 export const REQUESTS_COLLECTION = 'requests';
 /** D-S09-5: watcher list and confidential note, GM only. */
 export const GM_REQUEST_DETAILS_COLLECTION = 'gm_request_details';
+export const PUBLIC_SUMMARIES_COLLECTION = 'request_summaries';
+export const GM_SUMMARIES_COLLECTION = 'gm_request_summaries';
+export const BOARD_COUNTER_PATH = 'board_counters/public';
+export const OUTBOX_COLLECTION = 'outbox';
 
 /** D-S08-6: `commands/{id}` is kept 30 days through a Firestore TTL policy on `expire_at`. */
 export const COMMAND_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -71,6 +84,19 @@ export interface PeopleDirectory {
   displayNames(transaction: CommandTransaction, personIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
 
+/** Routing facts read in the create transaction (settings/routing, GM members, company calendar). */
+export interface RoutingFacts {
+  readonly settings: RoutingSettings;
+  /** Every GM (active or not) with their latest presence, for the default owner and “แจ้ง GM ทุกคน”. */
+  readonly members: readonly GmMember[];
+  /** Company work calendar for the GM summary's stale threshold (P7-ADMIN-04 before pilot). */
+  readonly workCalendar: CalendarSnapshot;
+}
+
+export interface RoutingDirectory {
+  load(transaction: CommandTransaction): Promise<RoutingFacts>;
+}
+
 export interface CommandContext {
   /** From the verified login (A01), never from the body. */
   readonly actor: Actor;
@@ -81,6 +107,7 @@ export interface CommandContext {
   readonly newRequestId: () => string;
   readonly maintenanceCatalog: MaintenanceCatalog;
   readonly peopleDirectory: PeopleDirectory;
+  readonly routingDirectory: RoutingDirectory;
 }
 
 /** What the client gets back, the same on every retry of the same command ID. */
@@ -95,6 +122,13 @@ export interface CommandOutcome {
   /** True when this was a retry answered from `commands/{command_id}`. */
   readonly replayed: boolean;
   readonly result: CommandResult;
+  /** Outbox entries this run created (none on a replay), for the post-commit queue hand-off. */
+  readonly outboxIds: readonly string[];
+}
+
+interface Executed {
+  readonly result: CommandResult;
+  readonly outboxIds: readonly string[];
 }
 
 /** Runs one command; `command` must come from `parseCommand` (its IDs become document paths). */
@@ -113,11 +147,11 @@ export async function executeCommand(
       if (stored.fingerprint !== fingerprint) {
         throw new CommandRejected('COMMAND_ID_CONFLICT', 'This command ID was already used for a different command');
       }
-      return { replayed: true, result: stored.result as CommandResult };
+      return { replayed: true, result: stored.result as CommandResult, outboxIds: [] };
     }
-    const result =
+    const { result, outboxIds }: Executed =
       command.type === 'watch_request'
-        ? await watch(transaction, command.payload.request_id, context)
+        ? { result: await watch(transaction, command.payload.request_id, context), outboxIds: [] }
         : await create(transaction, command, context, requestId);
     transaction.set(commandPath, {
       type: command.type,
@@ -127,7 +161,7 @@ export async function executeCommand(
       created_at: context.now,
       [COMMAND_EXPIRY_FIELD]: context.now + COMMAND_RETENTION_MS,
     });
-    return { replayed: false, result };
+    return { replayed: false, result, outboxIds };
   });
 }
 
@@ -136,24 +170,78 @@ async function create(
   command: Exclude<CommandEnvelope, { readonly type: 'watch_request' }>,
   context: CommandContext,
   requestId: string,
-): Promise<CommandResult> {
+): Promise<Executed> {
+  const { now, actor } = context;
   const draft = createRequestDraft(await toDomainCommand(transaction, command, context));
+  // Every read happens before the first write (Firestore transactions).
   const counter = await transaction.get(REQUEST_COUNTER_PATH);
   if (counter !== undefined && counter.last_issued === undefined) {
     throw new RangeError('request counter document has no last_issued');
   }
-  // D-S10-1: names are written with the request (read before any write in the transaction).
-  const people = [draft.createdById, draft.requesterId, ...(draft.relatedPersonIds ?? [])].filter((id): id is string => id !== undefined);
+  const facts = await context.routingDirectory.load(transaction);
+  const route = routeRequest(draft, facts, now);
+  const recipients =
+    route.notice.kind === 'assignee'
+      ? [route.notice.personId]
+      : route.notice.kind === 'all_gm'
+        ? allGmNoticeRecipients(facts.members, now, actor.personId)
+        : [];
+  // D-S10-1 / D-S11-1: names are written with the request.
+  const people = [draft.createdById, draft.requesterId, route.assigneeId, ...(draft.relatedPersonIds ?? [])].filter(
+    (id): id is string => id !== undefined,
+  );
   const names = await context.peopleDirectory.displayNames(transaction, [...new Set(people)]);
+  const boardCounter = draft.isConfidential ? await transaction.get(BOARD_COUNTER_PATH) : undefined;
+
   const sequence = nextRequestSequence(counter?.last_issued as number | undefined);
   const requestNumber = formatRequestNumber(sequence, context.environment);
   transaction.set(REQUEST_COUNTER_PATH, { last_issued: sequence });
-  const record = newRequestRecord(draft, requestNumber, context.now);
-  const request = toRequestDetailDocument(record, { personLabel: (personId) => names.get(personId) });
-  const { gmDetail } = splitRequestRecord(record);
-  transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, request);
-  transaction.set(`${GM_REQUEST_DETAILS_COLLECTION}/${requestId}`, gmDetail);
-  return { request_id: requestId, request_number: requestNumber };
+  const record = newRequestRecord(draft, requestNumber, now, route.assigneeId);
+  const projections = buildRequestProjections(requestId, record, {
+    now,
+    workCalendar: facts.workCalendar,
+    personLabel: (personId) => names.get(personId),
+    personTeamLabel: () => undefined,
+  });
+  transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, projections.detail);
+  transaction.set(`${GM_REQUEST_DETAILS_COLLECTION}/${requestId}`, projections.gmDetail);
+  transaction.set(`${GM_SUMMARIES_COLLECTION}/${requestId}`, projections.gm);
+  if (projections.public !== null) {
+    transaction.set(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`, projections.public);
+  } else {
+    // D-S09-4: “งานภายใน X รายการ” counts open confidential work; a new request is open.
+    const previous = typeof boardCounter?.internal_board_count === 'number' ? boardCounter.internal_board_count : 0;
+    transaction.set(BOARD_COUNTER_PATH, { internal_board_count: previous + 1, as_of: now });
+  }
+  transaction.set(`${REQUESTS_COLLECTION}/${requestId}/history/created`, {
+    kind: 'request_created',
+    at: now,
+    actor_id: actor.personId,
+    origin: record.origin,
+    routing_reason: route.reason,
+    ...(route.assigneeId === undefined ? {} : { assignee_id: route.assigneeId }),
+    ...(route.assigneeOnLeave === undefined ? {} : { assignee_on_leave: route.assigneeOnLeave }),
+  });
+  if (record.requester_id !== undefined) {
+    transaction.set(`user_state/${record.requester_id}/requests/${requestId}`, { type: 'requester', last_seen_activity_seq: 0, created_at: now });
+  }
+  for (const personId of record.related_person_ids) {
+    transaction.set(`user_state/${personId}/requests/${requestId}`, { type: 'related', last_seen_activity_seq: 0, created_at: now });
+  }
+  const outbox = newRequestOutbox({ requestId, actorId: actor.personId, recipientIds: recipients, isConfidential: record.is_confidential, now });
+  for (const entry of outbox) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, entry.data);
+  return { result: { request_id: requestId, request_number: requestNumber }, outboxIds: outbox.map((entry) => entry.id) };
+}
+
+/** Default owner facts for routeNewRequest: a gm_task creator is an active GM by definition. */
+function routeRequest(draft: RequestDraft, facts: RoutingFacts, now: Instant): RoutingResult {
+  const ownerId = draft.type === 'gm_task' ? draft.createdById : facts.settings.defaultOwnerByType[draft.type];
+  const member = ownerId === undefined ? undefined : facts.members.find((candidate) => candidate.personId === ownerId);
+  const defaultOwner =
+    ownerId === undefined
+      ? undefined
+      : (member ?? { personId: ownerId, active: draft.type === 'gm_task' });
+  return routeNewRequest({ type: draft.type, now, settings: facts.settings, createdById: draft.createdById, defaultOwner });
 }
 
 async function maintenanceDetails(
@@ -226,7 +314,7 @@ async function onBehalfDetails(
 }
 
 /** Fields of a new request (Part 6 §6.4.1); absent values are left out. Split before writing (D-S09-5). */
-function newRequestRecord(draft: RequestDraft, requestNumber: string, now: Instant): RequestRecord {
+function newRequestRecord(draft: RequestDraft, requestNumber: string, now: Instant, assigneeId: string | undefined): RequestRecord {
   if (draft.category === undefined) throw new Error('every new request has a category (D-S04-2, P7-UX-02)');
   const optional = <K extends string, V>(key: K, value: V | undefined) =>
     (value === undefined ? {} : { [key]: value }) as { readonly [P in K]?: V };
@@ -245,6 +333,7 @@ function newRequestRecord(draft: RequestDraft, requestNumber: string, now: Insta
     ...optional('location_id', draft.locationId),
     ...optional('area_id', draft.areaId),
     ...optional('symptom_key', draft.symptomKey),
+    ...optional('assignee_id', assigneeId),
     is_confidential: draft.isConfidential,
     ...optional('sensitivity_reason', draft.sensitivityReason),
     ...optional('sensitivity_note', draft.sensitivityNote),

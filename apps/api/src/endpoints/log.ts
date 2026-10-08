@@ -2,6 +2,8 @@
 // an allowlisted set of fields with opaque IDs and codes only; free text, e-mails, names, signed
 // URLs and tokens have no field to go into.
 export interface LogFields {
+  /** A route name such as `commands.create` (lower-case words and dots only). */
+  readonly route?: string;
   readonly code?: string;
   readonly status?: number;
   readonly request_id?: string;
@@ -19,6 +21,7 @@ const OPAQUE = /^[A-Za-z0-9_-]{1,128}$/;
 
 function safe(event: string, fields: LogFields = {}): Record<string, string | number> {
   const line: Record<string, string | number> = { event: EVENT.test(event) ? event : 'invalid_event' };
+  if (fields.route !== undefined) line.route = EVENT.test(fields.route) ? fields.route : 'redacted';
   for (const key of ['code', 'request_id', 'upload_id'] as const) {
     const value = fields[key];
     if (value !== undefined) line[key] = OPAQUE.test(value) ? value : 'redacted';
