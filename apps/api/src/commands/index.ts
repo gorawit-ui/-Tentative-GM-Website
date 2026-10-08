@@ -30,6 +30,7 @@ export {
   type RecordTransaction,
 } from './lifecycle';
 export { runWaitingCommand } from './waiting';
+export { OPEN_FOR_STALE, staleJobDocument, staleJobPath } from './stale-job';
 export { commandFingerprint } from './fingerprint';
 export { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, latestStatusRevision, outboxHeadAfter, outboxHeadKey } from './outbox';
 export type { CommandStore, CommandTransaction, StoredData } from './transaction-port';

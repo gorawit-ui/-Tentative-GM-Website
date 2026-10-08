@@ -6,7 +6,8 @@
 //   (when its fields changed), the history event, the internal board counter (D-S09-4), the public
 //   visibility epoch when the flag changes (§6.4.1), user_state unread clocks (D-A03-5) and references
 //   of newly related people, focus release (D-S07-6), caller documents (auto-close job, waiting
-//   interval), the outbox and (D-A06-6) the latest status notice per recipient.
+//   interval), the outbox, (D-A06-6) the latest status notice per recipient and (A05) the request's
+//   stale check (`scheduled_work/stale-{id}`).
 import {
   buildRequestProjections,
   joinRequestRecord,
@@ -31,6 +32,7 @@ import {
   type RoutingFacts,
 } from './execute-command';
 import { OUTBOX_HEADS_COLLECTION, outboxHeadAfter, type OutboxEntry } from './outbox';
+import { staleJobDocument, staleJobPath } from './stale-job';
 import type { CommandTransaction, StoredData } from './transaction-port';
 
 /** The part of a transaction the pipeline uses (the worker's transaction has the same three). */
@@ -205,6 +207,8 @@ export async function persistChange(
     const { focus_request_id: _released, ...rest } = stored;
     transaction.set(`gm_profiles/${personId}`, rest);
   }
+  // A05: the stale check moves with every write (GM progress, revision, or no longer open).
+  transaction.set(staleJobPath(requestId), staleJobDocument(requestId, next, routing.workCalendar, now));
   for (const write of change.extraWrites ?? []) transaction.set(write.path, write.data);
   for (const notice of notices) transaction.set(`${OUTBOX_COLLECTION}/${notice.id}`, notice.data);
   if (head !== undefined) transaction.set(headPath, head);

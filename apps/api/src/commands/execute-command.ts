@@ -50,6 +50,7 @@ import type { CalendarSnapshot, Instant } from '@gm/time';
 import { runLifecycleCommand } from './lifecycle';
 import { runWaitingCommand } from './waiting';
 import { newRequestOutbox } from './outbox';
+import { staleJobDocument, staleJobPath } from './stale-job';
 import { commandFingerprint } from './fingerprint';
 import type { CommandStore, CommandTransaction } from './transaction-port';
 
@@ -279,6 +280,8 @@ async function create(
     now,
   });
   for (const entry of outbox) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, entry.data);
+  // A05: the first stale check, 3 business days + 1 ms after creation (Part 6 §6.9).
+  transaction.set(staleJobPath(requestId), staleJobDocument(requestId, record, facts.workCalendar, now));
   return { result: { request_id: requestId, request_number: requestNumber }, outboxIds: outbox.map((entry) => entry.id) };
 }
 

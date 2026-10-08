@@ -369,7 +369,25 @@ describe('overlapping ticks and workers do the work once (A02 lease)', () => {
     setNow(bkk('2027-01-11T10:30:00'));
     await tick();
     setNow(bkk('2027-01-14T09:15:00'));
-    const reports = await Promise.all([tick(workerA), tick(workerB)]);
+    // Hold the working tick inside its jobs until the other tick has answered, so both really overlap.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const handlers = workerJobHandlers(directories);
+    const held: WorkerDeps['jobHandlers'] = Object.fromEntries(
+      Object.entries(handlers).map(([kind, handler]) => [
+        kind,
+        async (context: Parameters<NonNullable<typeof handler>>[0]) => {
+          await Promise.race([gate, new Promise((resolve) => setTimeout(resolve, 3_000))]);
+          return handler(context);
+        },
+      ]),
+    );
+    const overlapping = (worker: EmulatorClient) =>
+      runTick({ ...deps(worker), jobHandlers: held }).then((report) => {
+        if (!report.ran) release();
+        return report;
+      });
+    const reports = await Promise.all([overlapping(workerA), overlapping(workerB)]);
     expect(reports.map((report) => report.ran).sort()).toEqual([false, true]);
     expect(await gmSummary(id)).toMatchObject({ stale: true });
     expect(await profile(GM1)).toMatchObject({ presence_status: { kind: 'unspecified' } });
