@@ -9,6 +9,8 @@ export interface WorkerTransaction {
   get(path: string): Promise<StoredData | undefined>;
   /** Replaces the whole document. Plain data only: no `undefined` values. */
   set(path: string, data: object): void;
+  /** Removes a document (the shared request pipeline may drop a public summary). */
+  delete(path: string): void;
 }
 
 export interface DueDocument {

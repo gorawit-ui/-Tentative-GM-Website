@@ -26,6 +26,7 @@ import {
   listComments,
   listHistory,
   listMyRequests,
+  listWaitingIntervals,
   markSeen,
   type ApiDeps,
   type UploadPurpose,
@@ -69,9 +70,13 @@ interface Route {
 const SEGMENT = '([^/]+)';
 
 /** Domain refusals → HTTP status; the code itself is returned to the client. */
-const FORBIDDEN_CODES = new Set(['GM_ONLY', 'FLAG_NOT_ALLOWED', 'RELATED_NOT_ALLOWED', 'REQUESTER_ONLY']);
-/** A03: the command lost to a newer state; the answer carries the latest safe state (Part 6 §6.6). */
-const CONFLICT_CODES = new Set(['COMMAND_ID_CONFLICT', 'REVISION_CONFLICT', 'ALREADY_ACCEPTED']);
+const FORBIDDEN_CODES = new Set(['GM_ONLY', 'GM_ADMIN_ONLY', 'FLAG_NOT_ALLOWED', 'RELATED_NOT_ALLOWED', 'REQUESTER_ONLY', 'NOT_CURRENT_RECIPIENT']);
+/**
+ * A03: the command lost to a newer state; the answer carries the latest safe state (Part 6 §6.6).
+ * A04: so does the waited party's answer that came after the GM resumed / changed the party, or
+ * after another contact of the team answered first (A2.2).
+ */
+const CONFLICT_CODES = new Set(['COMMAND_ID_CONFLICT', 'REVISION_CONFLICT', 'ALREADY_ACCEPTED', 'NOT_WAITING', 'STALE_WAITING_INTERVAL', 'ALREADY_RESPONDED']);
 const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY']);
 
 function statusOfDomainCode(code: string): number {
@@ -154,6 +159,12 @@ function routes(deps: HttpDeps): readonly Route[] {
       method: 'GET',
       pattern: new RegExp(`^/api/requests/${SEGMENT}/history$`),
       handle: async ({ token, params }) => ({ status: 200, body: { items: await listHistory(api, token, params[0]!) } }),
+    },
+    {
+      name: 'requests.waiting_intervals',
+      method: 'GET',
+      pattern: new RegExp(`^/api/requests/${SEGMENT}/waiting-intervals$`),
+      handle: async ({ token, params }) => ({ status: 200, body: { items: await listWaitingIntervals(api, token, params[0]!) } }),
     },
     {
       name: 'requests.comments',

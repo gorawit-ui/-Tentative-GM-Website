@@ -1,6 +1,6 @@
 // A01 — directory reads used by create commands, through the command transaction port (so every
 // read stays inside the same transaction, before any write). Production stores:
-//   people/{person_id}          name, active                       (P7-ADMIN-01 CSV, A10)
+//   people/{person_id}          name, active, team_label           (P7-ADMIN-01 CSV, A10; team: FU-10)
 //   settings/routing            default_owner_by_type, gm_person_ids (P7-ADMIN-04, A10)
 //   gm_profiles/{person_id}     presence_status, leave_ends_on, presence_updated_at
 //   calendars/company           timezone, open_weekdays, holidays    (P7-ADMIN-04, A11)
@@ -24,6 +24,16 @@ export function transactionPeopleDirectory(): PeopleDirectory {
         if (name !== '') names.set(personId, name);
       }
       return names;
+    },
+    async teamLabels(transaction, personIds) {
+      const teams = new Map<string, string>();
+      for (const personId of new Set(personIds)) {
+        if (!isPersonId(personId)) continue;
+        const person = await transaction.get(`people/${personId}`);
+        const team = typeof person?.team_label === 'string' ? person.team_label.trim() : '';
+        if (team !== '') teams.set(personId, team);
+      }
+      return teams;
     },
   };
 }

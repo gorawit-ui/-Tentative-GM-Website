@@ -15,6 +15,7 @@ export function adminWorkerStore(db: Firestore, options: { readonly maxAttempts?
         work({
           get: (path) => transaction.get(path),
           set: (path, data) => transaction.set(path, data),
+          delete: (path) => transaction.delete(path),
         }),
       ),
     async due(collection, state, now, limit, after) {

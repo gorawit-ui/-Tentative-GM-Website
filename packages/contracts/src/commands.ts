@@ -5,10 +5,15 @@
 // (a chosen assignee with routing, initial `waiting_on` with A21, watch note/photos with A13).
 // A03: lifecycle commands on an existing request carry `expected_revision` (Part 6 §6.6: a stale
 // revision is refused with the latest state, never silently written over).
+// A04: waiting / follow-up / the waited party's answer / resume, and (FU-12, FU-09) related persons
+// and the confidential flag. The answer names its waiting interval instead of a revision (A2.3: the
+// button checks the interval, access and latest status, so a GM's follow-up does not void it).
 import {
   GM_CATEGORY_KEYS,
+  SENSITIVITY_REASONS,
   SENSITIVITY_SUBJECTS,
   type GmCategory,
+  type SensitivityReason,
   type SensitivitySubject,
 } from '@gm/domain';
 import {
@@ -41,6 +46,15 @@ export const COMMAND_TYPES = [
   'report_not_resolved',
   'cancel_request',
   'reopen_request',
+  'enter_waiting',
+  'change_waiting_party',
+  'follow_up',
+  'respond_waiting_party',
+  'resume_work',
+  'add_related_persons',
+  'remove_related_person',
+  'mark_confidential',
+  'remove_confidential_flag',
 ] as const;
 export type CommandType = (typeof COMMAND_TYPES)[number];
 
@@ -54,6 +68,20 @@ export const LIFECYCLE_COMMAND_TYPES = [
   'reopen_request',
 ] as const satisfies readonly CommandType[];
 export type LifecycleCommandType = (typeof LIFECYCLE_COMMAND_TYPES)[number];
+
+/** A04: waiting (S06) and, on the same pipeline, related persons (FU-12) and the confidential flag (FU-09). */
+export const WAITING_COMMAND_TYPES = [
+  'enter_waiting',
+  'change_waiting_party',
+  'follow_up',
+  'respond_waiting_party',
+  'resume_work',
+  'add_related_persons',
+  'remove_related_person',
+  'mark_confidential',
+  'remove_confidential_flag',
+] as const satisfies readonly CommandType[];
+export type WaitingCommandType = (typeof WAITING_COMMAND_TYPES)[number];
 
 /** The client's idempotency key: a lowercase UUID (e.g. `crypto.randomUUID()`), one per action. */
 const COMMAND_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -135,6 +163,52 @@ export interface ReasonPayload extends RevisionedPayload {
   readonly reason: string;
 }
 
+/** C3 `waiting_on` as submitted; no default (F3) — the domain refuses a missing or incomplete party. */
+export interface WaitingOnPayload {
+  readonly kind?: string;
+  readonly person_id?: string;
+  readonly team_label?: string;
+  readonly contact_ids?: readonly string[];
+  readonly name?: string;
+}
+
+/** enter_waiting / change_waiting_party (F05 §9.1–9.3). */
+export interface WaitingPartyPayload extends RevisionedPayload {
+  readonly waiting_on?: WaitingOnPayload;
+  /** Person: on unless turned off; team: on when contacts are chosen; external: unavailable. */
+  readonly notify?: boolean;
+  /** C3: the separate consent for new readers of a confidential request. */
+  readonly confirm_confidential_grant?: boolean;
+}
+
+export interface FollowUpPayload extends RevisionedPayload {
+  /** “ส่งเตือนอีกครั้ง”: once per business day per request (C3, Part 6 §6.14). */
+  readonly remind?: boolean;
+}
+
+/** “ฝั่งฉันเรียบร้อยแล้ว” (A2.1): the interval the button was shown for, and an optional note. */
+export interface RespondWaitingPartyPayload {
+  readonly request_id: string;
+  readonly waiting_interval_id: number;
+  readonly note?: string;
+}
+
+export interface AddRelatedPersonsPayload extends RevisionedPayload {
+  readonly person_ids: readonly string[];
+  readonly confirm_confidential_grant?: boolean;
+}
+
+export interface RemoveRelatedPersonPayload extends RevisionedPayload {
+  readonly person_id: string;
+}
+
+/** D-ACL-2: the GM confirms which related persons keep access (`[]` keeps nobody; missing is refused). */
+export interface MarkConfidentialPayload extends RevisionedPayload {
+  readonly sensitivity_reason: SensitivityReason;
+  readonly note?: string;
+  readonly keep_related_person_ids?: readonly string[];
+}
+
 interface Envelope<T extends CommandType, P> {
   readonly command_id: string;
   readonly type: T;
@@ -151,12 +225,26 @@ export type CommandEnvelope =
   | Envelope<'confirm_completion', ConfirmCompletionPayload>
   | Envelope<'report_not_resolved', ReportNotResolvedPayload>
   | Envelope<'cancel_request', ReasonPayload>
-  | Envelope<'reopen_request', ReasonPayload>;
+  | Envelope<'reopen_request', ReasonPayload>
+  | Envelope<'enter_waiting', WaitingPartyPayload>
+  | Envelope<'change_waiting_party', WaitingPartyPayload>
+  | Envelope<'follow_up', FollowUpPayload>
+  | Envelope<'respond_waiting_party', RespondWaitingPartyPayload>
+  | Envelope<'resume_work', RevisionedPayload>
+  | Envelope<'add_related_persons', AddRelatedPersonsPayload>
+  | Envelope<'remove_related_person', RemoveRelatedPersonPayload>
+  | Envelope<'mark_confidential', MarkConfidentialPayload>
+  | Envelope<'remove_confidential_flag', ReasonPayload>;
 
 export type LifecycleCommandEnvelope = Extract<CommandEnvelope, { readonly type: LifecycleCommandType }>;
+export type WaitingCommandEnvelope = Extract<CommandEnvelope, { readonly type: WaitingCommandType }>;
 
 export function isLifecycleCommand(command: CommandEnvelope): command is LifecycleCommandEnvelope {
   return (LIFECYCLE_COMMAND_TYPES as readonly string[]).includes(command.type);
+}
+
+export function isWaitingCommand(command: CommandEnvelope): command is WaitingCommandEnvelope {
+  return (WAITING_COMMAND_TYPES as readonly string[]).includes(command.type);
 }
 
 function maintenanceSelection(object: JsonObject, path: string): MaintenanceSelection {
@@ -210,6 +298,26 @@ function relatedChoice(object: JsonObject, path: string) {
 }
 
 const RELATED_FIELDS = ['related_person_ids', 'confirm_confidential_grant'] as const;
+
+function waitingOn(value: unknown, path: string): WaitingOnPayload {
+  const party = strictObject(value, path, ['kind', 'person_id', 'team_label', 'contact_ids', 'name']);
+  return {
+    ...optional('kind', optionalString(party, path, 'kind')),
+    ...optional('person_id', Object.hasOwn(party, 'person_id') ? personIdField(party, path, 'person_id') : undefined),
+    ...optional('team_label', optionalString(party, path, 'team_label')),
+    ...optional('contact_ids', optionalPersonIdList(party, path, 'contact_ids')),
+    ...optional('name', optionalString(party, path, 'name')),
+  };
+}
+
+function waitingParty(payload: JsonObject, path: string): WaitingPartyPayload {
+  return {
+    ...revisioned(payload, path),
+    ...optional('waiting_on', Object.hasOwn(payload, 'waiting_on') ? waitingOn(payload.waiting_on, `${path}.waiting_on`) : undefined),
+    ...optional('notify', optionalBoolean(payload, path, 'notify')),
+    ...optional('confirm_confidential_grant', optionalBoolean(payload, path, 'confirm_confidential_grant')),
+  };
+}
 
 function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'] {
   const path = 'payload';
@@ -269,9 +377,49 @@ function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'
       };
     }
     case 'cancel_request':
-    case 'reopen_request': {
+    case 'reopen_request':
+    case 'remove_confidential_flag': {
       const payload = strictObject(value, path, ['request_id', 'expected_revision', 'reason']);
       return { ...revisioned(payload, path), reason: stringField(payload, path, 'reason') };
+    }
+    case 'enter_waiting':
+    case 'change_waiting_party':
+      return waitingParty(strictObject(value, path, ['request_id', 'expected_revision', 'waiting_on', 'notify', 'confirm_confidential_grant']), path);
+    case 'follow_up': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'remind']);
+      return { ...revisioned(payload, path), ...optional('remind', optionalBoolean(payload, path, 'remind')) };
+    }
+    case 'respond_waiting_party': {
+      const payload = strictObject(value, path, ['request_id', 'waiting_interval_id', 'note']);
+      return {
+        request_id: idField(payload, path, 'request_id'),
+        waiting_interval_id: positiveIntegerField(payload, path, 'waiting_interval_id'),
+        ...optional('note', optionalString(payload, path, 'note')),
+      };
+    }
+    case 'resume_work':
+      return revisioned(strictObject(value, path, ['request_id', 'expected_revision']), path);
+    case 'add_related_persons': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'person_ids', 'confirm_confidential_grant']);
+      requiredField(payload, path, 'person_ids');
+      return {
+        ...revisioned(payload, path),
+        person_ids: optionalPersonIdList(payload, path, 'person_ids') ?? [],
+        ...optional('confirm_confidential_grant', optionalBoolean(payload, path, 'confirm_confidential_grant')),
+      };
+    }
+    case 'remove_related_person': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'person_id']);
+      return { ...revisioned(payload, path), person_id: personIdField(payload, path, 'person_id') };
+    }
+    case 'mark_confidential': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'sensitivity_reason', 'note', 'keep_related_person_ids']);
+      return {
+        ...revisioned(payload, path),
+        sensitivity_reason: enumField(payload, path, 'sensitivity_reason', SENSITIVITY_REASONS),
+        ...optional('note', optionalString(payload, path, 'note')),
+        ...optional('keep_related_person_ids', optionalPersonIdList(payload, path, 'keep_related_person_ids')),
+      };
     }
   }
 }
@@ -294,9 +442,4 @@ export function parseCommand(body: unknown): CommandEnvelope {
   }
   const payload = payloadOf(type as CommandType, requiredField(envelope, '', 'payload'));
   return { command_id: commandId, type, payload } as CommandEnvelope;
-}
-
-/** A04 (stub until implemented). */
-export function isWaitingCommand(_command: CommandEnvelope): boolean {
-  throw new Error('not implemented yet (A04)');
 }

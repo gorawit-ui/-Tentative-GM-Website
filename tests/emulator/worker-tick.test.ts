@@ -306,7 +306,7 @@ describe('D-A03-7: a status notice overtaken by a newer one to the same person i
         return (...args: unknown[]) => {
           calls.push(String(property));
           if (property !== 'runTransaction') return (value as (...a: unknown[]) => unknown).apply(target, args);
-          const work = args[0] as (transaction: { get(path: string): Promise<unknown>; set(path: string, data: object): void }) => Promise<unknown>;
+          const work = args[0] as (transaction: { get(path: string): Promise<unknown>; set(path: string, data: object): void; delete(path: string): void }) => Promise<unknown>;
           return target.runTransaction((transaction) =>
             work({
               get: (path) => {
@@ -314,6 +314,7 @@ describe('D-A03-7: a status notice overtaken by a newer one to the same person i
                 return transaction.get(path);
               },
               set: (path, data) => transaction.set(path, data),
+              delete: (path) => transaction.delete(path),
             }),
           );
         };

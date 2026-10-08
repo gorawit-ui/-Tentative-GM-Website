@@ -8,13 +8,14 @@ import { createHash } from 'node:crypto';
 import type { Instant } from '@gm/time';
 
 export type OutboxChannel = 'auto';
-export type OutboxAudience = 'gm' | 'requester' | 'watcher';
+/** A04: `waiting_party` — the person or team contact a request waits on (F05 §9.1). */
+export type OutboxAudience = 'gm' | 'requester' | 'watcher' | 'waiting_party';
 
 export interface OutboxEntry {
   readonly id: string;
   readonly data: {
     readonly event_id: string;
-    readonly event_kind: 'request_created' | LifecycleNoticeKind | GmLifecycleNoticeKind;
+    readonly event_kind: 'request_created' | LifecycleNoticeKind | GmLifecycleNoticeKind | WaitingNoticeKind;
     readonly request_id: string;
     /** D-A01-4: the number the recipient sees (also for confidential requests). */
     readonly request_number: string;
@@ -33,6 +34,8 @@ export interface OutboxEntry {
     readonly revision: number;
     /** A06: the request's unread step of the event (the requester badge compares by it). */
     readonly activity_seq: number;
+    /** A04: a message to the waited party is bound to its interval (Part 6 §6.6), rechecked at send time. */
+    readonly waiting_interval_id?: number;
   };
 }
 
@@ -82,8 +85,22 @@ export function newRequestOutbox(input: {
   }));
 }
 
-/** A03: status-change notices; `closed` (requester confirmed / auto-close) does not change the status. */
-export type LifecycleNoticeKind = 'request_accepted' | 'request_completed' | 'request_not_resolved' | 'request_cancelled' | 'request_reopened';
+/**
+ * A03: status-change notices; `closed` (requester confirmed / auto-close) does not change the status.
+ * A04: entering waiting and resuming work change the status too (PRD “requester ได้แจ้งเมื่อสถานะเปลี่ยน”).
+ */
+export type LifecycleNoticeKind =
+  | 'request_accepted'
+  | 'request_completed'
+  | 'request_not_resolved'
+  | 'request_cancelled'
+  | 'request_reopened'
+  | 'request_waiting'
+  | 'request_resumed';
+/** A04: the waited party is asked / reminded (F05 §9.1, §9.4); the GM hears the party answered (A2.1). */
+export type WaitingNoticeKind = 'waiting_requested' | 'waiting_reminder' | 'waiting_party_responded';
+/** A04: messages to the waited party — sent only while their interval is current and they have access (F05 §9.3). */
+export const WAITING_PARTY_NOTICE_KINDS: ReadonlySet<string> = new Set<string>(['waiting_requested', 'waiting_reminder']);
 /** D-A03-2 / D-A03-4: what a GM hears about a status change made by someone else. */
 export type GmLifecycleNoticeKind = 'request_not_resolved' | 'request_taken_over';
 
@@ -95,6 +112,8 @@ export const STATUS_NOTICE_KINDS: ReadonlySet<string> = new Set<string>([
   'request_cancelled',
   'request_reopened',
   'request_taken_over',
+  'request_waiting',
+  'request_resumed',
 ]);
 
 /**
@@ -150,6 +169,90 @@ export function lifecycleOutbox(input: {
       activity_seq: input.activitySeq,
     },
   }));
+}
+
+function entry(
+  eventId: string,
+  recipientId: string,
+  fields: Omit<OutboxEntry['data'], 'event_id' | 'recipient_id' | 'channel' | 'state' | 'attempts'>,
+): OutboxEntry {
+  return {
+    id: outboxId(eventId, recipientId, 'auto'),
+    data: { event_id: eventId, recipient_id: recipientId, channel: 'auto', state: 'pending', attempts: 0, ...fields },
+  };
+}
+
+/**
+ * A04 — the message to the waited party (F05 §9.1): the first notice of an interval
+ * (`waiting_requested`, event = request + interval) or a reminder (`waiting_reminder`, event = request +
+ * business-date bucket, Part 6 §6.6 “resend key ต่องานต่อ business-date bucket”), so a retried command
+ * cannot add a second one. A reminder deferred from a closed day is due at `sendAt` (D-S06-2). The
+ * requester waited on keeps the `requester` audience (their badge, A1.2); never the actor (D-S08-2).
+ */
+export function waitingPartyOutbox(input: {
+  readonly requestId: string;
+  readonly requestNumber: string;
+  readonly eventKind: 'waiting_requested' | 'waiting_reminder';
+  /** `w{interval}` for the first notice, `remind-{YYYY-MM-DD}` for a reminder. */
+  readonly eventKey: string;
+  readonly intervalId: number;
+  readonly recipientIds: readonly string[];
+  readonly actorId: string;
+  readonly requesterId?: string;
+  readonly isConfidential: boolean;
+  readonly revision: number;
+  readonly activitySeq: number;
+  readonly now: Instant;
+  readonly sendAt?: Instant;
+}): readonly OutboxEntry[] {
+  const eventId = `${input.requestId}:${input.eventKey}`;
+  return [...new Set(input.recipientIds)]
+    .filter((recipientId) => recipientId !== input.actorId)
+    .map((recipientId) =>
+      entry(eventId, recipientId, {
+        event_kind: input.eventKind,
+        request_id: input.requestId,
+        request_number: input.requestNumber,
+        audience: recipientId === input.requesterId ? 'requester' : 'waiting_party',
+        confidential: input.isConfidential,
+        next_attempt_at: input.sendAt ?? input.now,
+        created_at: input.now,
+        revision: input.revision,
+        activity_seq: input.activitySeq,
+        waiting_interval_id: input.intervalId,
+      }),
+    );
+}
+
+/** A04 / A2.1: “ฝ่ายที่รอตอบกลับแล้ว” to the assigned GM (or the GM team when unassigned), never the person who answered. */
+export function respondedOutbox(input: {
+  readonly requestId: string;
+  readonly requestNumber: string;
+  readonly revision: number;
+  readonly activitySeq: number;
+  readonly intervalId: number;
+  readonly gmRecipientIds: readonly string[];
+  readonly actorId: string;
+  readonly isConfidential: boolean;
+  readonly now: Instant;
+}): readonly OutboxEntry[] {
+  const eventId = `${input.requestId}:r${input.revision}`;
+  return [...new Set(input.gmRecipientIds)]
+    .filter((recipientId) => recipientId !== input.actorId)
+    .map((recipientId) =>
+      entry(eventId, recipientId, {
+        event_kind: 'waiting_party_responded',
+        request_id: input.requestId,
+        request_number: input.requestNumber,
+        audience: 'gm',
+        confidential: input.isConfidential,
+        next_attempt_at: input.now,
+        created_at: input.now,
+        revision: input.revision,
+        activity_seq: input.activitySeq,
+        waiting_interval_id: input.intervalId,
+      }),
+    );
 }
 
 /** D-A06-6: server-only `outbox_heads/{request_id}` — latest status-notice revision per recipient. */

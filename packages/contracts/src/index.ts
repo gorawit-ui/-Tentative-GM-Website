@@ -24,6 +24,7 @@ export { ContractRejected, type ContractCode } from './strict';
 export {
   COMMAND_TYPES,
   LIFECYCLE_COMMAND_TYPES,
+  WAITING_COMMAND_TYPES,
   isLifecycleCommand,
   isWaitingCommand,
   parseCommand,
@@ -45,6 +46,15 @@ export {
   type MaintenanceSelection,
   type OnBehalfRequesterPayload,
   type WatchRequestPayload,
+  type AddRelatedPersonsPayload,
+  type FollowUpPayload,
+  type MarkConfidentialPayload,
+  type RemoveRelatedPersonPayload,
+  type RespondWaitingPartyPayload,
+  type WaitingCommandEnvelope,
+  type WaitingCommandType,
+  type WaitingOnPayload,
+  type WaitingPartyPayload,
 } from './commands';
 export {
   requesterNoticeFields,

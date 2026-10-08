@@ -51,7 +51,7 @@ function withPayload<T extends { payload: object }>(body: T, payload: Record<str
 }
 
 describe('parseCommand — valid commands come back as fresh typed objects', () => {
-  it('lists the commands of this session (A03 adds the lifecycle commands)', () => {
+  it('lists the commands of this session (A03 adds the lifecycle commands, A04 waiting / related / confidential)', () => {
     expect(COMMAND_TYPES).toEqual([
       'create_maintenance',
       'create_on_behalf',
@@ -63,6 +63,15 @@ describe('parseCommand — valid commands come back as fresh typed objects', () 
       'report_not_resolved',
       'cancel_request',
       'reopen_request',
+      'enter_waiting',
+      'change_waiting_party',
+      'follow_up',
+      'respond_waiting_party',
+      'resume_work',
+      'add_related_persons',
+      'remove_related_person',
+      'mark_confidential',
+      'remove_confidential_flag',
     ]);
   });
 

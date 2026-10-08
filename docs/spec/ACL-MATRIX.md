@@ -225,6 +225,8 @@ API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรว
 | `request_detail.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | รายละเอียดงานลับ: GM, ผู้ขอ, grant (D-ACL-2) |
 | `history.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | history ตามสิทธิ์รายละเอียดของงาน |
 | `history.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | history ของงานลับ |
+| `waiting_intervals.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | ช่วงรอและผู้รับแจ้งของแต่ละช่วง (A04) ตามสิทธิ์รายละเอียดของงาน |
+| `waiting_intervals.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | ช่วงรอของงานลับ |
 | `comments.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | คอมเมนต์ตามสิทธิ์รายละเอียดของงาน |
 | `comments.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | คอมเมนต์ของงานลับ |
 | `my_requests` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `employee`, `viewer`, `viewer_related`, `viewer_unconfirmed`, `team_label_member`, `gm_staff`, `gm_admin` | คำขอของฉัน: เฉพาะงานที่ยังมีสิทธิ์ ณ ตอนขอ (watcher เห็นแค่สรุป) |

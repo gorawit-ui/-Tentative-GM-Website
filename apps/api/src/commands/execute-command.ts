@@ -9,10 +9,12 @@
 // the internal board counter for confidential work, a `request_created` history event, user_state
 // references and the outbox entries of who to tell (never the actor, D-S08-2). Nothing is sent in
 // the transaction (Part 6 §6.6); the HTTP layer hands the new outbox IDs to the queue after commit.
-// A03: lifecycle commands on an existing request run in the same wrapper (lifecycle.ts).
+// A03: lifecycle commands on an existing request run in the same wrapper (lifecycle.ts); A04: waiting,
+// related persons and the confidential flag too (waiting.ts), all through request-change.ts.
 import {
   buildRequestProjections,
   isLifecycleCommand,
+  isWaitingCommand,
   joinRequestRecord,
   requesterNoticeFields,
   watcherCount,
@@ -46,6 +48,7 @@ import {
 } from '@gm/domain';
 import type { CalendarSnapshot, Instant } from '@gm/time';
 import { runLifecycleCommand } from './lifecycle';
+import { runWaitingCommand } from './waiting';
 import { newRequestOutbox } from './outbox';
 import { commandFingerprint } from './fingerprint';
 import type { CommandStore, CommandTransaction } from './transaction-port';
@@ -95,6 +98,8 @@ export type ReadTransaction = Pick<CommandTransaction, 'get'>;
 /** D-S10-1: display names from `people/{person_id}` (read inside the transaction, before any write). */
 export interface PeopleDirectory {
   displayNames(transaction: ReadTransaction, personIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+  /** D-S09-1 / D-ACL-7: each person's one team label from the staff list (FU-10); absent = team unknown (“พนักงาน”). */
+  teamLabels?(transaction: ReadTransaction, personIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
 
 /** Routing facts read in the create transaction (settings/routing, GM members, company calendar). */
@@ -132,6 +137,10 @@ export interface CommandResult {
   /** A03 lifecycle commands: the revision and status the command produced. */
   readonly revision?: number;
   readonly status?: RequestStatus;
+  /** A04: the interval a waiting command opened or acted on. */
+  readonly waiting_interval_id?: number;
+  /** A04 follow-up with “ส่งเตือนอีกครั้ง”: sent now, deferred to 09:00 of the next business day, or already used today. */
+  readonly reminder?: { readonly status: 'send_now' | 'next_business_day' | 'quota_used'; readonly business_date: string; readonly send_at?: number };
 }
 
 export interface CommandOutcome {
@@ -169,7 +178,9 @@ export async function executeCommand(
       ? await create(transaction, command, context, requestId)
       : isLifecycleCommand(command)
         ? await runLifecycleCommand(transaction, command, context)
-        : { result: await watch(transaction, command.payload.request_id, context), outboxIds: [] };
+        : isWaitingCommand(command)
+          ? await runWaitingCommand(transaction, command, context)
+          : { result: await watch(transaction, command.payload.request_id, context), outboxIds: [] };
     transaction.set(commandPath, {
       type: command.type,
       actor_id: context.actor.personId,
