@@ -685,6 +685,77 @@ describe('races: the waited party answers while the GM resumes', () => {
   });
 });
 
+describe('A2.2: the next contact of a team does not move the response time', () => {
+  it('a later answer by another contact is refused and responded_at stays the first one', async () => {
+    setNow(MON);
+    const { id } = await inProgressRepair();
+    await enterWaiting(id, { kind: 'team', team_label: 'ทีมจัดซื้อ', contact_ids: [CONTACT1, CONTACT2] });
+    setNow(MON + HOUR);
+    expect(await act(CONTACT1, 'respond_waiting_party', { request_id: id, waiting_interval_id: 1 })).toMatchObject({ status: 200 });
+    setNow(MON + 3 * HOUR);
+    expect(await act(CONTACT2, 'respond_waiting_party', { request_id: id, waiting_interval_id: 1 })).toMatchObject({ status: 409, body: { error: 'ALREADY_RESPONDED' } });
+    expect(await request(id)).toMatchObject({ responded_at: MON + HOUR });
+    expect(await interval(id, 1)).toMatchObject({ responded_at: MON + HOUR, responded_by_id: CONTACT1 });
+  });
+});
+
+describe('preview before confirming (F05 §9.2, Part 6 §6.6): who is told, who gets access, whether a grant is needed', () => {
+  it('waiting: recipients with names, new related persons, no grant on a general request; GM only; nothing written', async () => {
+    setNow(MON);
+    const { id } = await inProgressRepair();
+    const before = await request(id);
+    const preview = await call('POST', GM1, `/api/requests/${id}/waiting-preview`, { waiting_on: { kind: 'team', team_label: 'ทีมจัดซื้อ', contact_ids: [CONTACT1, GM2] } });
+    expect(preview).toEqual({
+      status: 200,
+      body: {
+        waiting_on: { kind: 'team', team_label: 'ทีมจัดซื้อ', contact_ids: [CONTACT1, GM2] },
+        recipients: [
+          { person_id: CONTACT1, display_name: NAMES[CONTACT1] },
+          { person_id: GM2, display_name: NAMES[GM2] },
+        ],
+        // D-S06-4: the GM contact is told but not added.
+        new_related_person_ids: [CONTACT1],
+        new_grant_person_ids: [],
+        needs_confidential_grant: false,
+      },
+    });
+    expect(await call('POST', GM1, `/api/requests/${id}/waiting-preview`, { waiting_on: { kind: 'person', person_id: PARTY }, notify: false })).toMatchObject({
+      status: 200,
+      body: { recipients: [], new_related_person_ids: [], needs_confidential_grant: false },
+    });
+    expect(await call('POST', GM1, `/api/requests/${id}/waiting-preview`, {})).toMatchObject({ status: 422, body: { error: 'WAITING_ON_REQUIRED' } });
+    expect(await call('POST', GM1, `/api/requests/${id}/waiting-preview`, { waiting_on: { kind: 'contractor', name: VENDOR }, notify: true })).toMatchObject({ status: 422, body: { error: 'NOTIFY_NOT_AVAILABLE' } });
+    expect(await call('POST', GM1, `/api/requests/${id}/waiting-preview`, { waiting_on: { kind: 'person', person_id: PARTY }, extra: 1 })).toMatchObject({ status: 400 });
+    expect(await call('POST', EMPLOYEE, `/api/requests/${id}/waiting-preview`, { waiting_on: { kind: 'person', person_id: PARTY } })).toMatchObject({ status: 403, body: { error: 'GM_ONLY' } });
+    expect(await call('POST', OTHER, `/api/requests/${id}/waiting-preview`, { waiting_on: { kind: 'person', person_id: PARTY } })).toMatchObject({ status: 404 });
+    expect(await request(id)).toEqual(before);
+  });
+
+  it('confidential: an existing related person without a grant and a new person both need the separate confirmation', async () => {
+    setNow(MON);
+    const { id } = await inProgressDocument([R1]);
+    await act(GM2, 'mark_confidential', { request_id: id, expected_revision: await revisionOf(id), sensitivity_reason: 'contract', keep_related_person_ids: [] });
+    expect(await call('POST', GM2, `/api/requests/${id}/waiting-preview`, { waiting_on: { kind: 'team', team_label: 'ทีมจัดซื้อ', contact_ids: [R1, CONTACT1] } })).toMatchObject({
+      status: 200,
+      body: { new_related_person_ids: [CONTACT1], new_grant_person_ids: [R1, CONTACT1], needs_confidential_grant: true },
+    });
+    expect(await call('POST', GM2, `/api/requests/${id}/related-preview`, { person_ids: [R1, R2] })).toEqual({
+      status: 200,
+      body: {
+        people: [
+          { person_id: R1, display_name: NAMES[R1] },
+          { person_id: R2, display_name: NAMES[R2] },
+        ],
+        new_related_person_ids: [R2],
+        new_grant_person_ids: [R1, R2],
+        needs_confidential_grant: true,
+      },
+    });
+    expect(await call('POST', EMPLOYEE, `/api/requests/${id}/related-preview`, { person_ids: [R2] })).toMatchObject({ status: 403, body: { error: 'GM_ONLY' } });
+    expect(await call('POST', GM2, `/api/requests/${id}/related-preview`, { person_ids: ['not-a-person'] })).toMatchObject({ status: 400 });
+  });
+});
+
 describe('who may answer or act', () => {
   it('only a current recipient answers; an earlier interval is refused; GM commands are GM only; outsiders get 404', async () => {
     setNow(MON);
