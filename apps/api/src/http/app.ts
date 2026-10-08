@@ -68,12 +68,14 @@ interface Route {
 const SEGMENT = '([^/]+)';
 
 /** Domain refusals → HTTP status; the code itself is returned to the client. */
-const FORBIDDEN_CODES = new Set(['GM_ONLY', 'FLAG_NOT_ALLOWED', 'RELATED_NOT_ALLOWED']);
+const FORBIDDEN_CODES = new Set(['GM_ONLY', 'FLAG_NOT_ALLOWED', 'RELATED_NOT_ALLOWED', 'REQUESTER_ONLY']);
+/** A03: the command lost to a newer state; the answer carries the latest safe state (Part 6 §6.6). */
+const CONFLICT_CODES = new Set(['COMMAND_ID_CONFLICT', 'REVISION_CONFLICT', 'ALREADY_ACCEPTED']);
 const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY']);
 
 function statusOfDomainCode(code: string): number {
   if (FORBIDDEN_CODES.has(code)) return 403;
-  if (code === 'COMMAND_ID_CONFLICT') return 409;
+  if (CONFLICT_CODES.has(code)) return 409;
   if (code === 'REQUEST_NOT_FOUND') return 404;
   if (UNAVAILABLE_CODES.has(code)) return 503;
   return 422;
@@ -213,6 +215,9 @@ function routes(deps: HttpDeps): readonly Route[] {
 function errorReply(error: unknown): Reply & { readonly code: string } {
   if (error instanceof ApiError) return { status: error.status, body: { error: error.code }, code: error.code };
   if (error instanceof ContractRejected) return { status: 400, body: { error: error.code, path: error.path }, code: error.code };
+  if (error instanceof CommandRejected && error.details !== undefined) {
+    return { status: statusOfDomainCode(error.code), body: { error: error.code, current: error.details }, code: error.code };
+  }
   if (error instanceof RequestRejected || error instanceof LifecycleRejected || error instanceof CommandRejected) {
     return { status: statusOfDomainCode(error.code), body: { error: error.code }, code: error.code };
   }

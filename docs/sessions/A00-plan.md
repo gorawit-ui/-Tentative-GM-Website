@@ -20,14 +20,14 @@
 |---|---|---|---|---|---|
 | 1 | **A01** API auth + create persistence/outbox | S12 | ได้ (ทำใน session นี้) | ค่า calendar/default owner จริงจาก P7-ADMIN-04 ก่อน pilot | FU-16 (ต่อ HTTP — ทำแล้วใน A01; สิทธิ์ IAM เซ็น URL รอ P7-INFRA-01) |
 | 2 | A02 worker queue / tick lease / retry | A01 | ได้ (ทำแล้ว) | — | FU-01 (ย้าย pipeline เป็น module ร่วม ก่อน B15); FU-20 ส่วน tick ปิดแล้ว |
-| 3 | A03 lifecycle persistence / revision | A01 | ได้ | — | FU-04 (assign), FU-02 (คอมเมนต์ GM = ความคืบหน้า) |
+| 3 | A03 lifecycle persistence / revision | A01 | ได้ (ทำแล้ว รวม auto-close job) | — | FU-04 (assign), FU-02 (คอมเมนต์ GM = ความคืบหน้า) |
 | 4 | A06 unread / pending confirms / delivery badge | A01, S12 | ได้ | — | FU-08 (watch เขียน `user_state`), FU-23 (ป้าย “ผู้ขอยังไม่ได้รับแจ้ง” จาก outbox) |
-| 5 | A04 waiting / follow / response + history | A03, A02 | ได้ | — | FU-12 (เพิ่ม/ถอดผู้เกี่ยวข้อง API), FU-09 (ติดธงลับ API) |
-| 6 | A05 stale / auto-close / presence tick | A02, A03 | ได้ (calendar สังเคราะห์) | P7-ADMIN-04 วันหยุดจริงก่อน pilot | — |
+| 5 | A04 waiting / follow / response + history | A03, A02 | ได้ | — | FU-12 (เพิ่ม/ถอดผู้เกี่ยวข้อง API), FU-09 (ติดธงลับ API), FU-26 (ยกเลิกจาก waiting ปิด interval) |
+| 6 | A05 stale / auto-close / presence tick | A02, A03 | ได้ (calendar สังเคราะห์) | P7-ADMIN-04 วันหยุดจริงก่อน pilot | FU-27 (`work_calendar_snapshot`); auto-close job ทำแล้วใน A03 เหลือ stale + presence |
 | 7 | A07 Slack outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-03 สำหรับ sandbox จริง | FU-17 |
 | 8 | A08 Gmail outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-02 สำหรับ sandbox จริง | FU-17 |
 | 9 | A09 Google login / 4 roles / route shell | S12, A01 | ได้ (Auth emulator) | — | — |
-| 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | — |
+| 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | FU-25 (เวลา tick ล่าสุด, เกิน 30 นาทีสีแดง) |
 | 11 | A10 Admin people CSV / roles | A09 | ได้ (CSV สังเคราะห์) | P7-ADMIN-01 CSV จริง | FU-10, FU-11 |
 | 12 | A12 public QR landing + repair step 1–3 | A09, A11 | ได้ | — | FU-21 (503 ยังตั้งค่าไม่ครบ → ข้อความไทย + ติดต่อ GM) |
 | 13 | A13 duplicate watch backend + interstitial | A12, A01 | ได้ | — | FU-08, FU-15 (contribution) |
@@ -40,11 +40,11 @@
 | 20 | A21 GM create cross-team + on-behalf | A09, A01, A04 | ได้ | P7-ADMIN-04 default owner/types จริงก่อน pilot | FU-06, FU-21 |
 | 21 | A20 card actions + waiting sheet | A18, A03, A04 | ได้ | — | FU-04, FU-06, FU-12, FU-09 |
 | 22 | A22 waiting-party response UI | A17, A04 | ได้ | — | — |
-| 23 | A23 home focus / presence / contact FAQ | A09, A06, S07 | ได้ (FAQ สังเคราะห์) | P7-ADMIN-04 FAQ/contact จริง | — |
+| 23 | A23 home focus / presence / contact FAQ | A09, A06, S07 | ได้ (FAQ สังเคราะห์) | P7-ADMIN-04 FAQ/contact จริง | FU-28 (`gm_profile_summaries`) |
 | 24 | A24 notification degraded mode + privacy transitions E2E | A19, A23, A02 | ได้ (Slack/Gmail disabled) | P7-ADMIN-02/03 สำหรับกรณีอนุมัติแล้วจริง | FU-09 |
 | 25 | A25 mobile/a11y/regression gate | A15, A20, A22, A24 | ได้ | — | — |
 | 26 | A26 dev staging / pilot rehearsal | A25, A05, A10, A11 | **ไม่ได้** (cloud) | **P7-INFRA-01** | FU-16 (IAM), FU-17, FU-20 (Cloud Tasks client), FU-22 (checklist settings/ปฏิทิน), FU-24 (worker IAM/Scheduler/indexes) |
-| 27 | A27 pilot approval / onboarding | A26 + W0 A blockers | **ไม่ได้** | **P7-INFRA-01, P7-ADMIN-01, P7-ADMIN-04** | ปิด follow-up ด่าน A ทั้งหมด |
+| 27 | A27 pilot approval / onboarding | A26 + W0 A blockers | **ไม่ได้** | **P7-INFRA-01, P7-ADMIN-01, P7-ADMIN-04** | ปิด follow-up ด่าน A ทั้งหมด; checklist ก่อน pilot FU-22 (tick ≤ 30 นาที, Cloud Tasks ต่อแล้ว) |
 
 หมายเหตุ
 

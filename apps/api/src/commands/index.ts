@@ -1,4 +1,5 @@
-// Command pipeline of gm-api (S08): idempotent command IDs and the request number counter.
+// Command pipeline of gm-api (S08): idempotent command IDs and the request number counter;
+// A03 lifecycle commands and the auto-close transaction the worker runs.
 export {
   COMMANDS_COLLECTION,
   COMMAND_EXPIRY_FIELD,
@@ -14,8 +15,18 @@ export {
   type MaintenanceCatalog,
   type MaintenanceLabels,
   type PeopleDirectory,
+  type ReadTransaction,
   type RoutingDirectory,
   type RoutingFacts,
 } from './execute-command';
+export {
+  SCHEDULED_WORK_COLLECTION,
+  autoCloseInTransaction,
+  autoCloseJobId,
+  runLifecycleCommand,
+  type AutoCloseOutcome,
+  type LifecycleDirectories,
+  type RecordTransaction,
+} from './lifecycle';
 export { commandFingerprint } from './fingerprint';
 export type { CommandStore, CommandTransaction, StoredData } from './transaction-port';

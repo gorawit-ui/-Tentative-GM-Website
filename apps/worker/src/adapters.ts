@@ -13,7 +13,8 @@ export interface OutboundMessage {
   /** Slack user ID or company e-mail: for the provider only, never logged. */
   readonly address: string;
   readonly eventKind: string;
-  readonly audience: 'gm' | 'requester';
+  /** `watcher`: a public-summary notice (U1), never detail. */
+  readonly audience: 'gm' | 'requester' | 'watcher';
   readonly requestId: string;
   /** D-A01-4: the number the recipient sees (confidential requests too: number + neutral text + link). */
   readonly requestNumber: string;

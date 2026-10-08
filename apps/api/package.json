@@ -5,6 +5,8 @@
   "type": "module",
   "description": "gm-api: public HTTPS API on Cloud Run (same image as gm-worker, different entrypoint; Part 6 §6.2).",
   "exports": {
+    "./commands": "./src/commands/index.ts",
+    "./directories": "./src/firestore/directories.ts",
     "./firestore": "./src/firestore/admin-store.ts"
   },
   "scripts": {

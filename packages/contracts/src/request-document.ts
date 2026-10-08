@@ -4,6 +4,7 @@
 // D-S09-5: a request is stored as two documents. `RequestRecord` is the whole request in memory;
 // `requests/{id}` (`RequestDocument`) leaves out the watcher list and the confidential note, which live
 // in `gm_request_details/{id}` (`GmRequestDetailDocument`, GM only).
+import type { CalendarSnapshotDocument } from './calendar';
 import type {
   ClosureKind,
   GmCategory,
@@ -45,12 +46,17 @@ export interface RequestRecord {
   readonly revision: number;
   /** GM progress clock (stale). */
   readonly last_updated_at: number;
+  /** A03: unread clock (Part 6 §6.4.1) — one step per event people with access can see; absent = 0. */
+  readonly activity_seq?: number;
+  readonly last_activity_at?: number;
   readonly completion_cycle_id: number;
   readonly completed_at?: number;
   readonly closed_at?: number;
   readonly closure_kind?: ClosureKind;
   readonly cancelled_at?: number;
   readonly auto_close_due_at?: number;
+  /** Company calendar copied when the confirmation wait starts (Part 6 §6.4.1/§6.7). */
+  readonly confirmation_calendar_snapshot?: CalendarSnapshotDocument;
   /** Current waiting party (C3, Part 6 §6.14); absent unless `status` is `waiting`. */
   readonly waiting_on?: WaitingOnDocument;
   readonly current_waiting_interval_id?: number;
@@ -107,12 +113,15 @@ export const REQUEST_DOCUMENT_FIELDS = [
   'status',
   'revision',
   'last_updated_at',
+  'activity_seq',
+  'last_activity_at',
   'completion_cycle_id',
   'completed_at',
   'closed_at',
   'closure_kind',
   'cancelled_at',
   'auto_close_due_at',
+  'confirmation_calendar_snapshot',
   'waiting_on',
   'current_waiting_interval_id',
   'waiting_since',

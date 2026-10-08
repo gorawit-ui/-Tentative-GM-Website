@@ -3,6 +3,8 @@
 // returns a fresh object; the domain then applies the business rules. The actor is never in the
 // body: it comes from the verified login (A01). Fields arrive with the task that implements them
 // (a chosen assignee with routing, initial `waiting_on` with A21, watch note/photos with A13).
+// A03: lifecycle commands on an existing request carry `expected_revision` (Part 6 §6.6: a stale
+// revision is refused with the latest state, never silently written over).
 import {
   GM_CATEGORY_KEYS,
   SENSITIVITY_SUBJECTS,
@@ -18,6 +20,7 @@ import {
   optionalBoolean,
   optionalId,
   optionalString,
+  positiveIntegerField,
   requiredField,
   strictObject,
   stringField,
@@ -25,9 +28,32 @@ import {
 } from './strict';
 import { optionalPersonIdList, personIdField } from './person-id';
 
-/** Mirrors Part 6 §6.6 createMaintenance / createOnBehalf / createGmTask / watchRequest. */
-export const COMMAND_TYPES = ['create_maintenance', 'create_on_behalf', 'create_gm_task', 'watch_request'] as const;
+/** Mirrors Part 6 §6.6 createMaintenance / createOnBehalf / createGmTask / watchRequest and (A03)
+ * accept / complete / confirm / notResolved / cancel / reopen. */
+export const COMMAND_TYPES = [
+  'create_maintenance',
+  'create_on_behalf',
+  'create_gm_task',
+  'watch_request',
+  'accept_request',
+  'complete_request',
+  'confirm_completion',
+  'report_not_resolved',
+  'cancel_request',
+  'reopen_request',
+] as const;
 export type CommandType = (typeof COMMAND_TYPES)[number];
+
+/** A03: the lifecycle commands (S05), each on an existing request at a known revision. */
+export const LIFECYCLE_COMMAND_TYPES = [
+  'accept_request',
+  'complete_request',
+  'confirm_completion',
+  'report_not_resolved',
+  'cancel_request',
+  'reopen_request',
+] as const satisfies readonly CommandType[];
+export type LifecycleCommandType = (typeof LIFECYCLE_COMMAND_TYPES)[number];
 
 /** The client's idempotency key: a lowercase UUID (e.g. `crypto.randomUUID()`), one per action. */
 const COMMAND_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -81,6 +107,34 @@ export interface WatchRequestPayload {
   readonly request_id: string;
 }
 
+/** A03: every lifecycle command names the request and the revision the user acted on. */
+export interface RevisionedPayload {
+  readonly request_id: string;
+  readonly expected_revision: number;
+}
+
+export interface AcceptRequestPayload extends RevisionedPayload {
+  /** D-S05-5: explicit take-over of a request assigned to another GM. */
+  readonly take_over?: boolean;
+}
+
+export interface CompleteRequestPayload extends RevisionedPayload {
+  readonly resolution_summary: string;
+}
+
+export interface ConfirmCompletionPayload extends RevisionedPayload {
+  readonly completion_cycle_id: number;
+}
+
+export interface ReportNotResolvedPayload extends RevisionedPayload {
+  readonly completion_cycle_id: number;
+  readonly reason: string;
+}
+
+export interface ReasonPayload extends RevisionedPayload {
+  readonly reason: string;
+}
+
 interface Envelope<T extends CommandType, P> {
   readonly command_id: string;
   readonly type: T;
@@ -91,7 +145,19 @@ export type CommandEnvelope =
   | Envelope<'create_maintenance', CreateMaintenancePayload>
   | Envelope<'create_on_behalf', CreateOnBehalfPayload>
   | Envelope<'create_gm_task', CreateGmTaskPayload>
-  | Envelope<'watch_request', WatchRequestPayload>;
+  | Envelope<'watch_request', WatchRequestPayload>
+  | Envelope<'accept_request', AcceptRequestPayload>
+  | Envelope<'complete_request', CompleteRequestPayload>
+  | Envelope<'confirm_completion', ConfirmCompletionPayload>
+  | Envelope<'report_not_resolved', ReportNotResolvedPayload>
+  | Envelope<'cancel_request', ReasonPayload>
+  | Envelope<'reopen_request', ReasonPayload>;
+
+export type LifecycleCommandEnvelope = Extract<CommandEnvelope, { readonly type: LifecycleCommandType }>;
+
+export function isLifecycleCommand(command: CommandEnvelope): command is LifecycleCommandEnvelope {
+  return (LIFECYCLE_COMMAND_TYPES as readonly string[]).includes(command.type);
+}
 
 function maintenanceSelection(object: JsonObject, path: string): MaintenanceSelection {
   return {
@@ -182,7 +248,36 @@ function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'
       const payload = strictObject(value, path, ['request_id']);
       return { request_id: idField(payload, path, 'request_id') };
     }
+    case 'accept_request': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'take_over']);
+      return { ...revisioned(payload, path), ...optional('take_over', optionalBoolean(payload, path, 'take_over')) };
+    }
+    case 'complete_request': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'resolution_summary']);
+      return { ...revisioned(payload, path), resolution_summary: stringField(payload, path, 'resolution_summary') };
+    }
+    case 'confirm_completion': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'completion_cycle_id']);
+      return { ...revisioned(payload, path), completion_cycle_id: positiveIntegerField(payload, path, 'completion_cycle_id') };
+    }
+    case 'report_not_resolved': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'completion_cycle_id', 'reason']);
+      return {
+        ...revisioned(payload, path),
+        completion_cycle_id: positiveIntegerField(payload, path, 'completion_cycle_id'),
+        reason: stringField(payload, path, 'reason'),
+      };
+    }
+    case 'cancel_request':
+    case 'reopen_request': {
+      const payload = strictObject(value, path, ['request_id', 'expected_revision', 'reason']);
+      return { ...revisioned(payload, path), reason: stringField(payload, path, 'reason') };
+    }
   }
+}
+
+function revisioned(payload: JsonObject, path: string): RevisionedPayload {
+  return { request_id: idField(payload, path, 'request_id'), expected_revision: positiveIntegerField(payload, path, 'expected_revision') };
 }
 
 /** Reads an untrusted command body; throws `ContractRejected` with the first problem found. */

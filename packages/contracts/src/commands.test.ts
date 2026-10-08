@@ -51,8 +51,19 @@ function withPayload<T extends { payload: object }>(body: T, payload: Record<str
 }
 
 describe('parseCommand — valid commands come back as fresh typed objects', () => {
-  it('lists the commands of this session', () => {
-    expect(COMMAND_TYPES).toEqual(['create_maintenance', 'create_on_behalf', 'create_gm_task', 'watch_request']);
+  it('lists the commands of this session (A03 adds the lifecycle commands)', () => {
+    expect(COMMAND_TYPES).toEqual([
+      'create_maintenance',
+      'create_on_behalf',
+      'create_gm_task',
+      'watch_request',
+      'accept_request',
+      'complete_request',
+      'confirm_completion',
+      'report_not_resolved',
+      'cancel_request',
+      'reopen_request',
+    ]);
   });
 
   it.each([

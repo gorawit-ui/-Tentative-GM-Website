@@ -10,7 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { DeliveryOutcome } from '@gm/domain';
 import { MINUTE_MS } from '@gm/time';
 import { CommandRejected, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
-import { newRequestOutbox } from '../../apps/api/src/commands/outbox';
+import { lifecycleOutbox, newRequestOutbox } from '../../apps/api/src/commands/outbox';
 import { adminCommandStore } from '../../apps/api/src/firestore/admin-store';
 import { transactionPeopleDirectory, transactionRoutingDirectory } from '../../apps/api/src/firestore/directories';
 import { createApiHandler } from '../../apps/api/src/http/app';
@@ -200,6 +200,39 @@ describe('D-A01-3: the worker records the channel it really used and the result 
   });
 });
 
+describe('A03: watcher notices (U1)', () => {
+  async function seedWatcherNotice(request: Record<string, unknown>): Promise<string> {
+    const requestId = `req-a02-w-${++requestCount}`;
+    await writeDoc(workerA.db, `requests/${requestId}`, { request_number: 'DEV-0900', status: 'in_progress', revision: 2, ...request });
+    const [notice] = lifecycleOutbox({
+      requestId,
+      requestNumber: 'DEV-0900',
+      revision: 2,
+      eventKind: 'request_accepted',
+      actorId: GM_MAIL,
+      watcherIds: [GM_SLACK],
+      isConfidential: false,
+      now: NOW,
+    });
+    if (notice === undefined) throw new Error('no notice');
+    await writeDoc(workerA.db, `outbox/${notice.id}`, notice.data);
+    return notice.id;
+  }
+
+  it('a watcher notice on a general request is sent with audience watcher', async () => {
+    const id = await seedWatcherNotice({ is_confidential: false });
+    await expect(dispatchOutbox(deps(workerA), id)).resolves.toBe('sent');
+    expect(sends).toEqual([expect.objectContaining({ outboxId: id, audience: 'watcher', eventKind: 'request_accepted' })]);
+  });
+
+  it('the request became confidential before the send → suppressed, nothing sent (watching gives no access)', async () => {
+    const id = await seedWatcherNotice({ is_confidential: true });
+    await expect(dispatchOutbox(deps(workerA), id)).resolves.toBe('suppressed');
+    expect(await entry(id)).toMatchObject({ state: 'suppressed', last_error_code: 'NO_ACCESS' });
+    expect(sends).toEqual([]);
+  });
+});
+
 describe('single tick lease: one tick at a time; a dead worker never blocks the next tick', () => {
   it('two ticks at the same moment → one works, the other is a no-op; every entry is sent once', async () => {
     const ids = [await seedEntry(GM_SLACK), await seedEntry(GM_MAIL), await seedEntry(REQUESTER, { audience: 'requester' })];
@@ -255,7 +288,8 @@ describe('single tick lease: one tick at a time; a dead worker never blocks the 
     await expect(runTick(deps(workerA))).resolves.toMatchObject({ ran: true, outbox: { sent: 1 } });
     const lease = await readDoc(workerA.db, TICK_LEASE_PATH);
     expect(lease).toMatchObject({ last_started_at: NOW, last_completed_at: NOW });
-    expect(lease?.lease_until).toBeLessThanOrEqual(NOW);
+    expect(lease).not.toHaveProperty('lease_until');
+    expect(lease).not.toHaveProperty('lease_id');
     now = minutes(1);
     await expect(runTick(deps(workerB))).resolves.toMatchObject({ ran: true, outbox: { sent: 0 } });
   });

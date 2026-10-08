@@ -115,9 +115,9 @@ export async function runTick(deps: WorkerDeps): Promise<TickReport> {
     const lease = await transaction.get(TICK_LEASE_PATH);
     // A tick that outlived its lease leaves the newer tick's lease alone.
     if (lease === undefined || lease.lease_id !== leaseId) return;
-    const finishedAt = deps.now();
-    const { lease_id: _leaseId, ...rest } = lease;
-    transaction.set(TICK_LEASE_PATH, { ...rest, lease_until: finishedAt, last_completed_at: finishedAt });
+    // Released = no lease at all, so the next tick never depends on two clocks agreeing.
+    const { lease_id: _leaseId, lease_until: _leaseUntil, ...rest } = lease;
+    transaction.set(TICK_LEASE_PATH, { ...rest, last_completed_at: deps.now() });
   });
   deps.log.info('tick.finished', { count: outbox.sent + jobs.done, ...(complete ? {} : { code: 'MORE_WORK_NEXT_TICK' }) });
   return { ran: true, outbox, jobs, more: !complete };
