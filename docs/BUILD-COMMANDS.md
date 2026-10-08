@@ -6,6 +6,7 @@
 |---|---|---|
 | `npm ci` | workspace root + lockfile | install reproducible ไม่มี paid dependency |
 | `npm run dev` | Vite + emulator mode; local notification adapter | ไม่ต่อ prod ไม่แจ้งพนักงานจริง |
+| `npm run tick:local -w @gm/worker` | (A02) dev manual tick: POST `/internal/tick` ไปที่ worker ของ `npm run dev` บนเครื่องนี้ | เรียกได้เฉพาะ loopback; ไม่สร้าง Scheduler job ใน dev |
 | `npm run build` | typecheck + production web/API/worker builds | exit nonzero เมื่อ TypeScript fail |
 | `npm run test:unit` | Vitest `packages/time`, `packages/domain`, backend units | deterministic fake clock ไม่พึ่ง Firebase/network |
 | `npm run test:rules` | Firebase Emulator (Auth, Firestore, Storage) + authenticated client test matrix; API/command tests ผ่าน firebase-admin (S12) | direct reads/writes ที่ผิดสิทธิ์ต้อง deny; API ตรวจสิทธิ์เองทุก endpoint; ไม่มี request ออกนอก emulator (network guard) |
