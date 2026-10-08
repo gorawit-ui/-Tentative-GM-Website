@@ -201,3 +201,8 @@ export function markSeen(
     });
   });
 }
+
+/** A04 (stub until implemented). */
+export function listWaitingIntervals(_deps: ApiDeps, _idToken: string | undefined, _requestId: string, _limit?: number): Promise<readonly Record<string, unknown>[]> {
+  return Promise.reject(new Error('not implemented yet (A04)'));
+}

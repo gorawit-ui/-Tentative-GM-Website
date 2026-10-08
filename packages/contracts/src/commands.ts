@@ -295,3 +295,8 @@ export function parseCommand(body: unknown): CommandEnvelope {
   const payload = payloadOf(type as CommandType, requiredField(envelope, '', 'payload'));
   return { command_id: commandId, type, payload } as CommandEnvelope;
 }
+
+/** A04 (stub until implemented). */
+export function isWaitingCommand(_command: CommandEnvelope): boolean {
+  throw new Error('not implemented yet (A04)');
+}

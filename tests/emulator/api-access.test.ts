@@ -21,6 +21,7 @@ import {
   getRequestDetail,
   listComments,
   listHistory,
+  listWaitingIntervals,
   listMyRequests,
   markSeen,
 } from '../../apps/api/src/endpoints/index';
@@ -168,6 +169,8 @@ async function call(endpoint: ApiEndpoint, token: string | undefined): Promise<u
       return getRequestDetail(deps, token, requestId);
     case 'history':
       return listHistory(deps, token, requestId);
+    case 'waiting_intervals':
+      return listWaitingIntervals(deps, token, requestId);
     case 'comments':
       return listComments(deps, token, requestId);
     case 'my_requests':
@@ -234,6 +237,7 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
             expect(result).not.toHaveProperty('sensitivity_note');
             break;
           case 'history':
+          case 'waiting_intervals':
           case 'comments':
             expect(result).toHaveLength(1);
             break;
@@ -265,7 +269,7 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
   });
 
   it('covers every endpoint of the matrix', () => {
-    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(9);
+    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(10);
   });
 });
 

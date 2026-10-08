@@ -16,6 +16,7 @@ import {
 export type ApiEndpointKind =
   | 'request_detail'
   | 'history'
+  | 'waiting_intervals'
   | 'comments'
   | 'my_requests'
   | 'awaiting_confirmation'
@@ -43,6 +44,14 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
   { key: 'request_detail.confidential', kind: 'request_detail', requestId: SECRET_REQUEST_ID, description: 'รายละเอียดงานลับ: GM, ผู้ขอ, grant (D-ACL-2)', allow: CONFIDENTIAL_DETAIL_SUBJECTS },
   { key: 'history.general', kind: 'history', requestId: GENERAL_REQUEST_ID, description: 'history ตามสิทธิ์รายละเอียดของงาน', allow: DETAIL_SUBJECTS },
   { key: 'history.confidential', kind: 'history', requestId: SECRET_REQUEST_ID, description: 'history ของงานลับ', allow: CONFIDENTIAL_DETAIL_SUBJECTS },
+  {
+    key: 'waiting_intervals.general',
+    kind: 'waiting_intervals',
+    requestId: GENERAL_REQUEST_ID,
+    description: 'ช่วงรอและผู้รับแจ้งของแต่ละช่วง (A04) ตามสิทธิ์รายละเอียดของงาน',
+    allow: DETAIL_SUBJECTS,
+  },
+  { key: 'waiting_intervals.confidential', kind: 'waiting_intervals', requestId: SECRET_REQUEST_ID, description: 'ช่วงรอของงานลับ', allow: CONFIDENTIAL_DETAIL_SUBJECTS },
   { key: 'comments.general', kind: 'comments', requestId: GENERAL_REQUEST_ID, description: 'คอมเมนต์ตามสิทธิ์รายละเอียดของงาน', allow: DETAIL_SUBJECTS },
   { key: 'comments.confidential', kind: 'comments', requestId: SECRET_REQUEST_ID, description: 'คอมเมนต์ของงานลับ', allow: CONFIDENTIAL_DETAIL_SUBJECTS },
   { key: 'my_requests', kind: 'my_requests', description: 'คำขอของฉัน: เฉพาะงานที่ยังมีสิทธิ์ ณ ตอนขอ (watcher เห็นแค่สรุป)', allow: ACTIVE_SUBJECTS },

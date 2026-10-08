@@ -25,6 +25,7 @@ export {
   COMMAND_TYPES,
   LIFECYCLE_COMMAND_TYPES,
   isLifecycleCommand,
+  isWaitingCommand,
   parseCommand,
   type AcceptRequestPayload,
   type CommandEnvelope,

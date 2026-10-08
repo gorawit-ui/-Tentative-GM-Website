@@ -9,13 +9,13 @@ describe('API matrix (S12)', () => {
     expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.key)).size).toBe(API_ENDPOINTS.length);
   });
 
-  it('detail, history, comments and view links follow the Rules decision for requests/{id} get', () => {
+  it('detail, history, waiting intervals, comments and view links follow the Rules decision for requests/{id} get', () => {
     for (const subject of SUBJECT_KEYS) {
       for (const [prefix, resource] of [
         ['general', 'requests.general'],
         ['confidential', 'requests.confidential'],
       ] as const) {
-        for (const kind of ['request_detail', 'history', 'comments', 'view_url']) {
+        for (const kind of ['request_detail', 'history', 'waiting_intervals', 'comments', 'view_url']) {
           expect(apiDecide(subject, `${kind}.${prefix}`), `${subject} ${kind}.${prefix}`).toBe(decide(subject, resource, 'get'));
         }
       }
