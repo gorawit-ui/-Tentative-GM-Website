@@ -37,3 +37,8 @@ export function autoCloseDue(completedAt: Instant, calendar: CalendarSnapshot): 
 export function isAutoCloseDue(completedAt: Instant, now: Instant, calendar: CalendarSnapshot): boolean {
   return businessDuration(completedAt, now, calendar) >= AUTO_CLOSE_AFTER_MS;
 }
+
+/** A05 (stub until implemented). */
+export function staleDueAt(_lastUpdatedAt: Instant, _calendar: CalendarSnapshot): Instant {
+  throw new Error('not implemented yet (A05)');
+}

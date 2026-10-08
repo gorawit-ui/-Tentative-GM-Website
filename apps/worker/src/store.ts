@@ -33,4 +33,9 @@ export interface WorkerStore {
   runTransaction<T>(work: (transaction: WorkerTransaction) => Promise<T>): Promise<T>;
   /** `state` = value, due field <= now, ordered by due field then document ID (Part 6 §6.11 queries). */
   due(collection: DueCollection, state: string, now: Instant, limit: number, after?: DueCursor): Promise<readonly DueDocument[]>;
+  /**
+   * A05: IDs of open requests (queued / in progress / waiting) after `after`, by ID — only for the
+   * one-off recompute after a calendar change, never on every tick (Part 6 §6.9).
+   */
+  openRequests(after: string | undefined, limit: number): Promise<readonly string[]>;
 }

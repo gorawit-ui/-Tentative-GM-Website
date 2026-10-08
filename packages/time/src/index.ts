@@ -11,7 +11,7 @@ export {
   type IsoWeekday,
 } from './calendar';
 export { addBusinessDuration, addDuration, businessDuration } from './business-time';
-export { autoCloseDue, isAutoCloseDue, staleState, type StaleState } from './lifecycle-clocks';
+export { autoCloseDue, isAutoCloseDue, staleDueAt, staleState, type StaleState } from './lifecycle-clocks';
 export { businessDateBucket, nextWorkingMorning, type BusinessDateBucket } from './business-date';
 export { bangkokDateOf, presenceExpiresAt } from './presence-clock';
 export { BOARD_RECENT_WINDOW_MS, boardRecentCutoff } from './board-window';

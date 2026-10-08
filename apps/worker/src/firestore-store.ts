@@ -31,5 +31,12 @@ export function adminWorkerStore(db: Firestore, options: { readonly maxAttempts?
       const snapshot = await query.get();
       return snapshot.docs.map((document) => ({ id: document.id, data: fromStored(document.data()) }));
     },
+    async openRequests(after, limit) {
+      // `status in [...]` + document ID order: served by the single-field index, IDs only.
+      let query = db.collection('gm_request_summaries').where('status', 'in', ['queued', 'in_progress', 'waiting']).orderBy(FieldPath.documentId()).select().limit(limit);
+      if (after !== undefined) query = query.startAfter(after);
+      const snapshot = await query.get();
+      return snapshot.docs.map((document) => document.id);
+    },
   };
 }
