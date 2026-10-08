@@ -225,7 +225,15 @@ describe('create: one transaction writes the request, its projections, counter, 
     expect(history).toEqual([expect.objectContaining({ kind: 'request_created', actor_id: EMPLOYEE, at: NOW, assignee_id: GM1 })]);
     const outbox = await outboxFor(id);
     expect(outbox).toEqual([
-      expect.objectContaining({ event_kind: 'request_created', recipient_id: GM1, channel: 'auto', state: 'pending', attempts: 0 }),
+      expect.objectContaining({
+        event_kind: 'request_created',
+        request_number: result.request_number,
+        recipient_id: GM1,
+        audience: 'gm',
+        channel: 'auto',
+        state: 'pending',
+        attempts: 0,
+      }),
     ]);
     expect(queued).toEqual([[expect.stringMatching(/^[0-9a-f]{40}$/)]]);
   });
@@ -269,11 +277,35 @@ describe('outbox: who to tell, never the person who acted (D-S08-2); nothing is 
     expect(await outboxFor((response.body.result as { request_id: string }).request_id)).toEqual([]);
   });
 
-  it('a GM opening a request on behalf that routes to themselves tells nobody (the requester is not a GM recipient)', async () => {
+  it('D-A01-4: a GM opening on behalf of a requester with an account tells that requester, with the request number', async () => {
     const response = await call('POST', '/api/commands', { token: tokens.get(GM2), body: onBehalf(EMPLOYEE) });
-    const id = (response.body.result as { request_id: string }).request_id;
-    expect(await readDoc(harness.db, `requests/${id}`)).toMatchObject({ assignee_id: GM2, requester_id: EMPLOYEE, created_by_id: GM2 });
-    expect(await outboxFor(id)).toEqual([]);
+    const result = response.body.result as { request_id: string; request_number: string };
+    expect(await readDoc(harness.db, `requests/${result.request_id}`)).toMatchObject({ assignee_id: GM2, requester_id: EMPLOYEE, created_by_id: GM2 });
+    // Routed back to GM2 (the actor), so the requester is the only one to tell.
+    expect(await outboxFor(result.request_id)).toEqual([
+      expect.objectContaining({
+        event_kind: 'request_created',
+        request_number: result.request_number,
+        recipient_id: EMPLOYEE,
+        audience: 'requester',
+        channel: 'auto',
+        state: 'pending',
+      }),
+    ]);
+  });
+
+  it('D-A01-4: a text-name requester has no account, so nobody on the requester side is told', async () => {
+    const body = { command_id: randomUUID(), type: 'create_on_behalf', payload: { requester: { name_text: 'คุณผู้ขอ ไม่มีบัญชี' }, details: onBehalf(EMPLOYEE).payload.details } };
+    const response = await call('POST', '/api/commands', { token: tokens.get(GM1), body });
+    expect(response.status).toBe(200);
+    const entries = await outboxFor((response.body.result as { request_id: string }).request_id);
+    expect(entries.map((entry) => [entry.recipient_id, entry.audience])).toEqual([[GM2, 'gm']]);
+  });
+
+  it('D-A01-4 / D-S08-2: a requester who creates their own request is not told about it', async () => {
+    const response = await call('POST', '/api/commands', { token: tokens.get(COLLEAGUE), body: maintenance() });
+    const entries = await outboxFor((response.body.result as { request_id: string }).request_id);
+    expect(entries.map((entry) => entry.recipient_id)).toEqual([GM1]);
   });
 
   it('default owner on leave → unassigned, every available GM told except the actor', async () => {
@@ -285,7 +317,13 @@ describe('outbox: who to tell, never the person who acted (D-S08-2); nothing is 
       expect((await outboxFor(first)).map((entry) => entry.recipient_id).sort()).toEqual([GM2, GM_ADMIN].sort());
       const byGm2 = await call('POST', '/api/commands', { token: tokens.get(GM2), body: onBehalf(COLLEAGUE, 'maintenance') });
       const second = (byGm2.body.result as { request_id: string }).request_id;
-      expect((await outboxFor(second)).map((entry) => entry.recipient_id)).toEqual([GM_ADMIN]);
+      // D-A01-4: the requester (COLLEAGUE) is told too; GM2 acted, so is not.
+      expect((await outboxFor(second)).map((entry) => [entry.recipient_id, entry.audience]).sort()).toEqual(
+        [
+          [GM_ADMIN, 'gm'],
+          [COLLEAGUE, 'requester'],
+        ].sort(),
+      );
     } finally {
       await harness.db.doc(`gm_profiles/${GM1}`).set({ presence_status: { kind: 'unspecified' } });
     }

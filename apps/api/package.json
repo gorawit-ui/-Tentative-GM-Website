@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "gm-api: public HTTPS API on Cloud Run (same image as gm-worker, different entrypoint; Part 6 \u00a76.2).",
+  "description": "gm-api: public HTTPS API on Cloud Run (same image as gm-worker, different entrypoint; Part 6 §6.2).",
+  "exports": {
+    "./firestore": "./src/firestore/admin-store.ts"
+  },
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --sourcemap --external:firebase-admin --outfile=dist/main.js",

@@ -45,7 +45,8 @@ const handler = createApiHandler({
   maintenanceCatalog: { resolve: async () => Promise.reject(new CommandRejected('CATALOG_NOT_READY', 'Locations and symptoms are not set up yet')) },
   peopleDirectory: transactionPeopleDirectory(),
   routingDirectory: transactionRoutingDirectory(),
-  // Cloud Tasks hand-off arrives with A02; until then outbox entries stay `pending` for the recovery tick.
+  // The Cloud Tasks client needs the queue, region and service account from P7-INFRA-01 (FU-20);
+  // until then entries stay `pending` and the worker's tick sends them (A02 outbox recovery).
   taskQueue: { enqueue: async () => undefined },
 });
 

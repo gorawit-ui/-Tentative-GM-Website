@@ -27,6 +27,28 @@ describe('allowed origins per environment', () => {
     expect(() => resolveAllowedOrigins('local', 'http://localhost:5173')).not.toThrow();
     expect(() => resolveAllowedOrigins('prod', 'http://localhost:5173')).toThrow();
   });
+
+  // D-A01-1: the dev API serves the dev web app only and prod the prod web app only; a web app on a
+  // developer's machine talks to the API on that machine (emulator suite), never to dev or prod.
+  describe.each(['dev', 'prod'] as const)('D-A01-1: %s never accepts a machine-local origin, even over https', (environment) => {
+    it.each([
+      'https://localhost:5173',
+      'https://localhost',
+      'https://127.0.0.1:4173',
+      'https://127.0.0.2',
+      'https://[::1]:5173',
+      'https://web.localhost:5173',
+      'https://LOCALHOST:5173',
+    ])('refuses %s', (entry) => {
+      expect(() => resolveAllowedOrigins(environment, entry)).toThrow();
+      expect(() => resolveAllowedOrigins(environment, `https://gm-dev.tdfb.co,${entry}`)).toThrow();
+    });
+  });
+
+  it('D-A01-1: the local environment keeps its Vite dev/preview origins', () => {
+    expect(resolveAllowedOrigins('local', undefined)).toEqual(defaultAllowedOrigins('local'));
+    expect(resolveAllowedOrigins('local', 'http://127.0.0.1:5173')).toEqual(['http://127.0.0.1:5173']);
+  });
 });
 
 describe('corsDecision', () => {
@@ -54,5 +76,9 @@ describe('corsDecision', () => {
     'null',
   ])('refuses %s with no allow-origin header', (origin) => {
     expect(corsDecision(origin, allowed)).toEqual({ allowed: false, headers: { vary: 'Origin' } });
+  });
+
+  it.each(['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173'])('D-A01-1: the dev API refuses the machine-local web app %s', (origin) => {
+    expect(corsDecision(origin, defaultAllowedOrigins('dev')).allowed).toBe(false);
   });
 });
