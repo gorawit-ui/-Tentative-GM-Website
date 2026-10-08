@@ -10,7 +10,7 @@
 - **การเขียนจาก client** (create / update / delete) ปฏิเสธทุก collection ทุก role — ทุกการเปลี่ยนแปลงผ่าน API ซึ่งตรวจสิทธิ์ด้วยกติกา domain ชุดเดียวกัน (Admin SDK ข้าม Rules)
 - **อ่าน**: `get` = เปิด document หนึ่งรายการ, `list` = query ทั้ง collection โดยไม่กรอง (Rules ไม่กรองผลให้) และ**ต้องมี limit ไม่เกิน 200** ไม่มี limit หรือเกินถูกปฏิเสธทุก collection (D-S10-4) หน้า “ดูทั้งหมด” แบ่งหน้าละ 50
 - บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified (ตรวจหลังแปลงเป็นตัวพิมพ์เล็ก TDFB.CO จึงเป็นโดเมนเดียวกัน ส่วนโดเมนหน้าตาคล้ายถูกปฏิเสธ, D-S10-5) และ `access/{uid}.enabled` = true; role อ่านจาก `access/{uid}` ไม่ใช่ custom claim
-- ขนาด matrix: 16 role × 42 collection/path × 5 operation = 3360 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
+- ขนาด matrix: 16 role × 43 collection/path × 5 operation = 3440 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
 
 ## สิทธิ์พื้นฐาน: ทุกบัญชีที่ใช้งานได้
 
@@ -225,6 +225,8 @@ API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรว
 | `request_detail.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | รายละเอียดงานลับ: GM, ผู้ขอ, grant (D-ACL-2) |
 | `history.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | history ตามสิทธิ์รายละเอียดของงาน |
 | `history.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | history ของงานลับ |
+| `waiting_intervals.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | ช่วงรอและผู้รับแจ้งของแต่ละช่วง (A04) ตามสิทธิ์รายละเอียดของงาน |
+| `waiting_intervals.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | ช่วงรอของงานลับ |
 | `comments.general` | `requester`, `related_person`, `related_unconfirmed`, `waiting_party`, `viewer_related`, `viewer_unconfirmed`, `gm_staff`, `gm_admin` | คอมเมนต์ตามสิทธิ์รายละเอียดของงาน |
 | `comments.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related`, `gm_staff`, `gm_admin` | คอมเมนต์ของงานลับ |
 | `my_requests` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `employee`, `viewer`, `viewer_related`, `viewer_unconfirmed`, `team_label_member`, `gm_staff`, `gm_admin` | คำขอของฉัน: เฉพาะงานที่ยังมีสิทธิ์ ณ ตอนขอ (watcher เห็นแค่สรุป) |
@@ -236,6 +238,10 @@ API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรว
 | `upload_url.watch_contribution.general` | `watcher` | รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง ไม่เกิน 3 รูป (U1, D-S12-3) — watcher เท่านั้น ดูรูปตัวเองหลังส่งไม่ได้ |
 | `mark_seen.general` | `requester`, `related_person`, `related_unconfirmed`, `watcher`, `waiting_party`, `viewer_related`, `viewer_unconfirmed` | บันทึกว่าเปิดดูแล้ว (จุด “มีอัปเดตใหม่”, A06): เจ้าของ user_state ที่ความสัมพันธ์ยังจริง — ผู้ขอ, related ที่อ่านได้, watcher ของงานไม่ลับ; GM ไม่มี user_state |
 | `mark_seen.confidential` | `requester`, `related_person`, `waiting_party`, `viewer_related` | บันทึกว่าเปิดดูแล้วของงานลับ: ผู้ขอและ grant (watcher ไม่มีสิทธิ์) |
+| `waiting_preview.general` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันรอผู้อื่น (A04): ผู้รับแจ้ง/คนที่จะเป็น related/ต้องยืนยัน grant หรือไม่ — GM เท่านั้น |
+| `waiting_preview.confidential` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันรอผู้อื่นของงานลับ — GM เท่านั้น |
+| `related_preview.general` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันเพิ่มผู้เกี่ยวข้อง (FU-12) — GM เท่านั้น |
+| `related_preview.confidential` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันเพิ่มผู้เกี่ยวข้องของงานลับ: ใครต้องได้ grant (D-ACL-2) — GM เท่านั้น |
 
 ## หน้าจอ → แหล่งข้อมูล
 

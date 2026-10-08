@@ -1,5 +1,6 @@
 // Command pipeline of gm-api (S08): idempotent command IDs and the request number counter;
-// A03 lifecycle commands and the auto-close transaction the worker runs.
+// A03 lifecycle commands and the auto-close transaction the worker runs; A04 waiting, related
+// persons and the confidential flag.
 export {
   COMMANDS_COLLECTION,
   COMMAND_EXPIRY_FIELD,
@@ -28,6 +29,7 @@ export {
   type LifecycleDirectories,
   type RecordTransaction,
 } from './lifecycle';
+export { runWaitingCommand } from './waiting';
 export { commandFingerprint } from './fingerprint';
-export { STATUS_NOTICE_KINDS } from './outbox';
+export { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, latestStatusRevision, outboxHeadAfter, outboxHeadKey } from './outbox';
 export type { CommandStore, CommandTransaction, StoredData } from './transaction-port';

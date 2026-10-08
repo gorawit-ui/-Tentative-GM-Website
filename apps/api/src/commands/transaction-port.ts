@@ -9,6 +9,8 @@ export interface CommandTransaction {
   /** Plain data only: no `undefined` values (absent fields are left out). */
   set(path: string, data: object): void;
   update(path: string, data: object): void;
+  /** A04: removes a document (a request flagged confidential has no public summary, §6.4.1). */
+  delete(path: string): void;
 }
 
 export interface CommandStore {

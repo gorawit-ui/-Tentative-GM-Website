@@ -65,6 +65,10 @@ export interface RequestRecord {
   readonly waiting_since?: number;
   readonly waiting_party_responded?: boolean;
   readonly responded_at?: number;
+  /** A04: waiting intervals ever opened on the request (the next one is + 1); absent = 0. */
+  readonly waiting_interval_seq?: number;
+  /** A04: business-date bucket of the last reminder (1 per business day per request, C3 / Part 6 §6.14). */
+  readonly last_reminder_business_date?: string;
   /** A06: “ผู้ขอยังไม่ได้รับแจ้ง” (GM only, A1.2); absent = nothing to show. */
   readonly requester_not_notified?: RequesterNotNotifiedDocument;
   /** A06: highest unread step known to have reached the requester (delivered or opened in the web). */
@@ -172,6 +176,8 @@ export const REQUEST_DOCUMENT_FIELDS = [
   'waiting_since',
   'waiting_party_responded',
   'responded_at',
+  'waiting_interval_seq',
+  'last_reminder_business_date',
 ] as const satisfies readonly (keyof RequestDocument)[];
 
 /** Splits a request into its two stored documents (D-S09-5); unknown fields are dropped. */

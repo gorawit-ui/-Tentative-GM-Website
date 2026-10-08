@@ -21,8 +21,11 @@ import {
   getRequestDetail,
   listComments,
   listHistory,
+  listWaitingIntervals,
   listMyRequests,
   markSeen,
+  previewRelated,
+  previewWaiting,
 } from '../../apps/api/src/endpoints/index';
 import { GENERAL_REQUEST_ID, SAMPLE_REQUESTS, SECRET_REQUEST_ID, SUBJECTS, SUBJECT_KEYS, accessViewerOf, seedDocuments, type SubjectKey } from '../rules/fixtures/acl-matrix';
 import { API_ENDPOINTS, apiCells, type ApiEndpoint } from '../rules/fixtures/api-matrix';
@@ -168,6 +171,8 @@ async function call(endpoint: ApiEndpoint, token: string | undefined): Promise<u
       return getRequestDetail(deps, token, requestId);
     case 'history':
       return listHistory(deps, token, requestId);
+    case 'waiting_intervals':
+      return listWaitingIntervals(deps, token, requestId);
     case 'comments':
       return listComments(deps, token, requestId);
     case 'my_requests':
@@ -182,6 +187,10 @@ async function call(endpoint: ApiEndpoint, token: string | undefined): Promise<u
       return createUploadUrl(deps, token, { requestId, purpose: 'watch_contribution', contentType: 'image/jpeg', sizeBytes: 300_000 });
     case 'mark_seen':
       return markSeen(deps, token, requestId, { activitySeq: 0 });
+    case 'waiting_preview':
+      return previewWaiting(deps, token, requestId, { waiting_on: { kind: 'government', name: 'สำนักงานเขตตัวอย่าง' } });
+    case 'related_preview':
+      return previewRelated(deps, token, requestId, { person_ids: [] });
   }
 }
 
@@ -234,6 +243,7 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
             expect(result).not.toHaveProperty('sensitivity_note');
             break;
           case 'history':
+          case 'waiting_intervals':
           case 'comments':
             expect(result).toHaveLength(1);
             break;
@@ -253,6 +263,12 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
           case 'mark_seen':
             expect(result).toMatchObject({ last_seen_activity_seq: 0 });
             break;
+          case 'waiting_preview':
+            expect(result).toMatchObject({ recipients: [], new_related_person_ids: [], needs_confidential_grant: false });
+            break;
+          case 'related_preview':
+            expect(result).toMatchObject({ people: [], new_related_person_ids: [], needs_confidential_grant: false });
+            break;
           case 'upload_url.attachment':
           case 'upload_url.watch_contribution':
             expect(result.url).toContain(`pending/${String(result.upload_id)}`);
@@ -265,7 +281,7 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
   });
 
   it('covers every endpoint of the matrix', () => {
-    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(9);
+    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(12);
   });
 });
 

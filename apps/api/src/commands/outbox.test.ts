@@ -3,7 +3,7 @@
 // recipient (D-S08-2). D-A01-3: one entry per recipient with `channel: auto` (the worker records the
 // channel it really used). D-A01-4: a requester with an account is told when a GM opens on their behalf.
 import { describe, expect, it } from 'vitest';
-import { lifecycleOutbox, newRequestOutbox, outboxId } from './outbox';
+import { latestStatusRevision, lifecycleOutbox, newRequestOutbox, outboxHeadAfter, outboxHeadKey, outboxId } from './outbox';
 
 const NOW = Date.parse('2026-12-28T09:00:00+07:00');
 
@@ -216,5 +216,27 @@ describe('lifecycleOutbox: GM notices (D-A03-2, D-A03-4)', () => {
       gmRecipients: [{ personId: 'gm.staff01@tdfb.co', eventKind: 'request_taken_over' }],
     });
     expect(entries.filter((entry) => entry.data.recipient_id === 'gm.staff01@tdfb.co').map((entry) => entry.data.audience)).toEqual(['requester']);
+  });
+});
+
+describe('D-A06-6: outbox head record', () => {
+  const notices = (revision: number, eventKind: 'request_accepted' | 'request_completed', watcherIds: readonly string[] = []) =>
+    lifecycleOutbox({ requestId: 'req-1', requestNumber: 'GM-000001', revision, activitySeq: revision, eventKind, actorId: 'gm.staff01@tdfb.co', requesterId: 'employee01@tdfb.co', watcherIds, isConfidential: false, now: NOW });
+
+  it('records the latest status revision per recipient, keyed by a hash (no e-mail as a field name)', () => {
+    const first = outboxHeadAfter('req-1', undefined, notices(2, 'request_accepted', ['watcher01@tdfb.co']));
+    const second = outboxHeadAfter('req-1', first, notices(3, 'request_completed'));
+    expect(latestStatusRevision(second, 'employee01@tdfb.co')).toBe(3);
+    expect(latestStatusRevision(second, 'watcher01@tdfb.co')).toBe(2);
+    expect(latestStatusRevision(second, 'nobody@tdfb.co')).toBe(0);
+    expect(Object.keys(second?.status_revision_by_recipient ?? {})).toEqual([outboxHeadKey('employee01@tdfb.co'), outboxHeadKey('watcher01@tdfb.co')]);
+    expect(JSON.stringify(second)).not.toContain('@');
+  });
+
+  it('never goes back; notices that are not status notices record nothing', () => {
+    const later = outboxHeadAfter('req-1', undefined, notices(5, 'request_completed'));
+    expect(latestStatusRevision(outboxHeadAfter('req-1', later, notices(4, 'request_accepted')), 'employee01@tdfb.co')).toBe(5);
+    const created = newRequestOutbox({ requestId: 'req-1', requestNumber: 'GM-000001', actorId: 'gm.staff01@tdfb.co', gmRecipientIds: [], requesterId: 'employee01@tdfb.co', isConfidential: false, now: NOW });
+    expect(outboxHeadAfter('req-1', undefined, created)).toBeUndefined();
   });
 });

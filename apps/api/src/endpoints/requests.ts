@@ -56,7 +56,7 @@ export function getRequestDetail(deps: ApiDeps, idToken: string | undefined, req
   });
 }
 
-async function listChildren(deps: ApiDeps, idToken: string | undefined, requestId: string, child: 'history' | 'comments', limit?: number) {
+async function listChildren(deps: ApiDeps, idToken: string | undefined, requestId: string, child: 'history' | 'comments' | 'waiting_intervals', limit?: number) {
   return guarded(deps, `${child}.read`, requestId, async () => {
     const { viewer } = await authenticate(deps, idToken);
     await readableRequest(deps, viewer, requestId);
@@ -71,6 +71,11 @@ export function listHistory(deps: ApiDeps, idToken: string | undefined, requestI
 
 export function listComments(deps: ApiDeps, idToken: string | undefined, requestId: string, limit?: number) {
   return listChildren(deps, idToken, requestId, 'comments', limit);
+}
+
+/** A04: each waiting interval with its recipients and start / response / exit (Part 6 §6.4: detail access). */
+export function listWaitingIntervals(deps: ApiDeps, idToken: string | undefined, requestId: string, limit?: number) {
+  return listChildren(deps, idToken, requestId, 'waiting_intervals', limit);
 }
 
 const seqOf = (value: unknown) => (Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : 0);

@@ -5,7 +5,7 @@
 // release + outbox together. Auto-close runs from the worker tick (job keyed request + completion
 // cycle) and competes with the requester through the same transaction rules.
 // Emulator only (demo-* project); people, places and IDs are synthetic.
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -515,6 +515,24 @@ describe('notices for status changes', () => {
     for (const entry of (await outboxOf(id)).filter((notice) => notice.event_kind === 'request_accepted' || notice.event_kind === 'request_completed')) {
       expect(entry.recipient_id).not.toBe(GM1);
     }
+  });
+
+  it('D-A06-6: the transaction that creates status notices records the latest status revision per recipient in one document', async () => {
+    // Recipients are keyed by a hash of the person ID: no e-mail in a field name.
+    const key = (personId: string) => createHash('sha256').update(personId, 'utf8').digest('hex').slice(0, 40);
+    const head = async (id: string) => readDoc(harness.db, `outbox_heads/${id}`);
+    setNow(NOW);
+    const { id } = await newRepair();
+    // The creation notice to GM1 is not a status notice (D-A06-1): nothing recorded yet.
+    expect(await head(id)).toBeUndefined();
+    expect(await act(WATCHER, 'watch_request', { request_id: id })).toMatchObject({ status: 200 });
+    await accepted(id);
+    expect(await head(id)).toEqual({ request_id: id, status_revision_by_recipient: { [key(EMPLOYEE)]: 2, [key(WATCHER)]: 2 } });
+    await completed(id);
+    await act(EMPLOYEE, 'report_not_resolved', { request_id: id, expected_revision: 3, completion_cycle_id: 1, reason: 'ยังไม่หาย' });
+    // The requester acted on revision 4, so their latest stays 3; GM1 (D-A03-2) and the watcher get 4.
+    expect(await head(id)).toEqual({ request_id: id, status_revision_by_recipient: { [key(EMPLOYEE)]: 3, [key(WATCHER)]: 4, [key(GM1)]: 4 } });
+    expect(JSON.stringify(await head(id))).not.toContain('@');
   });
 });
 

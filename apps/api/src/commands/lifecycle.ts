@@ -1,22 +1,16 @@
 // A03 — lifecycle commands persisted (S05 domain rules; Part 6 §6.6/§6.9). One transaction per
 // command, every read before the first write:
 //   read   request + GM detail → access (unreadable = 404) → who may act → `expected_revision`
-//          (stale = 409 with the latest status, never written over) → domain rule (@gm/domain)
-//          → routing facts (company calendar, GM pins) → names → counter → user_state refs
-//   write  `requests/{id}` (revision + 1, unread clock) + public/GM summaries, history event,
-//          internal board counter (D-S09-4), user_state unread clock, focus release (D-S07-6),
-//          the auto-close job of a completion that waits for the requester, outbox notices
+//          (stale = 409 with the latest status, never written over) → the open waiting interval
+//          (A04) → domain rule (@gm/domain) → routing facts (company calendar, GM pins) → then the
+//          shared pipeline (request-change.ts) reads and writes the rest
+//   write  `requests/{id}` (revision + 1, unread clock) + summaries, history event, board counter,
+//          user_state, focus release, the auto-close job of a completion that waits for the
+//          requester, outbox notices and the latest status notice per recipient (D-A06-6); FU-26:
+//          cancelling a waiting request also closes its interval document
 // Auto-close is the same pipeline run by the worker's `auto_close` job (actor `system`): it rechecks
 // the latest state (§6.9), so it and the requester's answer close a request once.
-import {
-  buildRequestProjections,
-  joinRequestRecord,
-  type CalendarSnapshotDocument,
-  type GmRequestDetailDocument,
-  type LifecycleCommandEnvelope,
-  type RequestDocument,
-  type RequestRecord,
-} from '@gm/contracts';
+import { type CalendarSnapshotDocument, type LifecycleCommandEnvelope, type RequestRecord } from '@gm/contracts';
 import {
   acceptRequest,
   autoCloseRequest,
@@ -25,7 +19,6 @@ import {
   completeRequest,
   confirmCompletion,
   isGm,
-  releaseFocusIfNotInProgress,
   reopenRequest,
   reportNotResolved,
   type Actor,
@@ -35,29 +28,22 @@ import {
 } from '@gm/domain';
 import type { Instant } from '@gm/time';
 import { fromCalendarSnapshotDocument, toCalendarSnapshotDocument } from '../calendar-snapshot';
-import {
-  BOARD_COUNTER_PATH,
-  CommandRejected,
-  GM_REQUEST_DETAILS_COLLECTION,
-  GM_SUMMARIES_COLLECTION,
-  OUTBOX_COLLECTION,
-  PUBLIC_SUMMARIES_COLLECTION,
-  REQUESTS_COLLECTION,
-  type CommandResult,
-  type PeopleDirectory,
-  type RoutingDirectory,
-  type RoutingFacts,
-} from './execute-command';
+import { CommandRejected, type PeopleDirectory, type RoutingFacts } from './execute-command';
 import { lifecycleOutbox, type LifecycleNoticeKind } from './outbox';
-import type { CommandTransaction, StoredData } from './transaction-port';
+import {
+  advanced,
+  currentState,
+  loadRequest,
+  persistChange,
+  type LifecycleDirectories,
+  type Loaded,
+  type Persisted,
+  type RecordTransaction,
+} from './request-change';
+import { endedIntervalDocument, exitedInterval, intervalPath, toWaitingState } from './waiting-state';
+import type { StoredData } from './transaction-port';
 
-/** The part of a transaction this module uses (the worker's transaction has the same two). */
-export type RecordTransaction = Pick<CommandTransaction, 'get' | 'set'>;
-
-export interface LifecycleDirectories {
-  readonly peopleDirectory: PeopleDirectory;
-  readonly routingDirectory: RoutingDirectory;
-}
+export { type LifecycleDirectories, type RecordTransaction } from './request-change';
 
 export const SCHEDULED_WORK_COLLECTION = 'scheduled_work';
 
@@ -69,42 +55,12 @@ export function autoCloseJobId(requestId: string, completionCycleId: number): st
 const GM_COMMANDS = new Set(['accept_request', 'complete_request', 'cancel_request', 'reopen_request']);
 const WAITING_FIELDS = ['waiting_on', 'current_waiting_interval_id', 'waiting_since', 'waiting_party_responded', 'responded_at'] as const;
 
-interface Loaded {
-  readonly requestId: string;
-  readonly record: RequestRecord;
-  /** The stored `requests/{id}`, for the display pairs (D-S10-1) of a conflict answer. */
-  readonly stored: StoredData;
-}
-
-async function loadRequest(transaction: RecordTransaction, requestId: string): Promise<Loaded | undefined> {
-  const stored = await transaction.get(`${REQUESTS_COLLECTION}/${requestId}`);
-  if (stored === undefined) return undefined;
-  const gmDetail = await transaction.get(`${GM_REQUEST_DETAILS_COLLECTION}/${requestId}`);
+/** The request as the domain sees it: lifecycle fields, plus (A04) the open waiting interval. */
+function toLifecycleState(record: RequestRecord, interval: StoredData | undefined): LifecycleState {
+  const confirmation = record.confirmation_calendar_snapshot;
   return {
-    requestId,
-    stored,
-    record: joinRequestRecord(stored as unknown as RequestDocument, gmDetail as unknown as GmRequestDetailDocument | undefined),
-  };
-}
-
-function toLifecycleState(record: RequestRecord): LifecycleState {
-  const optional = <K extends string, V>(key: K, value: V | undefined) => (value === undefined ? {} : ({ [key]: value } as { readonly [P in K]: V }));
-  return {
-    source: record.source,
-    status: record.status,
-    ...optional('requesterId', record.requester_id),
-    ...optional('assigneeId', record.assignee_id),
-    lastUpdatedAt: record.last_updated_at,
-    completionCycleId: record.completion_cycle_id,
-    ...optional('completedAt', record.completed_at),
-    ...optional(
-      'confirmationCalendarSnapshot',
-      record.confirmation_calendar_snapshot === undefined ? undefined : fromCalendarSnapshotDocument(record.confirmation_calendar_snapshot),
-    ),
-    ...optional('autoCloseDueAt', record.auto_close_due_at),
-    ...optional('closedAt', record.closed_at),
-    ...optional('closureKind', record.closure_kind),
-    ...optional('cancelledAt', record.cancelled_at),
+    ...toWaitingState(record, interval),
+    ...(confirmation === undefined ? {} : { confirmationCalendarSnapshot: fromCalendarSnapshotDocument(confirmation) }),
   };
 }
 
@@ -118,7 +74,7 @@ function applyState(record: RequestRecord, state: LifecycleState, snapshot: Cale
     'closure_kind',
     'cancelled_at',
     'confirmation_calendar_snapshot',
-    // Waiting persistence is A04; a request that is no longer waiting keeps no current-wait fields.
+    // A request that is no longer waiting keeps no current-wait fields (its intervals keep the history).
     ...(state.status === 'waiting' ? [] : WAITING_FIELDS),
   ]);
   const kept = Object.fromEntries(Object.entries(record).filter(([key]) => !dropped.has(key))) as unknown as RequestRecord;
@@ -135,15 +91,8 @@ function applyState(record: RequestRecord, state: LifecycleState, snapshot: Cale
     ...optional('closure_kind', state.closureKind),
     ...optional('cancelled_at', state.cancelledAt),
     ...optional('confirmation_calendar_snapshot', state.confirmationCalendarSnapshot === undefined ? undefined : snapshot),
-    revision: record.revision + 1,
-    activity_seq: (record.activity_seq ?? 0) + 1,
-    last_activity_at: now,
+    ...advanced(record, now),
   };
-}
-
-/** “งานภายใน X รายการ” counts confidential requests not closed or cancelled (D-S09-4). */
-function countsAsInternalOpen(record: RequestRecord): boolean {
-  return record.is_confidential && record.status !== 'cancelled' && record.closed_at === undefined;
 }
 
 const NOTICE_KIND: Readonly<Record<LifecycleEvent['kind'], LifecycleNoticeKind | undefined>> = {
@@ -168,109 +117,33 @@ function historyDocument(event: LifecycleEvent, revision: number, autoCloseDueAt
     ...(event.resolutionSummary === undefined ? {} : { resolution_summary: event.resolutionSummary }),
     ...(event.previousAssigneeId === undefined ? {} : { previous_assignee_id: event.previousAssigneeId }),
     ...(event.kind === 'completed' && autoCloseDueAt !== undefined ? { auto_close_due_at: autoCloseDueAt } : {}),
+    // FU-26: cancelling while waiting ends the open interval; history keeps it.
+    ...(event.endedWaitingInterval === undefined ? {} : { ended_waiting_interval: endedIntervalDocument(event.endedWaitingInterval) }),
   };
 }
 
-/**
- * People whose unread clock moves with this event (D-A03-5): the requester, related people with
- * access, and — on a status change of a general request only — the watchers (U1). The actor is left
- * out: their own action marks the request seen for them instead.
- */
-function activityViewers(record: RequestRecord, actorId: string, statusChanged: boolean): readonly string[] {
-  const related = record.is_confidential ? record.related_person_ids.filter((id) => (record.confidential_grant_ids ?? []).includes(id)) : record.related_person_ids;
-  const watchers = record.is_confidential || !statusChanged ? [] : record.watcher_ids;
-  return [...new Set([...(record.requester_id === undefined ? [] : [record.requester_id]), ...related, ...watchers])].filter((id) => id !== actorId);
+/** D-A03-2: the assignee hears “not resolved”; D-A03-4: the previous assignee hears of a take-over. */
+function gmNotices(event: LifecycleEvent, next: RequestRecord): readonly { readonly personId: string; readonly eventKind: 'request_not_resolved' | 'request_taken_over' }[] {
+  if (event.kind === 'not_resolved' && next.assignee_id !== undefined) return [{ personId: next.assignee_id, eventKind: 'request_not_resolved' }];
+  if (event.kind === 'accepted' && event.previousAssigneeId !== undefined) return [{ personId: event.previousAssigneeId, eventKind: 'request_taken_over' }];
+  return [];
 }
 
-interface Persisted {
-  readonly result: CommandResult;
-  readonly outboxIds: readonly string[];
-}
-
-/**
- * Reads what the write phase needs, then writes everything for one lifecycle event. The caller has
- * read only the request so far; every read here still precedes the first write.
- */
-async function persist(
+/** One lifecycle event through the shared pipeline: the request, its notices, its own documents. */
+function persist(
   transaction: RecordTransaction,
   loaded: Loaded,
   outcome: { readonly state: LifecycleState; readonly event: LifecycleEvent },
-  context: { readonly actorId: string; readonly now: Instant; readonly routing: RoutingFacts; readonly peopleDirectory: PeopleDirectory },
+  context: { readonly actorId: string; readonly now: Instant; readonly routing: RoutingFacts; readonly peopleDirectory: PeopleDirectory; readonly interval?: StoredData | undefined },
 ): Promise<Persisted> {
   const { requestId, record } = loaded;
   const { state, event } = outcome;
-  const { now, routing } = context;
+  const { now } = context;
   const snapshot =
     event.kind === 'completed' && state.confirmationCalendarSnapshot !== undefined
       ? toCalendarSnapshotDocument(state.confirmationCalendarSnapshot, { sourceCalendarId: 'company', snapshotAt: now })
       : record.confirmation_calendar_snapshot;
   const next = applyState(record, state, snapshot, now);
-
-  // Reads.
-  const people = [next.created_by_id, next.requester_id, next.assignee_id, ...next.related_person_ids].filter((id): id is string => id !== undefined);
-  const names = await context.peopleDirectory.displayNames(transaction, [...new Set(people)]);
-  const counterDelta = Number(countsAsInternalOpen(next)) - Number(countsAsInternalOpen(record));
-  const counter = counterDelta === 0 ? undefined : await transaction.get(BOARD_COUNTER_PATH);
-  const viewers = activityViewers(next, context.actorId, next.status !== record.status);
-  const viewerStates = new Map<string, StoredData>();
-  for (const personId of viewers) {
-    const userState = await transaction.get(`user_state/${personId}/requests/${requestId}`);
-    if (userState !== undefined) viewerStates.set(personId, userState);
-  }
-  // The actor acted on the latest revision, so they have seen everything up to this step (D-A03-5).
-  const actorState = context.actorId === 'system' ? undefined : await transaction.get(`user_state/${context.actorId}/requests/${requestId}`);
-  const unpinned: { readonly personId: string; readonly stored: StoredData }[] = [];
-  for (const member of routing.members) {
-    const profile = member.profile;
-    if (profile === undefined || profile.focusRequestId !== requestId) continue;
-    const released = releaseFocusIfNotInProgress(profile, { id: requestId, source: next.source, status: next.status, ...(next.closed_at === undefined ? {} : { closedAt: next.closed_at }) }, now);
-    if (released.event === undefined) continue;
-    const stored = await transaction.get(`gm_profiles/${member.personId}`);
-    if (stored !== undefined) unpinned.push({ personId: member.personId, stored });
-  }
-
-  // Writes.
-  const projections = buildRequestProjections(requestId, next, {
-    now,
-    workCalendar: routing.workCalendar,
-    personLabel: (personId) => names.get(personId),
-    personTeamLabel: () => undefined,
-  });
-  transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, projections.detail);
-  transaction.set(`${GM_SUMMARIES_COLLECTION}/${requestId}`, projections.gm);
-  if (projections.public !== null) transaction.set(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`, projections.public);
-  transaction.set(`${REQUESTS_COLLECTION}/${requestId}/history/r${String(next.revision).padStart(6, '0')}`, historyDocument(event, next.revision, next.auto_close_due_at));
-  if (counterDelta !== 0) {
-    const previous = typeof counter?.internal_board_count === 'number' ? counter.internal_board_count : 0;
-    transaction.set(BOARD_COUNTER_PATH, { internal_board_count: Math.max(0, previous + counterDelta), as_of: now });
-  }
-  for (const [personId, userState] of viewerStates) {
-    transaction.set(`user_state/${personId}/requests/${requestId}`, { ...userState, activity_seq: next.activity_seq, last_activity_at: now });
-  }
-  if (actorState !== undefined) {
-    transaction.set(`user_state/${context.actorId}/requests/${requestId}`, {
-      ...actorState,
-      activity_seq: next.activity_seq,
-      last_seen_activity_seq: next.activity_seq,
-      last_activity_at: now,
-    });
-  }
-  for (const { personId, stored } of unpinned) {
-    const { focus_request_id: _released, ...rest } = stored;
-    transaction.set(`gm_profiles/${personId}`, rest);
-  }
-  if (event.kind === 'completed' && next.closed_at === undefined && next.auto_close_due_at !== undefined) {
-    // Part 6 §6.9 auto-close: one job per request + completion cycle, run by the worker's tick.
-    transaction.set(`${SCHEDULED_WORK_COLLECTION}/${autoCloseJobId(requestId, next.completion_cycle_id)}`, {
-      kind: 'auto_close',
-      state: 'scheduled',
-      next_run_at: next.auto_close_due_at,
-      attempts: 0,
-      request_id: requestId,
-      completion_cycle_id: next.completion_cycle_id,
-      created_at: now,
-    });
-  }
   const noticeKind = NOTICE_KIND[event.kind];
   const notices =
     noticeKind === undefined
@@ -289,23 +162,31 @@ async function persist(
           ...(noticeKind === 'request_completed' && next.auto_close_due_at !== undefined ? { autoCloseDueAt: next.auto_close_due_at } : {}),
           now,
         });
-  for (const notice of notices) transaction.set(`${OUTBOX_COLLECTION}/${notice.id}`, notice.data);
-  return {
-    result: { request_id: requestId, request_number: next.request_number, revision: next.revision, status: next.status },
-    outboxIds: notices.map((notice) => notice.id),
-  };
-}
-
-/** D-A03-2: the assignee hears “not resolved”; D-A03-4: the previous assignee hears of a take-over. */
-function gmNotices(event: LifecycleEvent, next: RequestRecord): readonly { readonly personId: string; readonly eventKind: 'request_not_resolved' | 'request_taken_over' }[] {
-  if (event.kind === 'not_resolved' && next.assignee_id !== undefined) return [{ personId: next.assignee_id, eventKind: 'request_not_resolved' }];
-  if (event.kind === 'accepted' && event.previousAssigneeId !== undefined) return [{ personId: event.previousAssigneeId, eventKind: 'request_taken_over' }];
-  return [];
+  const extraWrites: { path: string; data: object }[] = [];
+  if (event.kind === 'completed' && next.closed_at === undefined && next.auto_close_due_at !== undefined) {
+    // Part 6 §6.9 auto-close: one job per request + completion cycle, run by the worker's tick.
+    extraWrites.push({
+      path: `${SCHEDULED_WORK_COLLECTION}/${autoCloseJobId(requestId, next.completion_cycle_id)}`,
+      data: {
+        kind: 'auto_close',
+        state: 'scheduled',
+        next_run_at: next.auto_close_due_at,
+        attempts: 0,
+        request_id: requestId,
+        completion_cycle_id: next.completion_cycle_id,
+        created_at: now,
+      },
+    });
+  }
+  if (event.endedWaitingInterval !== undefined) {
+    extraWrites.push({ path: intervalPath(requestId, event.endedWaitingInterval.intervalId), data: exitedInterval(context.interval, event.endedWaitingInterval, 'cancelled') });
+  }
+  return persistChange(transaction, loaded, { next, history: historyDocument(event, next.revision, next.auto_close_due_at), notices, extraWrites }, context);
 }
 
 function conflict(loaded: Loaded, command: LifecycleCommandEnvelope, actor: Actor): never {
   const { record, stored } = loaded;
-  const current = { revision: record.revision, status: record.status, ...(record.closed_at === undefined ? {} : { closed: true }) };
+  const current = currentState(record);
   if (command.type === 'accept_request' && record.status !== 'queued' && record.assignee_id !== undefined && record.assignee_id !== actor.personId) {
     // “มีคนรับไปแล้ว”: who took it (a GM sees GM names).
     throw new CommandRejected('ALREADY_ACCEPTED', 'Another GM accepted this request first', {
@@ -342,7 +223,9 @@ export async function runLifecycleCommand(
   }
   if (record.revision !== payload.expected_revision) conflict(loaded, command, actor);
 
-  const state = toLifecycleState(record);
+  // A04: the open interval (its recipients), so a cancel can close it (FU-26).
+  const interval = record.current_waiting_interval_id === undefined ? undefined : await transaction.get(intervalPath(loaded.requestId, record.current_waiting_interval_id));
+  const state = toLifecycleState(record, interval);
   const routing = await context.routingDirectory.load(transaction);
   const outcome = (() => {
     switch (command.type) {
@@ -360,7 +243,7 @@ export async function runLifecycleCommand(
         return reopenRequest(state, { actor, now, reason: command.payload.reason });
     }
   })();
-  return persist(transaction, loaded, outcome, { actorId: actor.personId, now, routing, peopleDirectory: context.peopleDirectory });
+  return persist(transaction, loaded, outcome, { actorId: actor.personId, now, routing, peopleDirectory: context.peopleDirectory, interval });
 }
 
 export type AutoCloseOutcome =
@@ -378,7 +261,7 @@ export async function autoCloseInTransaction(
 ): Promise<AutoCloseOutcome> {
   const loaded = await loadRequest(transaction, input.requestId);
   if (loaded === undefined) return { kind: 'skipped', reason: 'not_found' };
-  const result = autoCloseRequest(toLifecycleState(loaded.record), { now: input.now, completionCycleId: input.completionCycleId });
+  const result = autoCloseRequest(toLifecycleState(loaded.record, undefined), { now: input.now, completionCycleId: input.completionCycleId });
   if (!result.applied) {
     return {
       kind: 'skipped',

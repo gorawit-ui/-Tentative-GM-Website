@@ -12,9 +12,14 @@
 // may have it, so it becomes `delivery_unknown` for the GM to check — never sent a second time.
 // A03: watcher notices (status changes, U1) are suppressed once the request is confidential.
 // A06: a status notice overtaken by a newer one to the same person on the same request is suppressed
-// (D-A03-7); results of notices to the requester update the GM-only “ผู้ขอยังไม่ได้รับแจ้ง” badge
-// (gm_request_details + gm_request_summaries) in the same transaction.
-import { STATUS_NOTICE_KINDS } from '@gm/api/commands';
+// (D-A03-7) — decided from one read of `outbox_heads/{request_id}`, which the notice-creating
+// transaction keeps (D-A06-6), never by querying the outbox; results of notices to the requester
+// update the GM-only “ผู้ขอยังไม่ได้รับแจ้ง” badge (gm_request_details + gm_request_summaries) in the
+// same transaction.
+// A04 (F05 §9.3): a message to the waited party is sent only while its interval is still the current
+// one and unanswered, and while the recipient can still read the request — never to a party no longer
+// waited on or to a person removed from the request.
+import { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, latestStatusRevision } from '@gm/api/commands';
 import { requesterNoticeFields, requesterNoticeStateOf, type RequestRecord } from '@gm/contracts';
 import {
   DELIVERY_LEASE_MS,
@@ -47,8 +52,10 @@ interface Entry {
   readonly requestId: string;
   readonly recipientId: string;
   readonly eventKind: string;
-  readonly audience: 'gm' | 'requester' | 'watcher';
+  readonly audience: 'gm' | 'requester' | 'watcher' | 'waiting_party';
   readonly requestNumber: string;
+  /** A04: the interval a message to the waited party belongs to. */
+  readonly waitingIntervalId?: number;
   readonly confidential: boolean;
   readonly attempts: number;
   readonly nextAttemptAt: Instant;
@@ -67,7 +74,8 @@ function parseEntry(stored: StoredData): Entry | undefined {
   const recipientId = text(stored.recipient_id);
   const eventKind = text(stored.event_kind);
   const requestNumber = text(stored.request_number);
-  const audience = stored.audience === 'requester' || stored.audience === 'gm' || stored.audience === 'watcher' ? stored.audience : undefined;
+  const audience =
+    stored.audience === 'requester' || stored.audience === 'gm' || stored.audience === 'watcher' || stored.audience === 'waiting_party' ? stored.audience : undefined;
   const attempts = Number.isSafeInteger(stored.attempts) ? (stored.attempts as number) : undefined;
   const nextAttemptAt = Number.isSafeInteger(stored.next_attempt_at) ? (stored.next_attempt_at as number) : undefined;
   if (
@@ -97,7 +105,25 @@ function parseEntry(stored: StoredData): Entry | undefined {
     attempts,
     nextAttemptAt,
     ...(Number.isSafeInteger(stored.lease_until) ? { leaseUntil: stored.lease_until as number } : {}),
+    ...(Number.isSafeInteger(stored.waiting_interval_id) ? { waitingIntervalId: stored.waiting_interval_id as number } : {}),
   };
+}
+
+const ids = (value: unknown): readonly string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
+
+/**
+ * A04 / F05 §9.3: why a message to the waited party must not go out now, if it must not. The request
+ * is the latest one read in the claim transaction; `gmPersonIds` is read only when needed (D-S06-4:
+ * a waited GM reads every request by role).
+ */
+async function waitingPartyStop(transaction: WorkerTransaction, entry: Entry, request: StoredData): Promise<string | undefined> {
+  if (request.status !== 'waiting' || request.current_waiting_interval_id !== entry.waitingIntervalId) return 'WAITING_ENDED';
+  if (request.waiting_party_responded === true) return 'ALREADY_RESPONDED';
+  if (request.requester_id === entry.recipientId) return undefined;
+  const readers = request.is_confidential === false ? ids(request.related_person_ids) : ids(request.confidential_grant_ids);
+  if (readers.includes(entry.recipientId)) return undefined;
+  const routing = await transaction.get('settings/routing');
+  return ids(routing?.gm_person_ids).includes(entry.recipientId) ? undefined : 'NO_ACCESS';
 }
 
 /** The stored entry without the fields of a running or previous attempt. */
@@ -179,7 +205,7 @@ type Claim =
   | { readonly kind: 'done'; readonly result: DispatchResult }
   | { readonly kind: 'send'; readonly message: OutboundMessage; readonly entry: Entry; readonly attempts: number; readonly attemptedAt: Instant };
 
-async function claim(transaction: WorkerTransaction, path: string, outboxId: string, now: Instant, leaseId: string, superseded: boolean): Promise<Claim> {
+async function claim(transaction: WorkerTransaction, path: string, outboxId: string, now: Instant, leaseId: string): Promise<Claim> {
   const stored = await transaction.get(path);
   if (stored === undefined) return { kind: 'done', result: 'skipped' };
   const entry = parseEntry(stored);
@@ -199,6 +225,11 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   }
   const request = await transaction.get(`requests/${entry.requestId}`);
   const person = await transaction.get(`people/${entry.recipientId}`);
+  // D-A06-6: one read decides whether a newer status notice to this person exists (D-A03-7).
+  const superseded =
+    STATUS_NOTICE_KINDS.has(entry.eventKind) &&
+    latestStatusRevision(await transaction.get(`${OUTBOX_HEADS_COLLECTION}/${entry.requestId}`), entry.recipientId) > entry.revision;
+  const waitingStop = request !== undefined && WAITING_PARTY_NOTICE_KINDS.has(entry.eventKind) ? await waitingPartyStop(transaction, entry, request) : undefined;
   const stop = (settlement: DeliverySettlement): Claim => {
     transaction.set(path, { ...settledEntry(stored, settlement, now), last_attempt_at: now });
     if (badge !== undefined) writeBadge(transaction, badge, observationOf(entry, settlement, now));
@@ -210,6 +241,7 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   if (request.status === 'cancelled' && MOOT_WHEN_CANCELLED.has(entry.eventKind)) return stop({ state: 'suppressed', errorCode: 'REQUEST_CANCELLED' });
   // A03 / U1: watching alone gives no access to a confidential request, so its watchers hear nothing.
   if (entry.audience === 'watcher' && request.is_confidential !== false) return stop({ state: 'suppressed', errorCode: 'NO_ACCESS' });
+  if (waitingStop !== undefined) return stop({ state: 'suppressed', errorCode: waitingStop });
   const slackUserId = text(person?.slack_user_id);
   const channel = chooseDeliveryChannel(person === undefined ? undefined : { active: person.active === true, ...(slackUserId === undefined ? {} : { slackUserId }) });
   // A1.2: no channel → the GM contacts the person; the entry says why (“ผู้ขอยังไม่ได้รับแจ้ง”).
@@ -246,26 +278,10 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   };
 }
 
-/** Upper bound of notices one person gets about one request that the superseding check reads. */
-const NOTICES_PER_PERSON_LIMIT = 100;
-
-/**
- * D-A03-7: is there a status notice to the same person on the same request from a later revision?
- * Read before the claim: once true it stays true, so it needs no transaction.
- */
-async function isSuperseded(deps: WorkerDeps, path: string): Promise<boolean> {
-  const stored = await deps.store.get(path);
-  const entry = stored === undefined ? undefined : parseEntry(stored);
-  if (entry === undefined || entry.state !== 'pending' || !STATUS_NOTICE_KINDS.has(entry.eventKind)) return false;
-  const notices = await deps.store.outboxWhere({ request_id: entry.requestId, recipient_id: entry.recipientId }, NOTICES_PER_PERSON_LIMIT);
-  return notices.some(({ data }) => typeof data.event_kind === 'string' && STATUS_NOTICE_KINDS.has(data.event_kind) && Number(data.revision) > entry.revision);
-}
-
 export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promise<DispatchResult> {
   const path = `${OUTBOX_COLLECTION}/${outboxId}`;
   const leaseId = deps.newLeaseId();
-  const superseded = await isSuperseded(deps, path);
-  const claimed = await deps.store.runTransaction((transaction) => claim(transaction, path, outboxId, deps.now(), leaseId, superseded));
+  const claimed = await deps.store.runTransaction((transaction) => claim(transaction, path, outboxId, deps.now(), leaseId));
   if (claimed.kind === 'done') {
     if (claimed.result !== 'skipped') deps.log.info('outbox.settled', { outbox_id: outboxId, state: claimed.result });
     return claimed.result;

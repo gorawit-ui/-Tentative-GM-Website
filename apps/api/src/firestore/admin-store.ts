@@ -41,6 +41,11 @@ export const INSTANT_FIELDS: ReadonlySet<string> = new Set([
   'last_completed_at',
   // A03: unread clock.
   'last_activity_at',
+  // A04: waiting intervals and reminders.
+  'started_at',
+  'exited_at',
+  'reminded_at',
+  'send_at',
 ]);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -80,6 +85,9 @@ export function adminCommandStore(db: Firestore, options: { readonly maxAttempts
             },
             update: (path, data) => {
               transaction.update(db.doc(path), toStored(data));
+            },
+            delete: (path) => {
+              transaction.delete(db.doc(path));
             },
           };
           return work(port);
