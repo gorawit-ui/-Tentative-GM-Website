@@ -171,10 +171,14 @@ function historyDocument(event: LifecycleEvent, revision: number, autoCloseDueAt
   };
 }
 
-/** People whose unread clock moves with this event: the requester, related people with access, and (public status) watchers. */
-function activityViewers(record: RequestRecord, actorId: string): readonly string[] {
+/**
+ * People whose unread clock moves with this event (D-A03-5): the requester, related people with
+ * access, and — on a status change of a general request only — the watchers (U1). The actor is left
+ * out: their own action marks the request seen for them instead.
+ */
+function activityViewers(record: RequestRecord, actorId: string, statusChanged: boolean): readonly string[] {
   const related = record.is_confidential ? record.related_person_ids.filter((id) => (record.confidential_grant_ids ?? []).includes(id)) : record.related_person_ids;
-  const watchers = record.is_confidential ? [] : record.watcher_ids;
+  const watchers = record.is_confidential || !statusChanged ? [] : record.watcher_ids;
   return [...new Set([...(record.requester_id === undefined ? [] : [record.requester_id]), ...related, ...watchers])].filter((id) => id !== actorId);
 }
 
@@ -207,12 +211,14 @@ async function persist(
   const names = await context.peopleDirectory.displayNames(transaction, [...new Set(people)]);
   const counterDelta = Number(countsAsInternalOpen(next)) - Number(countsAsInternalOpen(record));
   const counter = counterDelta === 0 ? undefined : await transaction.get(BOARD_COUNTER_PATH);
-  const viewers = activityViewers(next, context.actorId);
+  const viewers = activityViewers(next, context.actorId, next.status !== record.status);
   const viewerStates = new Map<string, StoredData>();
   for (const personId of viewers) {
     const userState = await transaction.get(`user_state/${personId}/requests/${requestId}`);
     if (userState !== undefined) viewerStates.set(personId, userState);
   }
+  // The actor acted on the latest revision, so they have seen everything up to this step (D-A03-5).
+  const actorState = context.actorId === 'system' ? undefined : await transaction.get(`user_state/${context.actorId}/requests/${requestId}`);
   const unpinned: { readonly personId: string; readonly stored: StoredData }[] = [];
   for (const member of routing.members) {
     const profile = member.profile;
@@ -241,6 +247,14 @@ async function persist(
   for (const [personId, userState] of viewerStates) {
     transaction.set(`user_state/${personId}/requests/${requestId}`, { ...userState, activity_seq: next.activity_seq, last_activity_at: now });
   }
+  if (actorState !== undefined) {
+    transaction.set(`user_state/${context.actorId}/requests/${requestId}`, {
+      ...actorState,
+      activity_seq: next.activity_seq,
+      last_seen_activity_seq: next.activity_seq,
+      last_activity_at: now,
+    });
+  }
   for (const { personId, stored } of unpinned) {
     const { focus_request_id: _released, ...rest } = stored;
     transaction.set(`gm_profiles/${personId}`, rest);
@@ -265,10 +279,12 @@ async function persist(
           requestId,
           requestNumber: next.request_number,
           revision: next.revision,
+          activitySeq: next.activity_seq ?? next.revision,
           eventKind: noticeKind,
           actorId: context.actorId,
           ...(next.requester_id === undefined ? {} : { requesterId: next.requester_id }),
           watcherIds: next.watcher_ids,
+          gmRecipients: gmNotices(event, next),
           isConfidential: next.is_confidential,
           ...(noticeKind === 'request_completed' && next.auto_close_due_at !== undefined ? { autoCloseDueAt: next.auto_close_due_at } : {}),
           now,
@@ -278,6 +294,13 @@ async function persist(
     result: { request_id: requestId, request_number: next.request_number, revision: next.revision, status: next.status },
     outboxIds: notices.map((notice) => notice.id),
   };
+}
+
+/** D-A03-2: the assignee hears “not resolved”; D-A03-4: the previous assignee hears of a take-over. */
+function gmNotices(event: LifecycleEvent, next: RequestRecord): readonly { readonly personId: string; readonly eventKind: 'request_not_resolved' | 'request_taken_over' }[] {
+  if (event.kind === 'not_resolved' && next.assignee_id !== undefined) return [{ personId: next.assignee_id, eventKind: 'request_not_resolved' }];
+  if (event.kind === 'accepted' && event.previousAssigneeId !== undefined) return [{ personId: event.previousAssigneeId, eventKind: 'request_taken_over' }];
+  return [];
 }
 
 function conflict(loaded: Loaded, command: LifecycleCommandEnvelope, actor: Actor): never {

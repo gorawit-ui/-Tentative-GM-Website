@@ -30,6 +30,7 @@ describe('API matrix (S12)', () => {
 
   it('a watcher gets the contribution upload and nothing that shows the request detail', () => {
     const allowed = API_ENDPOINTS.filter((endpoint) => apiDecide('watcher', endpoint.key) === 'allow').map((endpoint) => endpoint.key);
-    expect(allowed).toEqual(['my_requests', 'awaiting_confirmation', 'upload_url.watch_contribution.general']);
+    // A06: marking the summary seen shows nothing more than the summary itself.
+    expect(allowed).toEqual(['my_requests', 'awaiting_confirmation', 'upload_url.watch_contribution.general', 'mark_seen.general']);
   });
 });

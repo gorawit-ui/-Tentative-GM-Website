@@ -21,7 +21,7 @@
 | 1 | **A01** API auth + create persistence/outbox | S12 | ได้ (ทำใน session นี้) | ค่า calendar/default owner จริงจาก P7-ADMIN-04 ก่อน pilot | FU-16 (ต่อ HTTP — ทำแล้วใน A01; สิทธิ์ IAM เซ็น URL รอ P7-INFRA-01) |
 | 2 | A02 worker queue / tick lease / retry | A01 | ได้ (ทำแล้ว) | — | FU-01 (ย้าย pipeline เป็น module ร่วม ก่อน B15); FU-20 ส่วน tick ปิดแล้ว |
 | 3 | A03 lifecycle persistence / revision | A01 | ได้ (ทำแล้ว รวม auto-close job) | — | FU-04 (assign), FU-02 (คอมเมนต์ GM = ความคืบหน้า) |
-| 4 | A06 unread / pending confirms / delivery badge | A01, S12 | ได้ | — | FU-08 (watch เขียน `user_state`), FU-23 (ป้าย “ผู้ขอยังไม่ได้รับแจ้ง” จาก outbox) |
+| 4 | A06 unread / pending confirms / delivery badge | A01, S12 | ได้ (ทำแล้ว) | — | FU-08 ปิดแล้ว; FU-23 ส่วน badge ทำแล้ว |
 | 5 | A04 waiting / follow / response + history | A03, A02 | ได้ | — | FU-12 (เพิ่ม/ถอดผู้เกี่ยวข้อง API), FU-09 (ติดธงลับ API), FU-26 (ยกเลิกจาก waiting ปิด interval) |
 | 6 | A05 stale / auto-close / presence tick | A02, A03 | ได้ (calendar สังเคราะห์) | P7-ADMIN-04 วันหยุดจริงก่อน pilot | FU-27 (`work_calendar_snapshot`); auto-close job ทำแล้วใน A03 เหลือ stale + presence |
 | 7 | A07 Slack outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-03 สำหรับ sandbox จริง | FU-17 |
@@ -34,7 +34,7 @@
 | 14 | A14 repair step 4 + submission/retry/title | A12, A13 | ได้ | — | — |
 | 15 | A15 photo compression / picker / progress | A14, S12 | ได้ | — | FU-14, FU-15, FU-18 |
 | 16 | A16 my requests / related summary / unread UI | A09, A03, A06 | ได้ | — | FU-08 |
-| 17 | A17 details / comments / history | A16, A15 | ได้ | — | FU-02, FU-15 |
+| 17 | A17 details / comments / history | A16, A15 | ได้ | — | FU-02, FU-15, FU-23 (ตารางผลการส่ง + ส่งอีกครั้ง), FU-29 (ติดต่อผู้ขอแล้ว) |
 | 18 | A18 mobile GM board | A09, A03, S09 | ได้ | — | FU-13, FU-04 |
 | 19 | A19 desktop Kanban / bounded listeners | A18 | ได้ | — | FU-13 |
 | 20 | A21 GM create cross-team + on-behalf | A09, A01, A04 | ได้ | P7-ADMIN-04 default owner/types จริงก่อน pilot | FU-06, FU-21 |

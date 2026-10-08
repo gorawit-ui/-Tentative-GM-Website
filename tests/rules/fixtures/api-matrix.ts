@@ -21,7 +21,8 @@ export type ApiEndpointKind =
   | 'awaiting_confirmation'
   | 'view_url'
   | 'upload_url.attachment'
-  | 'upload_url.watch_contribution';
+  | 'upload_url.watch_contribution'
+  | 'mark_seen';
 
 export interface ApiEndpoint {
   readonly key: string;
@@ -33,6 +34,9 @@ export interface ApiEndpoint {
 }
 
 const ATTACHERS: readonly SubjectKey[] = ['requester', ...GM_SUBJECTS];
+/** A06: marking “seen” needs one's own user_state reference with a relation that still holds; GM keep none. */
+const SEEN_GENERAL: readonly SubjectKey[] = [...DETAIL_SUBJECTS.filter((key) => !GM_SUBJECTS.includes(key)), 'watcher'];
+const SEEN_CONFIDENTIAL: readonly SubjectKey[] = CONFIDENTIAL_DETAIL_SUBJECTS.filter((key) => !GM_SUBJECTS.includes(key));
 
 export const API_ENDPOINTS: readonly ApiEndpoint[] = [
   { key: 'request_detail.general', kind: 'request_detail', requestId: GENERAL_REQUEST_ID, description: 'รายละเอียดงาน (งานไม่ลับ)', allow: DETAIL_SUBJECTS },
@@ -53,6 +57,20 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
     requestId: GENERAL_REQUEST_ID,
     description: 'รูปของผู้แจ้งเพิ่มตอนกดติดตาม 1 ครั้ง ไม่เกิน 3 รูป (U1, D-S12-3) — watcher เท่านั้น ดูรูปตัวเองหลังส่งไม่ได้',
     allow: ['watcher'],
+  },
+  {
+    key: 'mark_seen.general',
+    kind: 'mark_seen',
+    requestId: GENERAL_REQUEST_ID,
+    description: 'บันทึกว่าเปิดดูแล้ว (จุด “มีอัปเดตใหม่”, A06): เจ้าของ user_state ที่ความสัมพันธ์ยังจริง — ผู้ขอ, related ที่อ่านได้, watcher ของงานไม่ลับ; GM ไม่มี user_state',
+    allow: SEEN_GENERAL,
+  },
+  {
+    key: 'mark_seen.confidential',
+    kind: 'mark_seen',
+    requestId: SECRET_REQUEST_ID,
+    description: 'บันทึกว่าเปิดดูแล้วของงานลับ: ผู้ขอและ grant (watcher ไม่มีสิทธิ์)',
+    allow: SEEN_CONFIDENTIAL,
   },
 ];
 

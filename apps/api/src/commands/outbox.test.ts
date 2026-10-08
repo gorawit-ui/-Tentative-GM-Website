@@ -43,6 +43,9 @@ describe('newRequestOutbox', () => {
         attempts: 0,
         next_attempt_at: NOW,
         created_at: NOW,
+        // A06: the request revision and unread step of the event (D-A03-7 superseding, requester badge).
+        revision: 1,
+        activity_seq: 1,
       },
     });
   });
@@ -96,6 +99,7 @@ describe('lifecycleOutbox', () => {
     requestId: 'req-7',
     requestNumber: 'GM-0007',
     revision: 4,
+    activitySeq: 4,
     actorId: 'gm.staff01@tdfb.co',
     requesterId: 'employee01@tdfb.co',
     watcherIds: ['watcher01@tdfb.co', 'watcher02@tdfb.co'],
@@ -125,6 +129,8 @@ describe('lifecycleOutbox', () => {
         attempts: 0,
         next_attempt_at: NOW,
         created_at: NOW,
+        revision: 4,
+        activity_seq: 4,
       },
     });
   });
@@ -154,5 +160,61 @@ describe('lifecycleOutbox', () => {
   it('no requester account (GM task, typed name) and no watchers → nobody', () => {
     const { requesterId: _none, ...withoutRequester } = base;
     expect(lifecycleOutbox({ ...withoutRequester, watcherIds: [], eventKind: 'request_completed' })).toEqual([]);
+  });
+});
+
+// D-A03-2 / D-A03-4 — GM notices that come with a status change: the assignee when the requester
+// says “not resolved”, the previous assignee when another GM takes the request over.
+describe('lifecycleOutbox: GM notices (D-A03-2, D-A03-4)', () => {
+  const base = {
+    requestId: 'req-8',
+    requestNumber: 'GM-0008',
+    revision: 5,
+    activitySeq: 5,
+    requesterId: 'employee01@tdfb.co',
+    watcherIds: ['watcher01@tdfb.co'],
+    isConfidential: false,
+    now: NOW,
+  } as const;
+
+  it('“not resolved”: the assignee GM is told (the requester, who acted, is not)', () => {
+    const entries = lifecycleOutbox({
+      ...base,
+      actorId: 'employee01@tdfb.co',
+      eventKind: 'request_not_resolved',
+      gmRecipients: [{ personId: 'gm.staff01@tdfb.co', eventKind: 'request_not_resolved' }],
+    });
+    expect(entries.map((entry) => [entry.data.recipient_id, entry.data.audience, entry.data.event_kind])).toEqual([
+      ['watcher01@tdfb.co', 'watcher', 'request_not_resolved'],
+      ['gm.staff01@tdfb.co', 'gm', 'request_not_resolved'],
+    ]);
+  });
+
+  it('take-over: the previous assignee gets “request_taken_over”; the GM who took it is not told', () => {
+    const entries = lifecycleOutbox({
+      ...base,
+      actorId: 'gm.staff02@tdfb.co',
+      eventKind: 'request_accepted',
+      gmRecipients: [
+        { personId: 'gm.staff01@tdfb.co', eventKind: 'request_taken_over' },
+        { personId: 'gm.staff02@tdfb.co', eventKind: 'request_taken_over' },
+      ],
+    });
+    expect(entries.map((entry) => [entry.data.recipient_id, entry.data.audience, entry.data.event_kind])).toEqual([
+      ['employee01@tdfb.co', 'requester', 'request_accepted'],
+      ['watcher01@tdfb.co', 'watcher', 'request_accepted'],
+      ['gm.staff01@tdfb.co', 'gm', 'request_taken_over'],
+    ]);
+  });
+
+  it('a GM who is also the requester gets one entry, the requester one', () => {
+    const entries = lifecycleOutbox({
+      ...base,
+      requesterId: 'gm.staff01@tdfb.co',
+      actorId: 'gm.staff02@tdfb.co',
+      eventKind: 'request_accepted',
+      gmRecipients: [{ personId: 'gm.staff01@tdfb.co', eventKind: 'request_taken_over' }],
+    });
+    expect(entries.filter((entry) => entry.data.recipient_id === 'gm.staff01@tdfb.co').map((entry) => entry.data.audience)).toEqual(['requester']);
   });
 });

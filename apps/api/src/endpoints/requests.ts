@@ -1,9 +1,9 @@
 // S12 — read endpoints over the Admin SDK, which bypasses Rules: every one authenticates the caller
 // (fresh access/{uid}) and applies the same domain predicates as the Rules (ACL matrix fixture).
 // A request the caller may not read answers 404, like a missing one.
-import { MAX_LIST_LIMIT, pageLimit, type RequestDetailDocument } from '@gm/contracts';
-import { canReadRequestDetail, type AccessViewer, type RequestAclFacts } from '@gm/domain';
-import { fromStored } from '../firestore/admin-store';
+import { MAX_LIST_LIMIT, pageLimit, requesterNoticeFields, requesterNoticeStateOf, type RequestDetailDocument, type RequestRecord } from '@gm/contracts';
+import { canReadRequestDetail, requesterNoticeAfter, type AccessViewer, type RequestAclFacts } from '@gm/domain';
+import { fromStored, toStored } from '../firestore/admin-store';
 import { authenticate, guarded } from './authenticate';
 import type { ApiDeps } from './deps';
 import { ApiError, notFound } from './errors';
@@ -16,6 +16,10 @@ export interface MyRequestCard {
   readonly relation: 'requester' | 'related' | 'watcher';
   /** True when only the public summary may be shown (watchers, U1). */
   readonly summary_only: boolean;
+  /** A06: “มีอัปเดตใหม่” — a step this person may see that they have not opened yet (D-A03-5). */
+  readonly has_update: boolean;
+  /** A06: the latest step this person may see (sent back to mark it seen). */
+  readonly activity_seq: number;
 }
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -69,13 +73,22 @@ export function listComments(deps: ApiDeps, idToken: string | undefined, request
   return listChildren(deps, idToken, requestId, 'comments', limit);
 }
 
-const card = (requestId: string, data: Readonly<Record<string, unknown>>, relation: MyRequestCard['relation']): MyRequestCard => ({
+const seqOf = (value: unknown) => (Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : 0);
+
+const card = (
+  requestId: string,
+  data: Readonly<Record<string, unknown>>,
+  relation: MyRequestCard['relation'],
+  userState: Readonly<Record<string, unknown>>,
+): MyRequestCard => ({
   request_id: requestId,
   request_number: String(data.request_number ?? ''),
   summary_title: String(data.summary_title ?? ''),
   status: String(data.status ?? ''),
   relation,
   summary_only: relation === 'watcher',
+  has_update: seqOf(userState.activity_seq) > seqOf(userState.last_seen_activity_seq),
+  activity_seq: seqOf(userState.activity_seq),
 });
 
 /**
@@ -96,11 +109,11 @@ export function listMyRequests(deps: ApiDeps, idToken: string | undefined): Prom
         const request = fromStored(snapshot.data() ?? {});
         const facts = aclFacts(request);
         const holds = relation === 'requester' ? facts.requesterId === viewer.personId : facts.relatedPersonIds.includes(viewer.personId);
-        if (holds && canReadRequestDetail(viewer, facts)) cards.push(card(ref.id, request, relation));
+        if (holds && canReadRequestDetail(viewer, facts)) cards.push(card(ref.id, request, relation, ref.data()));
       } else if (relation === 'watcher') {
         const [summary, gmDetail] = await Promise.all([deps.db.doc(`request_summaries/${ref.id}`).get(), deps.db.doc(`gm_request_details/${ref.id}`).get()]);
         const watchers = gmDetail.data()?.watcher_ids;
-        if (summary.exists && Array.isArray(watchers) && watchers.includes(viewer.personId)) cards.push(card(ref.id, fromStored(summary.data() ?? {}), 'watcher'));
+        if (summary.exists && Array.isArray(watchers) && watchers.includes(viewer.personId)) cards.push(card(ref.id, fromStored(summary.data() ?? {}), 'watcher', ref.data()));
       }
     }
     deps.log.info('my_requests.listed', { count: cards.length });
@@ -119,5 +132,72 @@ export function countAwaitingConfirmation(deps: ApiDeps, idToken: string | undef
       .limit(MAX_LIST_LIMIT)
       .get();
     return { count: snapshot.docs.filter((document) => document.data().closed_at === undefined).length };
+  });
+}
+
+/**
+ * A06 — “เปิดดูแล้ว” (Part 2 Addendum A1.1, D-A03-5): the screen reports the step it showed after it
+ * rendered successfully; only that much counts as read, so an event that arrived meanwhile keeps the
+ * dot. Allowed only on one's own user_state reference whose relation still holds (requester / related
+ * with access / watcher of a general request); anything else answers 404. When the requester opens
+ * an update, that is evidence they know of it, so the GM badge “ผู้ขอยังไม่ได้รับแจ้ง” for that step
+ * clears (A1.2).
+ */
+export function markSeen(
+  deps: ApiDeps,
+  idToken: string | undefined,
+  requestId: string,
+  input: { readonly activitySeq: number },
+): Promise<{ readonly activity_seq: number; readonly last_seen_activity_seq: number; readonly has_update: boolean }> {
+  return guarded(deps, 'request_seen.mark', requestId, async () => {
+    const { viewer } = await authenticate(deps, idToken);
+    requireRequestId(requestId);
+    if (!Number.isSafeInteger(input.activitySeq) || input.activitySeq < 0) throw new ApiError(400, 'ACTIVITY_SEQ_INVALID');
+    const db = deps.db;
+    return db.runTransaction(async (transaction) => {
+      const userStateRef = db.doc(`user_state/${viewer.personId}/requests/${requestId}`);
+      const [userStateSnap, requestSnap, gmDetailSnap, gmSummarySnap] = await Promise.all([
+        transaction.get(userStateRef),
+        transaction.get(db.doc(`requests/${requestId}`)),
+        transaction.get(db.doc(`gm_request_details/${requestId}`)),
+        transaction.get(db.doc(`gm_request_summaries/${requestId}`)),
+      ]);
+      if (!userStateSnap.exists || !requestSnap.exists) throw notFound();
+      const userState = fromStored(userStateSnap.data() ?? {});
+      const request = fromStored(requestSnap.data() ?? {});
+      const facts = aclFacts(request);
+      const watchers = gmDetailSnap.data()?.watcher_ids;
+      const holds =
+        userState.type === 'requester'
+          ? facts.requesterId === viewer.personId && canReadRequestDetail(viewer, facts)
+          : userState.type === 'related'
+            ? facts.relatedPersonIds.includes(viewer.personId) && canReadRequestDetail(viewer, facts)
+            : userState.type === 'watcher' && !facts.isConfidential && Array.isArray(watchers) && watchers.includes(viewer.personId);
+      if (!holds) throw notFound();
+      const visible = seqOf(userState.activity_seq);
+      const previous = seqOf(userState.last_seen_activity_seq);
+      // Only what was shown counts, and never more than this person could see.
+      const lastSeen = Math.max(previous, Math.min(input.activitySeq, visible));
+      if (lastSeen !== previous) {
+        transaction.set(userStateRef, toStored({ ...userState, last_seen_activity_seq: lastSeen, last_viewed_at: deps.now() }));
+      }
+      if (userState.type === 'requester' && gmDetailSnap.exists && lastSeen > 0) {
+        const gmDetail = fromStored(gmDetailSnap.data() ?? {});
+        const before = requesterNoticeStateOf(gmDetail as Pick<RequestRecord, 'requester_not_notified' | 'requester_notified_seq'>);
+        const after = requesterNoticeFields(requesterNoticeAfter(before, { kind: 'seen', activitySeq: lastSeen }));
+        if (JSON.stringify(after) !== JSON.stringify(requesterNoticeFields(before))) {
+          const { requester_not_notified: _issue, requester_notified_seq: _seq, ...rest } = gmDetail;
+          transaction.set(db.doc(`gm_request_details/${requestId}`), toStored({ ...rest, ...after }));
+          if (gmSummarySnap.exists) {
+            const { requester_not_notified: _shown, ...summary } = fromStored(gmSummarySnap.data() ?? {});
+            transaction.set(
+              db.doc(`gm_request_summaries/${requestId}`),
+              toStored({ ...summary, ...(after.requester_not_notified === undefined ? {} : { requester_not_notified: after.requester_not_notified }) }),
+            );
+          }
+        }
+      }
+      return { activity_seq: visible, last_seen_activity_seq: lastSeen, has_update: visible > lastSeen };
+    });
   });
 }

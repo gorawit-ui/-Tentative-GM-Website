@@ -179,13 +179,14 @@ describe('every S05 lifecycle command is saved through the API in one transactio
     setNow(NOW + HOUR);
     const reply = await act(GM1, 'accept_request', { request_id: id, expected_revision: 1 });
     expect(reply).toMatchObject({ status: 200, body: { replayed: false, result: { request_id: id, request_number: number, revision: 2, status: 'in_progress' } } });
-    expect(await request(id)).toMatchObject({ status: 'in_progress', revision: 2, assignee_id: GM1, last_updated_at: NOW + HOUR, activity_seq: 1, last_activity_at: NOW + HOUR });
+    // A06 (D-A03-5): creating the request is unread step 1, the accept step 2.
+    expect(await request(id)).toMatchObject({ status: 'in_progress', revision: 2, assignee_id: GM1, last_updated_at: NOW + HOUR, activity_seq: 2, last_activity_at: NOW + HOUR });
     expect(await readDoc(harness.db, `request_summaries/${id}`)).toMatchObject({ status: 'in_progress' });
     expect(await readDoc(harness.db, `gm_request_summaries/${id}`)).toMatchObject({ status: 'in_progress', last_updated_at: NOW + HOUR, stale: false });
     expect((await history(id)).filter((event) => event.kind === 'accepted')).toEqual([
       expect.objectContaining({ kind: 'accepted', at: NOW + HOUR, actor_id: GM1, revision: 2 }),
     ]);
-    expect(await readDoc(harness.db, `user_state/${EMPLOYEE}/requests/${id}`)).toMatchObject({ type: 'requester', activity_seq: 1, last_activity_at: NOW + HOUR });
+    expect(await readDoc(harness.db, `user_state/${EMPLOYEE}/requests/${id}`)).toMatchObject({ type: 'requester', activity_seq: 2, last_activity_at: NOW + HOUR });
     const notices = (await outboxOf(id)).filter((entry) => entry.event_kind === 'request_accepted');
     expect(notices).toEqual([expect.objectContaining({ recipient_id: EMPLOYEE, audience: 'requester', request_number: number, state: 'pending' })]);
   });
@@ -233,6 +234,8 @@ describe('every S05 lifecycle command is saved through the API in one transactio
       expect.objectContaining({ closure_kind: 'requester_confirmed', actor_id: EMPLOYEE, completion_cycle_id: 1 }),
     ]);
     expect((await outboxOf(id)).filter((entry) => entry.recipient_id === EMPLOYEE && entry.event_kind !== 'request_accepted' && entry.event_kind !== 'request_completed')).toEqual([]);
+    // D-A03-2: confirming leaves the GM nothing to do, so the GM is not told either.
+    expect((await outboxOf(id)).filter((entry) => entry.audience === 'gm' && entry.event_kind !== 'request_created')).toEqual([]);
   });
 
   it('not resolved: back to in_progress, the cycle’s due cleared, cycle kept, last_updated_at moves (D-S05-3)', async () => {
@@ -247,7 +250,21 @@ describe('every S05 lifecycle command is saved through the API in one transactio
     expect(stored).toMatchObject({ status: 'in_progress', completion_cycle_id: 1, assignee_id: GM1, last_updated_at: NOW + 6 * HOUR });
     for (const field of ['completed_at', 'auto_close_due_at', 'confirmation_calendar_snapshot', 'closed_at']) expect(stored).not.toHaveProperty(field);
     expect((await history(id)).find((event) => event.kind === 'not_resolved')).toMatchObject({ reason: 'ยังหลุดอยู่ช่วงบ่าย', actor_id: EMPLOYEE, completion_cycle_id: 1 });
-    expect((await outboxOf(id)).filter((entry) => entry.event_kind === 'request_not_resolved')).toEqual([]);
+    // D-A03-2: the request is back on the assignee's plate, so they are told; the requester (actor) is not.
+    expect((await outboxOf(id)).filter((entry) => entry.event_kind === 'request_not_resolved')).toEqual([
+      expect.objectContaining({ recipient_id: GM1, audience: 'gm', state: 'pending' }),
+    ]);
+  });
+
+  it('D-A03-4: a GM taking over a request assigned to another GM tells that GM', async () => {
+    setNow(NOW);
+    const { id } = await newRepair();
+    expect(await act(GM2, 'accept_request', { request_id: id, expected_revision: 1 })).toMatchObject({ status: 422, body: { error: 'TAKEOVER_CONFIRMATION_REQUIRED' } });
+    expect(await act(GM2, 'accept_request', { request_id: id, expected_revision: 1, take_over: true })).toMatchObject({ status: 200 });
+    expect((await history(id)).find((event) => event.kind === 'accepted')).toMatchObject({ actor_id: GM2, previous_assignee_id: GM1 });
+    expect((await outboxOf(id)).filter((entry) => entry.audience === 'gm' && entry.event_kind !== 'request_created')).toEqual([
+      expect.objectContaining({ recipient_id: GM1, event_kind: 'request_taken_over' }),
+    ]);
   });
 
   it('cancel and reopen: reasons in history, requester told each time, cancelled_at cleared on reopen, assignee kept (D-S05-4)', async () => {
@@ -492,9 +509,12 @@ describe('notices for status changes', () => {
     expect(done.map((entry) => entry.recipient_id).sort()).toEqual([EMPLOYEE, WATCHER].sort());
     // The requester answers: the watcher is told the status changed, the requester (actor) is not.
     await act(EMPLOYEE, 'report_not_resolved', { request_id: id, expected_revision: await revisionOf(id), completion_cycle_id: 1, reason: 'ยังไม่หาย' });
-    expect((await outboxOf(id)).filter((entry) => entry.event_kind === 'request_not_resolved').map((entry) => entry.recipient_id)).toEqual([WATCHER]);
-    // The creation notice to the default owner (A01) aside, no status notice goes to the GM who acted.
-    for (const entry of (await outboxOf(id)).filter((notice) => notice.event_kind !== 'request_created')) expect([GM1, GM2]).not.toContain(entry.recipient_id);
+    // The watcher hears the status changed; the assignee is told too (D-A03-2); the requester acted.
+    expect((await outboxOf(id)).filter((entry) => entry.event_kind === 'request_not_resolved').map((entry) => entry.recipient_id).sort()).toEqual([GM1, WATCHER].sort());
+    // GM1 accepted and completed: none of those notices went to GM1.
+    for (const entry of (await outboxOf(id)).filter((notice) => notice.event_kind === 'request_accepted' || notice.event_kind === 'request_completed')) {
+      expect(entry.recipient_id).not.toBe(GM1);
+    }
   });
 });
 

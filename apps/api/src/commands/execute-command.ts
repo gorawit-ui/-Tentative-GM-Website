@@ -14,6 +14,8 @@ import {
   buildRequestProjections,
   isLifecycleCommand,
   joinRequestRecord,
+  requesterNoticeFields,
+  watcherCount,
   type CommandEnvelope,
   type CreateOnBehalfPayload,
   type GmRequestDetailDocument,
@@ -25,6 +27,7 @@ import {
   allGmNoticeRecipients,
   createRequestDraft,
   formatRequestNumber,
+  noAccountNotice,
   routeNewRequest,
   nextRequestSequence,
   watchRequest,
@@ -242,11 +245,18 @@ async function create(
     ...(route.assigneeId === undefined ? {} : { assignee_id: route.assigneeId }),
     ...(route.assigneeOnLeave === undefined ? {} : { assignee_on_leave: route.assigneeOnLeave }),
   });
+  // A06 (D-A03-5): creating the request is unread step 1 — seen by whoever created it, new to the others.
+  const seenBy = (personId: string) => (personId === actor.personId ? 1 : 0);
   if (record.requester_id !== undefined) {
-    transaction.set(`user_state/${record.requester_id}/requests/${requestId}`, { type: 'requester', last_seen_activity_seq: 0, created_at: now });
+    transaction.set(`user_state/${record.requester_id}/requests/${requestId}`, {
+      type: 'requester',
+      activity_seq: 1,
+      last_seen_activity_seq: seenBy(record.requester_id),
+      created_at: now,
+    });
   }
   for (const personId of record.related_person_ids) {
-    transaction.set(`user_state/${personId}/requests/${requestId}`, { type: 'related', last_seen_activity_seq: 0, created_at: now });
+    transaction.set(`user_state/${personId}/requests/${requestId}`, { type: 'related', activity_seq: 1, last_seen_activity_seq: seenBy(personId), created_at: now });
   }
   const outbox = newRequestOutbox({
     requestId,
@@ -371,7 +381,11 @@ function newRequestRecord(draft: RequestDraft, requestNumber: string, now: Insta
     status: 'queued',
     revision: 1,
     last_updated_at: now,
+    activity_seq: 1,
+    last_activity_at: now,
     completion_cycle_id: 0,
+    // A06 / A1.3: a requester recorded by typed name has no account, so nobody can tell them.
+    ...(draft.requesterNameText === undefined ? {} : requesterNoticeFields(noAccountNotice(1, now))),
   };
 }
 
@@ -395,6 +409,22 @@ async function watch(transaction: CommandTransaction, requestId: string, context
     watcherIds: request.watcher_ids,
   };
   const { state, outcome } = watchRequest(current, { actor: context.actor });
-  if (outcome === 'added') transaction.set(gmDetailPath, { ...storedGmDetail, watcher_ids: state.watcherIds });
+  if (outcome !== 'added') return { request_id: requestId, request_number: request.request_number, watch: outcome };
+  // FU-08: every read before the first write.
+  const userStatePath = `user_state/${context.actor.personId}/requests/${requestId}`;
+  const userState = await transaction.get(userStatePath);
+  const publicSummary = await transaction.get(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`);
+  const gmSummary = await transaction.get(`${GM_SUMMARIES_COLLECTION}/${requestId}`);
+  transaction.set(gmDetailPath, { ...storedGmDetail, watcher_ids: state.watcherIds });
+  // “มีผู้แจ้งเพิ่ม X คน”: distinct watchers, the requester never counted (U1).
+  const count = watcherCount({ ...request, watcher_ids: state.watcherIds });
+  if (publicSummary !== undefined) transaction.set(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`, { ...publicSummary, watcher_count: count });
+  if (gmSummary !== undefined) transaction.set(`${GM_SUMMARIES_COLLECTION}/${requestId}`, { ...gmSummary, watcher_count: count });
+  // FU-08: “คำขอของฉัน” → เกี่ยวข้องกับฉัน shows it as a summary; nothing unread yet. A person who
+  // already has another relation (e.g. related) keeps it.
+  if (userState === undefined) {
+    const seq = request.activity_seq ?? 0;
+    transaction.set(userStatePath, { type: 'watcher', activity_seq: seq, last_seen_activity_seq: seq, created_at: context.now });
+  }
   return { request_id: requestId, request_number: request.request_number, watch: outcome };
 }
