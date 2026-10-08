@@ -100,7 +100,6 @@ const gmSummary = (id: string) => readDoc(harness.db, `gm_request_summaries/${id
 const publicSummary = (id: string) => readDoc(harness.db, `request_summaries/${id}`);
 const staleJob = (id: string) => readDoc(harness.db, `scheduled_work/stale-${id}`);
 const profile = (gm: string) => readDoc(harness.db, `gm_profiles/${gm}`);
-const updateTime = async (path: string) => (await harness.db.doc(path).get()).updateTime?.toMillis();
 
 async function newRepair(): Promise<string> {
   const reply = await act(EMPLOYEE, 'create_maintenance', { location_id: 'loc-wh300', symptom_key: 'light_off', description: 'ไฟทางเดินดับ' });
@@ -269,12 +268,27 @@ describe('the company calendar as it is now (FU-27 decision): a holiday added la
     const id = await newRepair();
     setNow(bkk('2027-01-11T10:00:00'));
     await tick();
-    const before = { summary: await updateTime(`gm_request_summaries/${id}`), job: await updateTime(`scheduled_work/stale-${id}`) };
     await setHolidays([...HOLIDAYS, '2027-06-01']);
+    // Record every write of the tick: an identical write would not change the update time.
+    const writes: string[] = [];
+    const base = adminWorkerStore(workerA.db, { maxAttempts: TEST_MAX_ATTEMPTS });
+    const store: WorkerStore = {
+      ...base,
+      runTransaction: (work) =>
+        base.runTransaction((transaction) =>
+          work({
+            get: (path) => transaction.get(path),
+            set: (path, data) => {
+              writes.push(path);
+              transaction.set(path, data);
+            },
+            delete: (path) => transaction.delete(path),
+          }),
+        ),
+    };
     setNow(bkk('2027-01-11T10:15:00'));
-    await tick();
-    expect(await updateTime(`gm_request_summaries/${id}`)).toBe(before.summary);
-    expect(await updateTime(`scheduled_work/stale-${id}`)).toBe(before.job);
+    await expect(runTick(deps(workerA, store))).resolves.toMatchObject({ ran: true, jobs: { done: 1 } });
+    expect(writes.filter((path) => path === `gm_request_summaries/${id}` || path === `scheduled_work/stale-${id}` || path.startsWith('requests/'))).toEqual([]);
   });
 });
 
