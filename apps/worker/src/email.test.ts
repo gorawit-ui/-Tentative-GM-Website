@@ -71,7 +71,7 @@ describe('emailContent: subject “[number] short line”, a plain body, the foo
       'GM-0427 ป๊อป (ทีม GM) รอการดำเนินการจากคุณ',
       TITLE,
       'หมายเหตุ: ขอใบเสนอราคา 2 ร้าน',
-      "ทำเสร็จแล้ว กด 'ฝั่งฉันเรียบร้อยแล้ว' ในลิงก์",
+      'ทำเสร็จแล้ว กด “ฝั่งฉันเรียบร้อยแล้ว” ในลิงก์',
     ]);
   });
 
@@ -80,7 +80,7 @@ describe('emailContent: subject “[number] short line”, a plain body, the foo
       composeNotice({ ...base, confidential: true, eventKind: 'waiting_requested', audience: 'waiting_party', summaryTitle: 'ต่อสัญญาเช่าโกดัง', actorName: 'ป๊อป', waitingNote: 'บันทึกเฉพาะเรื่องสัญญา' }, BASE),
     );
     expect(content.subject).toBe('[GM-0427] รอการดำเนินการจากฝั่งคุณ');
-    expect(content.body).toBe(['GM-0427 รอการดำเนินการจากฝั่งคุณ', "ทำเสร็จแล้ว กด 'ฝั่งฉันเรียบร้อยแล้ว' ในลิงก์", '', `เปิดงาน: ${BASE}/requests/req-0427`, '', '-- ', EMAIL_FOOTER].join('\n'));
+    expect(content.body).toBe(['GM-0427 รอการดำเนินการจากฝั่งคุณ', 'ทำเสร็จแล้ว กด “ฝั่งฉันเรียบร้อยแล้ว” ในลิงก์', '', `เปิดงาน: ${BASE}/requests/req-0427`, '', '-- ', EMAIL_FOOTER].join('\n'));
     for (const secret of ['ต่อสัญญา', 'ป๊อป', 'บันทึกเฉพาะเรื่องสัญญา']) expect(`${content.subject}\n${content.body}`).not.toContain(secret);
   });
 

@@ -21,8 +21,8 @@ const base: NoticeContent = {
   summaryTitle: TITLE,
 };
 const LINK = `<${BASE}/requests/req-0427|เปิดงาน>`;
-const ANSWER = "ทำเสร็จแล้ว กด 'ฝั่งฉันเรียบร้อยแล้ว' ในลิงก์";
-const NOT_RESOLVED = "ถ้ายังไม่เรียบร้อย กด 'ยังไม่เรียบร้อย' ในลิงก์";
+const ANSWER = 'ทำเสร็จแล้ว กด “ฝั่งฉันเรียบร้อยแล้ว” ในลิงก์';
+const NOT_RESOLVED = 'ถ้ายังไม่เรียบร้อย กด “ยังไม่เรียบร้อย” ในลิงก์';
 const AUTO_CLOSE = `ระบบจะปิดอัตโนมัติ ${formatThaiDateTime(DUE)} หากไม่มีการตอบกลับ`;
 const GM_NOTE = 'ขอใบเสนอราคา 2 ร้าน ภายในวันศุกร์';
 const REPLY_NOTE = 'ส่งใบเสนอราคาให้แล้วทางอีเมล';
@@ -131,6 +131,20 @@ describe('every notice kind: number, short Thai headline, public title, what to 
       lines: [TITLE, `หมายเหตุ: ${GM_NOTE}`, ANSWER],
       link: `${BASE}/requests/req-0427`,
     });
+  });
+});
+
+describe('D-A08-5: a button name is quoted “ ” as on the screen, so people find the button by its words', () => {
+  it.each([
+    ['waiting on you', { eventKind: 'waiting_requested', audience: 'waiting_party' }, '“ฝั่งฉันเรียบร้อยแล้ว”'],
+    ['reminder', { eventKind: 'waiting_reminder', audience: 'waiting_party' }, '“ฝั่งฉันเรียบร้อยแล้ว”'],
+    ['completed, to the requester', { eventKind: 'request_completed', audience: 'requester', autoCloseDueAt: DUE }, '“ยังไม่เรียบร้อย”'],
+  ] as const)('%s', (_label, change, button) => {
+    for (const confidential of [false, true]) {
+      const notice = composeNotice({ ...base, ...change, confidential }, BASE);
+      expect(notice.lines.filter((line) => line.includes(` กด ${button} ในลิงก์`))).toHaveLength(1);
+      expect(notice.lines.join('\n')).not.toContain("'");
+    }
   });
 });
 
