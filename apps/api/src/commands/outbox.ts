@@ -36,7 +36,7 @@ export interface OutboxEntry {
     readonly activity_seq: number;
     /** A04: a message to the waited party is bound to its interval (Part 6 §6.6), rechecked at send time. */
     readonly waiting_interval_id?: number;
-    /** A07 stub. */
+    /** A07: `unassigned` — the all-GM notice of a request routing left unassigned (A3, UI-15 “ยังไม่มอบหมาย”). */
     readonly notice_variant?: 'unassigned';
   };
 }
@@ -54,7 +54,7 @@ export function newRequestOutbox(input: {
   /** D-A01-4: the requester's person ID when they have an account (none for a text name or a GM task). */
   readonly requesterId?: string;
   readonly isConfidential: boolean;
-  /** A07 stub. */
+  /** A07: routing told every GM because no one was assigned (A3); the GM entries say so. */
   readonly noticeVariant?: 'unassigned';
   readonly now: Instant;
 }): readonly OutboxEntry[] {
@@ -85,6 +85,7 @@ export function newRequestOutbox(input: {
       // A new request is revision 1 and unread step 1.
       revision: 1,
       activity_seq: 1,
+      ...(audience === 'gm' && input.noticeVariant !== undefined ? { notice_variant: input.noticeVariant } : {}),
     },
   }));
 }

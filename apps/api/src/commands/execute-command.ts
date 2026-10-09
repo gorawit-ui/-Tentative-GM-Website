@@ -277,6 +277,8 @@ async function create(
     gmRecipientIds: recipients,
     ...(record.requester_id === undefined ? {} : { requesterId: record.requester_id }),
     isConfidential: record.is_confidential,
+    // A07 / UI-15: the all-GM notice says the request is not assigned yet.
+    ...(route.notice.kind === 'all_gm' ? { noticeVariant: 'unassigned' as const } : {}),
     now,
   });
   // D-A05-1: related persons chosen at creation hear it once (D-A04-3), never the creator; someone

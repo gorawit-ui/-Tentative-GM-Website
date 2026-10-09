@@ -47,6 +47,9 @@ describe('every notice kind: number, short Thai headline, public title, link', (
     expect(lines[0]).toBe(`*GM-0427* ${headline}`);
     expect(lines).toContain('ไฟดับ — ทางเดิน · WH300');
     expect(lines[lines.length - 1]).toBe(LINK);
+    // Short: number + headline, title, (the requester's auto-close time), link — nothing else.
+    const withDate = change.eventKind === 'request_completed' && change.audience === 'requester';
+    expect(lines).toHaveLength(withDate ? 4 : 3);
   });
 
   it('the requester’s completion notice carries the real auto-close time, written as on screen', () => {
@@ -63,6 +66,11 @@ describe('every notice kind: number, short Thai headline, public title, link', (
     const notice = renderNotice({ ...base, summaryTitle: 'ประตู <!channel> & <https://x.example|คลิก>' }, BASE);
     expect(notice.text).toContain('ประตู &lt;!channel&gt; &amp; &lt;https://x.example|คลิก&gt;');
     expect(notice.text).not.toContain('<!channel>');
+  });
+
+  it('a long board title is cut so the message stays short', () => {
+    const notice = renderNotice({ ...base, summaryTitle: 'ก'.repeat(150) }, BASE);
+    expect(notice.text.split('\n')[1]).toBe(`${'ก'.repeat(99)}…`);
   });
 
   it('an unknown kind is refused rather than sent with a made-up text', () => {

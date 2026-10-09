@@ -83,6 +83,7 @@ export async function startFakeSlack(): Promise<FakeSlack> {
     reset: () => {
       calls.length = 0;
       queue = [];
+      sequence = 0;
     },
     close: async () => {
       for (const response of hanging) response.destroy();
