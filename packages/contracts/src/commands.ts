@@ -179,6 +179,8 @@ export interface WaitingPartyPayload extends RevisionedPayload {
   readonly notify?: boolean;
   /** C3: the separate consent for new readers of a confidential request. */
   readonly confirm_confidential_grant?: boolean;
+  /** D-A07-1: the GM's optional note to the waited party (kept on the interval, shown in their message for a general request). */
+  readonly note?: string;
 }
 
 export interface FollowUpPayload extends RevisionedPayload {
@@ -316,6 +318,7 @@ function waitingParty(payload: JsonObject, path: string): WaitingPartyPayload {
     ...optional('waiting_on', Object.hasOwn(payload, 'waiting_on') ? waitingOn(payload.waiting_on, `${path}.waiting_on`) : undefined),
     ...optional('notify', optionalBoolean(payload, path, 'notify')),
     ...optional('confirm_confidential_grant', optionalBoolean(payload, path, 'confirm_confidential_grant')),
+    ...optional('note', optionalString(payload, path, 'note')),
   };
 }
 
@@ -384,7 +387,7 @@ function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'
     }
     case 'enter_waiting':
     case 'change_waiting_party':
-      return waitingParty(strictObject(value, path, ['request_id', 'expected_revision', 'waiting_on', 'notify', 'confirm_confidential_grant']), path);
+      return waitingParty(strictObject(value, path, ['request_id', 'expected_revision', 'waiting_on', 'notify', 'confirm_confidential_grant', 'note']), path);
     case 'follow_up': {
       const payload = strictObject(value, path, ['request_id', 'expected_revision', 'remind']);
       return { ...revisioned(payload, path), ...optional('remind', optionalBoolean(payload, path, 'remind')) };

@@ -118,6 +118,8 @@ function openWaiting(context: Context, command: Extract<WaitingCommandEnvelope, 
   const opened = outcome.event;
   const next = { ...withWaitingState(loaded.record, outcome.state), ...advanced(loaded.record, now) };
   const granted = (outcome.state.confidentialGrantIds ?? []).filter((personId) => !(loaded.record.confidential_grant_ids ?? []).includes(personId));
+  // D-A07-1: the GM's note for the waited party, kept with the interval (blank = none).
+  const note = payload.note?.trim() || undefined;
   const dms =
     outcome.notice === undefined
       ? []
@@ -128,7 +130,14 @@ function openWaiting(context: Context, command: Extract<WaitingCommandEnvelope, 
     ...(opened.endedInterval === undefined ? [] : [{ path: intervalPath(loaded.requestId, opened.endedInterval.intervalId), data: exitedInterval(context.interval, opened.endedInterval, 'changed') }]),
     {
       path: intervalPath(loaded.requestId, opened.intervalId),
-      data: { interval_id: opened.intervalId, waiting_on: waitingOnDocument(opened.waitingOn), recipient_ids: opened.recipientIds, started_at: now, started_by_id: actor.personId },
+      data: {
+        interval_id: opened.intervalId,
+        waiting_on: waitingOnDocument(opened.waitingOn),
+        recipient_ids: opened.recipientIds,
+        started_at: now,
+        started_by_id: actor.personId,
+        ...(note === undefined ? {} : { note }),
+      },
     },
   ];
   return {
@@ -141,6 +150,7 @@ function openWaiting(context: Context, command: Extract<WaitingCommandEnvelope, 
         recipient_ids: opened.recipientIds,
         added_related_person_ids: opened.addedRelatedPersonIds,
         ...(granted.length === 0 ? {} : { granted_person_ids: granted }),
+        ...(note === undefined ? {} : { note }),
         ...(opened.endedInterval === undefined ? {} : { ended_interval: endedIntervalDocument(opened.endedInterval) }),
       },
       notices: [...dms, ...(command.type === 'enter_waiting' ? statusNotices(context, next, 'request_waiting', told) : [])],
@@ -235,7 +245,10 @@ function answered(context: Context, command: Extract<WaitingCommandEnvelope, { t
         isConfidential: next.is_confidential,
         now,
       }),
-      extraWrites: [{ path: intervalPath(loaded.requestId, intervalId), data: { ...context.interval, responded_at: now, responded_by_id: actor.personId } }],
+      // D-A07-1: the answer note is kept with the interval for the GM's message.
+      extraWrites: [
+        { path: intervalPath(loaded.requestId, intervalId), data: { ...context.interval, responded_at: now, responded_by_id: actor.personId, ...(note === undefined ? {} : { response_note: note }) } },
+      ],
     },
     result: { waiting_interval_id: intervalId },
   };

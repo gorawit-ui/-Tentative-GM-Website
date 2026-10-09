@@ -113,6 +113,14 @@ describe('D-A04-4: the public visibility epoch has its own row', () => {
   });
 });
 
+describe('A08: the e-mail send counter has its own row', () => {
+  it('system_counters/email_send is listed (and so shown in ACL-MATRIX.md) as server/worker only', () => {
+    const row = RESOURCES.find((resource) => resource.key === 'system_counters.email_send');
+    expect(row).toMatchObject({ path: 'system_counters/email_send', allow: {} });
+    expect(row?.description).toContain('30');
+  });
+});
+
 describe('ACL matrix — default deny', () => {
   it('an unknown resource or anything not listed is denied', () => {
     expect(decide('gm_admin', 'no_such_resource', 'get')).toBe('deny');
@@ -152,6 +160,8 @@ describe('ACL matrix — default deny', () => {
       'system_counters',
       // D-A04-4: the public visibility epoch is read by the API only.
       'system_counters.public_visibility',
+      // A08: the e-mail cap counter is the worker's.
+      'system_counters.email_send',
     ]) {
       for (const subject of SUBJECT_KEYS) {
         for (const operation of ACL_OPERATIONS) expect(decide(subject, key, operation), `${subject} ${key} ${operation}`).toBe('deny');

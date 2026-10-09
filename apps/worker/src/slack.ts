@@ -4,17 +4,18 @@
 // itself — the dispatcher settles the answer (A02 back-off, Retry-After, `delivery_unknown`):
 //   ok                                   → accepted (`slack:{channel}:{ts}`)
 //   user/channel not found, no Slack ID  → unmapped: nothing was posted, the worker uses e-mail (A1.2)
+//   the user is disabled (D-A07-4)       → unmapped `SLACK_USER_DISABLED`: e-mail too
 //   429 / `ratelimited`                  → retryable, with Retry-After when Slack gives one
 //   unreachable before sending, 503      → retryable
 //   no answer in time, 500, Slack's own internal error → unknown: it may have been posted
-//   anything else (user disabled, bad token, missing scope…) → permanent `SLACK_<ERROR>`
+//   anything else (bad token, the app's account inactive, missing scope…) → permanent `SLACK_<ERROR>`
 // Tests point `apiBaseUrl` at a fake on 127.0.0.1; the real Slack is used only after P7-ADMIN-03.
 // Nothing here logs the token, the Slack ID, the number or the text.
-import { MINUTE_MS } from '@gm/time';
 import type { DeliveryOutcome } from '@gm/domain';
 import type { NotificationAdapter, OutboundMessage } from './adapters';
 import type { WorkerLogger } from './log';
 import { renderNotice } from './messages';
+import { isTimeout, networkFailure, retryAfterMs } from './provider-http';
 
 export interface SlackConfig {
   /** `https://slack.com/api` in a real deployment; a local fake in tests. */
@@ -29,17 +30,14 @@ export interface SlackConfig {
 
 export const SLACK_API_BASE_URL = 'https://slack.com/api';
 export const DEFAULT_SLACK_TIMEOUT_MS = 10_000;
-/** A Retry-After longer than this is treated as this, so an entry is never parked indefinitely. */
-const MAX_RETRY_AFTER_MS = 24 * 60 * MINUTE_MS;
 
-/** Slack does not know the stored ID: nothing was posted. */
+/** Slack cannot reach the stored ID (unknown, or D-A07-4 the user is disabled): nothing was posted. */
 const UNMAPPED_ERRORS: ReadonlySet<string> = new Set(['user_not_found', 'channel_not_found']);
+const DISABLED_ERRORS: ReadonlySet<string> = new Set(['user_disabled']);
 /** Slack failed on its side after receiving the request: it may have been posted. */
 const UNKNOWN_ERRORS: ReadonlySet<string> = new Set(['internal_error', 'fatal_error', 'request_timeout']);
 /** Slack refused before doing anything; worth another try later. */
 const RETRYABLE_ERRORS: ReadonlySet<string> = new Set(['service_unavailable']);
-/** The connection never carried the request. */
-const NOT_SENT_CAUSES: ReadonlySet<string> = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT']);
 
 /** `SLACK_` + Slack's error word, upper-case and safe for the log and the entry. */
 function errorCode(error: unknown): string {
@@ -47,18 +45,6 @@ function errorCode(error: unknown): string {
   return word === '' ? 'SLACK_ERROR' : `SLACK_${word}`;
 }
 
-function retryAfterMs(header: string | null): { readonly retryAfterMs?: number } {
-  if (header === null || !/^\d{1,9}$/.test(header.trim())) return {};
-  const ms = Number(header.trim()) * 1000;
-  return ms <= 0 ? {} : { retryAfterMs: Math.min(ms, MAX_RETRY_AFTER_MS) };
-}
-
-function failureOf(error: unknown): DeliveryOutcome {
-  if (error instanceof Error && error.name === 'TimeoutError') return { kind: 'unknown', code: 'SLACK_TIMEOUT' };
-  const cause = error instanceof Error ? (error.cause as { code?: unknown } | undefined) : undefined;
-  if (typeof cause?.code === 'string' && NOT_SENT_CAUSES.has(cause.code)) return { kind: 'retryable', code: 'SLACK_UNREACHABLE' };
-  return { kind: 'unknown', code: 'SLACK_CONNECTION_LOST' };
-}
 
 async function outcomeOf(response: Response): Promise<DeliveryOutcome> {
   if (response.status === 429) return { kind: 'retryable', code: 'SLACK_RATE_LIMITED', ...retryAfterMs(response.headers.get('retry-after')) };
@@ -69,12 +55,13 @@ async function outcomeOf(response: Response): Promise<DeliveryOutcome> {
   try {
     body = (await response.json()) as typeof body;
   } catch (error) {
-    if (error instanceof Error && error.name === 'TimeoutError') return { kind: 'unknown', code: 'SLACK_TIMEOUT' };
+    if (isTimeout(error)) return { kind: 'unknown', code: 'SLACK_TIMEOUT' };
     return { kind: 'unknown', code: 'SLACK_BAD_RESPONSE' };
   }
   if (body.ok === true) return { kind: 'accepted', providerId: `slack:${String(body.channel ?? '-')}:${String(body.ts ?? '-')}` };
   const error = typeof body.error === 'string' ? body.error : '';
   if (UNMAPPED_ERRORS.has(error)) return { kind: 'unmapped' };
+  if (DISABLED_ERRORS.has(error)) return { kind: 'unmapped', code: errorCode(error) };
   if (error === 'ratelimited') return { kind: 'retryable', code: 'SLACK_RATE_LIMITED', ...retryAfterMs(response.headers.get('retry-after')) };
   if (UNKNOWN_ERRORS.has(error)) return { kind: 'unknown', code: errorCode(error) };
   if (RETRYABLE_ERRORS.has(error)) return { kind: 'retryable', code: errorCode(error) };
@@ -103,7 +90,7 @@ export function slackAdapter(config: SlackConfig, log: WorkerLogger): Notificati
         });
         return await outcomeOf(response);
       } catch (error) {
-        return failureOf(error);
+        return networkFailure(error, 'SLACK');
       }
     },
   };

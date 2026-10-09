@@ -58,21 +58,27 @@ export function claimDelivery(entry: DeliveryLeaseState, now: Instant): Delivery
 
 /**
  * A07: `retryAfterMs` — the provider said when to come back (Slack 429 Retry-After); `unmapped` — the
- * provider does not know the stored address (Slack user not found), so nothing was sent and the worker
- * uses company e-mail instead (A1.2).
+ * provider cannot reach the stored address (Slack user not found, D-A07-4: or disabled; `code` says
+ * which), so nothing was sent and the worker uses company e-mail instead (A1.2). D-A07-8:
+ * `suppressed` — not sent on purpose (a dev recipient outside the sandbox list), never retried. A08:
+ * `deferred` — the app's own sending cap is reached; try again at `retryAt` without using an attempt.
  */
 export type DeliveryOutcome =
   | { readonly kind: 'accepted'; readonly providerId: string }
   | { readonly kind: 'retryable'; readonly code: string; readonly retryAfterMs?: number }
   | { readonly kind: 'permanent'; readonly code: string }
   | { readonly kind: 'unknown'; readonly code: string }
-  | { readonly kind: 'unmapped' };
+  | { readonly kind: 'unmapped'; readonly code?: string }
+  | { readonly kind: 'suppressed'; readonly code: string }
+  | { readonly kind: 'deferred'; readonly code: string; readonly retryAt: Instant };
 
 export interface DeliverySettlement {
   readonly state: DeliveryState;
   readonly nextAttemptAt?: Instant;
   readonly providerId?: string;
   readonly errorCode?: string;
+  /** A08: the attempt did not count (the app's own cap deferred it; nothing was tried). */
+  readonly attemptRefunded?: boolean;
 }
 
 /** The entry's state after its `attempts`-th send ended with `outcome`. */
@@ -93,6 +99,11 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
       return { state: 'delivery_unknown', errorCode: outcome.code };
     case 'unmapped':
       // Reached only when there is nothing to fall back to: visible to the GM like “no channel”.
-      return { state: 'failed', errorCode: 'SLACK_NOT_MAPPED' };
+      return { state: 'failed', errorCode: outcome.code ?? 'SLACK_NOT_MAPPED' };
+    case 'suppressed':
+      return { state: 'suppressed', errorCode: outcome.code };
+    case 'deferred':
+      // A08 / Part 6 §6.10: over the app's own cap — kept in the outbox, never dropped.
+      return { state: 'pending', nextAttemptAt: outcome.retryAt, errorCode: outcome.code, attemptRefunded: true };
   }
 }

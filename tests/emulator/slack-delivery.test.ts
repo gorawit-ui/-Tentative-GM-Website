@@ -2,20 +2,25 @@
 // Addendum A1.2, C1, C3). Slack here is a fake on 127.0.0.1 — the real Slack, Google Cloud and
 // Firebase projects are never contacted; the worker runs on the Firestore emulator. Phase A is
 // one-way: a DM with the number, a short Thai text and a link, no action buttons.
+// D-A07-1: names, notes and “what to do” read at send time (general requests only); D-A07-4: a
+// disabled Slack user gets company e-mail in the same attempt; D-A07-8: dev sends only to the
+// approved sandbox list, everyone else is `suppressed`.
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MINUTE_MS, formatThaiDateTime } from '@gm/time';
 import { CommandRejected, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
-import { lifecycleOutbox, newRequestOutbox, waitingPartyOutbox, type OutboxEntry } from '../../apps/api/src/commands/outbox';
+import { lifecycleOutbox, newRequestOutbox, relatedAddedOutbox, respondedOutbox, waitingPartyOutbox, type OutboxEntry } from '../../apps/api/src/commands/outbox';
 import { adminCommandStore } from '../../apps/api/src/firestore/admin-store';
 import { transactionPeopleDirectory, transactionRoutingDirectory } from '../../apps/api/src/firestore/directories';
 import { createApiHandler } from '../../apps/api/src/http/app';
-import { channelRouter, notificationAdapter, type NotificationAdapter, type OutboundMessage } from '../../apps/worker/src/adapters';
+import { channelRouter, notificationAdapter, sandboxAdapter, type NotificationAdapter, type OutboundMessage } from '../../apps/worker/src/adapters';
 import type { WorkerDeps } from '../../apps/worker/src/deps';
 import { adminWorkerStore } from '../../apps/worker/src/firestore-store';
+import type { WorkerStore } from '../../apps/worker/src/store';
 import { consoleWorkerLogger } from '../../apps/worker/src/log';
+import { resolveSandboxRecipients } from '../../apps/worker/src/notification-mode';
 import { dispatchOutbox } from '../../apps/worker/src/outbox-dispatch';
 import { slackAdapter } from '../../apps/worker/src/slack';
 import { runTick } from '../../apps/worker/src/tick';
@@ -31,10 +36,16 @@ const TIMEOUT_MS = 400;
 
 // Synthetic people and Slack IDs. Names, e-mails, Slack IDs, numbers and texts must never reach a log.
 const GM = 'a07.gm@tdfb.co';
+const GM2 = 'a07.gm.two@tdfb.co';
 const REQUESTER = 'a07.requester@tdfb.co';
 const MAIL_ONLY = 'a07.mail.only@tdfb.co';
-const SLACK_IDS: Readonly<Record<string, string>> = { [GM]: 'U0A07GM001', [REQUESTER]: 'U0A07REQ01' };
-const NAMES: Readonly<Record<string, string>> = { [GM]: 'คุณจีเอ็ม คิว', [REQUESTER]: 'คุณผู้ขอ อาร์', [MAIL_ONLY]: 'คุณอีเมล เอส' };
+const SLACK_IDS: Readonly<Record<string, string>> = { [GM]: 'U0A07GM001', [GM2]: 'U0A07GM002', [REQUESTER]: 'U0A07REQ01' };
+const NAMES: Readonly<Record<string, string>> = { [GM]: 'คุณจีเอ็ม คิว', [GM2]: 'คุณจีเอ็ม ที', [REQUESTER]: 'คุณผู้ขอ อาร์', [MAIL_ONLY]: 'คุณอีเมล เอส' };
+const TEAMS: Readonly<Record<string, string>> = { [REQUESTER]: 'ทีมบัญชี' };
+const WAIT_NOTE = 'ขอใบเสนอราคา 2 ร้าน ภายในวันศุกร์';
+const REPLY_NOTE = 'ส่งใบเสนอราคาให้แล้วทางอีเมล';
+const ANSWER = "ทำเสร็จแล้ว กด 'ฝั่งฉันเรียบร้อยแล้ว' ในลิงก์";
+const NOT_RESOLVED = "ถ้ายังไม่เรียบร้อย กด 'ยังไม่เรียบร้อย' ในลิงก์";
 const TITLE = 'ไฟดับ — ทางเดิน · WH300';
 const TYPED = 'ผู้แจ้งพิมพ์ว่า ไฟดับตั้งแต่เมื่อคืน กุญแจอยู่ที่ป้อม';
 const SIGNED = 'https://storage.googleapis.com/gm-dev-bucket/requests/x/photo.jpg?X-Goog-Signature=abc';
@@ -126,9 +137,16 @@ beforeEach(async () => {
   slack.reset();
   emails.length = 0;
   const batch = worker.db.batch();
-  for (const personId of [GM, REQUESTER, MAIL_ONLY]) {
-    batch.set(worker.db.doc(`people/${personId}`), { name: NAMES[personId], email: personId, active: true, ...(SLACK_IDS[personId] === undefined ? {} : { slack_user_id: SLACK_IDS[personId] }) });
+  for (const personId of [GM, GM2, REQUESTER, MAIL_ONLY]) {
+    batch.set(worker.db.doc(`people/${personId}`), {
+      name: NAMES[personId],
+      email: personId,
+      active: true,
+      ...(SLACK_IDS[personId] === undefined ? {} : { slack_user_id: SLACK_IDS[personId] }),
+      ...(TEAMS[personId] === undefined ? {} : { team_label: TEAMS[personId] }),
+    });
   }
+  batch.set(worker.db.doc('settings/routing'), { gm_person_ids: [GM, GM2] });
   await batch.commit();
 });
 
@@ -181,8 +199,12 @@ describe('the Slack adapter against a fake Slack', () => {
     expect(outcome).toEqual({ kind: 'retryable', code: 'SLACK_UNREACHABLE' });
   });
 
+  it('D-A07-4: the person’s Slack account is disabled → Slack cannot reach them (nothing posted), like “not mapped”', async () => {
+    slack.answer({ kind: 'error', error: 'user_disabled' });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'unmapped', code: 'SLACK_USER_DISABLED' });
+  });
+
   it.each([
-    ['user_disabled', 'SLACK_USER_DISABLED'],
     ['account_inactive', 'SLACK_ACCOUNT_INACTIVE'],
     ['invalid_auth', 'SLACK_INVALID_AUTH'],
     ['missing_scope', 'SLACK_MISSING_SCOPE'],
@@ -222,7 +244,7 @@ describe('the worker sends through Slack (A02 retry, Part 6 §6.10)', () => {
     const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
     slack.answer({ kind: 'error', error: 'user_not_found' });
     await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('sent');
-    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'email', provider_id: `mail-${outboxId}`, attempts: 1 });
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'email', slack_fallback_code: 'SLACK_NOT_MAPPED', provider_id: `mail-${outboxId}`, attempts: 1 });
     expect(emails.map((sent) => [sent.channel, sent.address])).toEqual([['email', GM]]);
   });
 
@@ -254,30 +276,40 @@ describe('the worker sends through Slack (A02 retry, Part 6 §6.10)', () => {
     expect(slack.calls).toHaveLength(1);
   });
 
-  it('a permanent error (the person’s Slack account is disabled) → failed with the cause; the GM badge shows it for a requester', async () => {
+  it('D-A07-4: the person’s Slack account is disabled → company e-mail in the same attempt; the entry says why Slack was skipped', async () => {
     const { id, number } = await seedRequest();
     const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: GM, gmRecipientIds: [], requesterId: REQUESTER, isConfidential: false, now }));
     slack.answer({ kind: 'error', error: 'user_disabled' });
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('sent');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'email', slack_fallback_code: 'SLACK_USER_DISABLED', attempts: 1 });
+    expect(emails.map((sent) => [sent.channel, sent.address])).toEqual([['email', REQUESTER]]);
+    expect(await readDoc(worker.db, `gm_request_details/${id}`)).not.toHaveProperty('requester_not_notified');
+  });
+
+  it('a permanent error (the bot token is refused) → failed with the cause; the GM badge shows it for a requester; no e-mail guess', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: GM, gmRecipientIds: [], requesterId: REQUESTER, isConfidential: false, now }));
+    slack.answer({ kind: 'error', error: 'invalid_auth' });
     await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('failed');
-    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'failed', last_error_code: 'SLACK_USER_DISABLED', delivery_channel: 'slack' });
-    expect(await readDoc(worker.db, `gm_request_details/${id}`)).toMatchObject({ requester_not_notified: { code: 'SLACK_USER_DISABLED' } });
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'failed', last_error_code: 'SLACK_INVALID_AUTH', delivery_channel: 'slack' });
+    expect(await readDoc(worker.db, `gm_request_details/${id}`)).toMatchObject({ requester_not_notified: { code: 'SLACK_INVALID_AUTH' } });
     expect(emails).toEqual([]);
   });
 });
 
 describe('what a message may say', () => {
-  it('confidential (C3): the number, “งานภายในมีอัปเดต” and the link — no title, nothing else', async () => {
+  it('confidential (C3, D-A07-1): the number, the neutral line of the kind and the link — no title, nothing else', async () => {
     const { id, number } = await seedRequest({ is_confidential: true, summary_title: 'ต่อสัญญาเช่าโกดัง บริษัทเอกซ์' });
     const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_accepted', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: true, now }));
     await dispatchOutbox(deps(), outboxId ?? '');
-    expect(texts()).toEqual([`*${number}* งานภายในมีอัปเดต\n<${BASE}/requests/${id}|เปิดงาน>`]);
+    expect(texts()).toEqual([`*${number}* GM รับเรื่องแล้ว\n<${BASE}/requests/${id}|เปิดงาน>`]);
   });
 
   it('a request flagged confidential after the notice was queued is still sent with the neutral text', async () => {
     const { id, number } = await seedRequest({ is_confidential: true });
     const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_accepted', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now }));
     await dispatchOutbox(deps(), outboxId ?? '');
-    expect(texts()).toEqual([`*${number}* งานภายในมีอัปเดต\n<${BASE}/requests/${id}|เปิดงาน>`]);
+    expect(texts()).toEqual([`*${number}* GM รับเรื่องแล้ว\n<${BASE}/requests/${id}|เปิดงาน>`]);
   });
 
   it('never the typed description, photos, signed URLs or GM-only notes', async () => {
@@ -297,24 +329,221 @@ describe('what a message may say', () => {
     const { id, number } = await seedRequest({ status: 'completed', auto_close_due_at: due });
     const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_completed', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, autoCloseDueAt: due, now }));
     await dispatchOutbox(deps(), outboxId ?? '');
-    expect(texts()[0]).toContain(`ระบบจะปิดอัตโนมัติ ${formatThaiDateTime(due)} หากไม่มีการตอบกลับ`);
+    expect(texts()).toEqual([
+      [`*${number}* งานเสร็จแล้ว กรุณาตรวจและยืนยัน`, TITLE, `ระบบจะปิดอัตโนมัติ ${formatThaiDateTime(due)} หากไม่มีการตอบกลับ`, NOT_RESOLVED, `<${BASE}/requests/${id}|เปิดงาน>`].join('\n'),
+    ]);
     expect(texts()[0]).toContain('14 ม.ค. 2570 09:00 น.');
   });
 
-  it('“waiting”: the public label of who it waits on (D-S09-1), never a person’s name', async () => {
-    const { id, number } = await seedRequest({ status: 'waiting', current_waiting_interval_id: 1 });
+  it('“waiting” (D-A07-1): “กำลังรอ… ดำเนินการ” with the public label of who it waits on (D-S09-1), never a person’s name', async () => {
+    const { id, number } = await seedRequest({ status: 'waiting', current_waiting_interval_id: 1, waiting_on: { kind: 'team', team_label: 'ทีมบัญชี' } });
     await writeDoc(worker.db, `request_summaries/${id}`, { request_number: number, status: 'waiting', waiting_on_summary: 'ทีมบัญชี' });
     const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_waiting', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now }));
     await dispatchOutbox(deps(), outboxId ?? '');
-    expect(texts()[0]?.split('\n')[0]).toBe(`*${number}* รอผู้อื่น: ทีมบัญชี`);
+    expect(texts()[0]?.split('\n')[0]).toBe(`*${number}* กำลังรอทีมบัญชีดำเนินการ`);
   });
 
-  it('the waited party’s DM asks for their part and links to the page with the answer button', async () => {
-    const { id, number } = await seedRequest({ status: 'waiting', current_waiting_interval_id: 1, waiting_party_responded: false, related_person_ids: [REQUESTER] });
-    const [outboxId] = await queue(waitingPartyOutbox({ requestId: id, requestNumber: number, eventKind: 'waiting_requested', eventKey: 'w1', intervalId: 1, recipientIds: [GM], actorId: REQUESTER, isConfidential: false, revision: 3, activitySeq: 3, now }));
-    await writeDoc(worker.db, 'settings/routing', { gm_person_ids: [GM] });
+  it('“waiting” on “other”: no made-up party — “กำลังรอผู้อื่นดำเนินการ”', async () => {
+    const { id, number } = await seedRequest({ status: 'waiting', current_waiting_interval_id: 1, waiting_on: { kind: 'other', name: 'คุณป้าข้างบ้าน' } });
+    await writeDoc(worker.db, `request_summaries/${id}`, { request_number: number, status: 'waiting', waiting_on_summary: 'อื่นๆ' });
+    const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_waiting', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now }));
     await dispatchOutbox(deps(), outboxId ?? '');
-    expect(texts()).toEqual([`*${number}* รอการดำเนินการจากฝั่งคุณ\n${TITLE}\n<${BASE}/requests/${id}|เปิดงาน>`]);
+    expect(texts()[0]?.split('\n')[0]).toBe(`*${number}* กำลังรอผู้อื่นดำเนินการ`);
+  });
+});
+
+describe('D-A07-1: who acted, the notes and what to do — read when the message is sent', () => {
+  /** A general request waiting on the requester (who can read it), interval 1 started by GM with a note. */
+  async function waitingOnRequester(fields: Record<string, unknown> = {}, interval: Record<string, unknown> = {}): Promise<{ id: string; number: string }> {
+    const seeded = await seedRequest({ status: 'waiting', current_waiting_interval_id: 1, waiting_party_responded: false, assignee_id: GM, ...fields });
+    await writeDoc(worker.db, `requests/${seeded.id}/waiting_intervals/w000001`, {
+      interval_id: 1,
+      waiting_on: { kind: 'person', person_id: REQUESTER },
+      recipient_ids: [REQUESTER],
+      started_at: NOW,
+      started_by_id: GM,
+      note: WAIT_NOTE,
+      ...interval,
+    });
+    return seeded;
+  }
+  const link = (id: string) => `<${BASE}/requests/${id}|เปิดงาน>`;
+  const asked = (input: { id: string; number: string }, eventKind: 'waiting_requested' | 'waiting_reminder', isConfidential = false) =>
+    waitingPartyOutbox({ requestId: input.id, requestNumber: input.number, eventKind, eventKey: eventKind === 'waiting_requested' ? 'w1' : 'remind-2027-01-11', intervalId: 1, recipientIds: [REQUESTER], actorId: GM, isConfidential, revision: 3, activitySeq: 3, now });
+
+  it('the waited party: which GM waits on them, the GM’s note, and the button to press', async () => {
+    const seeded = await waitingOnRequester();
+    const [outboxId] = await queue(asked(seeded, 'waiting_requested'));
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('sent');
+    expect(texts()).toEqual([[`*${seeded.number}* ${NAMES[GM]} (ทีม GM) รอการดำเนินการจากคุณ`, TITLE, `หมายเหตุ: ${WAIT_NOTE}`, ANSWER, link(seeded.id)].join('\n')]);
+  });
+
+  it('the reminder says it is one, with the same name, note and button', async () => {
+    const seeded = await waitingOnRequester();
+    const [outboxId] = await queue(asked(seeded, 'waiting_reminder'));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([[`*${seeded.number}* เตือนอีกครั้ง: ${NAMES[GM]} (ทีม GM) รอการดำเนินการจากคุณ`, TITLE, `หมายเหตุ: ${WAIT_NOTE}`, ANSWER, link(seeded.id)].join('\n')]);
+  });
+
+  it('a note longer than 200 characters is cut in the message (the interval keeps it whole)', async () => {
+    const seeded = await waitingOnRequester({}, { note: 'ก'.repeat(300) });
+    const [outboxId] = await queue(asked(seeded, 'waiting_requested'));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    const noteLine = texts()[0]?.split('\n').find((line) => line.startsWith('หมายเหตุ: ')) ?? '';
+    expect([...noteLine.replace('หมายเหตุ: ', '')]).toHaveLength(200);
+  });
+
+  it('“answered” to the GM: who answered (name and team) and their note', async () => {
+    const seeded = await waitingOnRequester({ waiting_party_responded: true }, { responded_at: NOW, responded_by_id: REQUESTER, response_note: REPLY_NOTE });
+    const [outboxId] = await queue(respondedOutbox({ requestId: seeded.id, requestNumber: seeded.number, revision: 4, activitySeq: 4, intervalId: 1, gmRecipientIds: [GM], actorId: REQUESTER, isConfidential: false, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([[`*${seeded.number}* ${NAMES[REQUESTER]} (ทีมบัญชี) ตอบกลับแล้ว`, TITLE, `หมายเหตุ: ${REPLY_NOTE}`, link(seeded.id)].join('\n')]);
+  });
+
+  it('take-over: the previous GM learns who took it', async () => {
+    const seeded = await seedRequest({ assignee_id: GM2 });
+    const entries = lifecycleOutbox({
+      requestId: seeded.id,
+      requestNumber: seeded.number,
+      revision: 3,
+      activitySeq: 3,
+      eventKind: 'request_accepted',
+      actorId: GM2,
+      watcherIds: [],
+      isConfidential: false,
+      gmRecipients: [{ personId: GM, eventKind: 'request_taken_over' }],
+      now,
+    });
+    const [outboxId] = await queue(entries);
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([[`*${seeded.number}* ${NAMES[GM2]} รับงานนี้ต่อจากคุณแล้ว`, TITLE, link(seeded.id)].join('\n')]);
+  });
+
+  it('“added as related”: which GM added you', async () => {
+    const seeded = await seedRequest({ related_person_ids: [MAIL_ONLY] });
+    const [outboxId] = await queue(relatedAddedOutbox({ requestId: seeded.id, requestNumber: seeded.number, revision: 3, activitySeq: 3, personIds: [MAIL_ONLY], actorId: GM, isConfidential: false, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(emails.map((sent) => [sent.eventKind, sent.actorName])).toEqual([['related_added', NAMES[GM]]]);
+  });
+
+  /** The store the dispatcher uses, recording every document its transactions read. */
+  function recordingStore(reads: string[]): WorkerStore {
+    const inner = adminWorkerStore(worker.db, { maxAttempts: TEST_MAX_ATTEMPTS });
+    return {
+      due: (...args) => inner.due(...args),
+      openRequests: (...args) => inner.openRequests(...args),
+      runTransaction: (work) =>
+        inner.runTransaction((transaction) =>
+          work({
+            get: async (path) => {
+              reads.push(path);
+              return transaction.get(path);
+            },
+            set: (path, data) => transaction.set(path, data),
+            delete: (path) => transaction.delete(path),
+          }),
+        ),
+    };
+  }
+  const capture = (sent: OutboundMessage[]): NotificationAdapter => ({ send: async (outbound) => (sent.push(outbound), { kind: 'accepted', providerId: 'captured' }) });
+  const PRIVATE_FIELDS = ['summaryTitle', 'actorName', 'waitingNote', 'responderLabel', 'responseNote', 'waitingLabel'];
+  const intervalDoc = (id: string) => `requests/${id}/waiting_intervals/w000001`;
+
+  it('confidential: the dispatcher never reads the actor’s name, the interval’s notes or the public summary — nothing private even reaches the adapter', async () => {
+    const asking = await waitingOnRequester({ is_confidential: true, confidential_grant_ids: [] });
+    const answered = await waitingOnRequester({ is_confidential: true, waiting_party_responded: true }, { responded_at: NOW, responded_by_id: REQUESTER, response_note: REPLY_NOTE });
+    const waiting = await seedRequest({ status: 'waiting', is_confidential: true, current_waiting_interval_id: 1, waiting_on: { kind: 'team', team_label: 'ทีมบัญชี' } });
+    const ids = await queue([
+      ...asked(asking, 'waiting_requested', true),
+      ...respondedOutbox({ requestId: answered.id, requestNumber: answered.number, revision: 4, activitySeq: 4, intervalId: 1, gmRecipientIds: [GM], actorId: REQUESTER, isConfidential: true, now }),
+      ...lifecycleOutbox({ requestId: waiting.id, requestNumber: waiting.number, revision: 3, activitySeq: 3, eventKind: 'request_waiting', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: true, now }),
+    ]);
+    const reads: string[] = [];
+    const sent: OutboundMessage[] = [];
+    for (const outboxId of ids) await expect(dispatchOutbox({ ...deps(capture(sent)), store: recordingStore(reads) }, outboxId)).resolves.toBe('sent');
+    expect(sent).toHaveLength(3);
+    for (const outbound of sent) for (const field of PRIVATE_FIELDS) expect(outbound, field).not.toHaveProperty(field);
+    // Each recipient's own directory entry is read (to choose Slack or e-mail) — never the actor's:
+    // REQUESTER receives notices 1 and 3, GM receives notice 2 (GM asked in 1, REQUESTER answered in 2).
+    const count = (path: string) => reads.filter((read) => read === path).length;
+    expect([count(`people/${REQUESTER}`), count(`people/${GM}`)]).toEqual([2, 1]);
+    for (const path of [intervalDoc(asking.id), intervalDoc(answered.id), `request_summaries/${waiting.id}`]) expect(reads).not.toContain(path);
+  });
+
+  it('the same notices of a general request do read them (so the check above can see a read)', async () => {
+    const asking = await waitingOnRequester();
+    const reads: string[] = [];
+    const sent: OutboundMessage[] = [];
+    const [outboxId] = await queue(asked(asking, 'waiting_requested'));
+    await dispatchOutbox({ ...deps(capture(sent)), store: recordingStore(reads) }, outboxId ?? '');
+    expect(reads).toEqual(expect.arrayContaining([`people/${GM}`, intervalDoc(asking.id)]));
+    expect(sent[0]).toMatchObject({ actorName: NAMES[GM], waitingNote: WAIT_NOTE, summaryTitle: TITLE });
+  });
+
+  it('confidential: no name, note or title — still which button to press', async () => {
+    const seeded = await waitingOnRequester({ is_confidential: true, confidential_grant_ids: [] });
+    const [outboxId] = await queue(asked(seeded, 'waiting_requested', true));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([[`*${seeded.number}* รอการดำเนินการจากฝั่งคุณ`, ANSWER, link(seeded.id)].join('\n')]);
+  });
+
+  it('confidential “answered”: neither who nor what', async () => {
+    const seeded = await waitingOnRequester({ is_confidential: true, waiting_party_responded: true }, { responded_at: NOW, responded_by_id: REQUESTER, response_note: REPLY_NOTE });
+    const [outboxId] = await queue(respondedOutbox({ requestId: seeded.id, requestNumber: seeded.number, revision: 4, activitySeq: 4, intervalId: 1, gmRecipientIds: [GM], actorId: REQUESTER, isConfidential: true, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([[`*${seeded.number}* ฝ่ายที่รอตอบกลับแล้ว`, link(seeded.id)].join('\n')]);
+  });
+
+  it('confidential completion: what to do and when it closes by itself, no title', async () => {
+    const due = Date.parse('2027-01-14T09:00:00+07:00');
+    const seeded = await seedRequest({ status: 'completed', is_confidential: true, auto_close_due_at: due });
+    const [outboxId] = await queue(lifecycleOutbox({ requestId: seeded.id, requestNumber: seeded.number, revision: 3, activitySeq: 3, eventKind: 'request_completed', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: true, autoCloseDueAt: due, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([
+      [`*${seeded.number}* งานเสร็จแล้ว กรุณาตรวจและยืนยัน`, `ระบบจะปิดอัตโนมัติ ${formatThaiDateTime(due)} หากไม่มีการตอบกลับ`, NOT_RESOLVED, link(seeded.id)].join('\n'),
+    ]);
+  });
+});
+
+describe('D-A07-8: dev sends only to the approved sandbox list; everyone else is suppressed', () => {
+  const sandboxed = (list: string) => deps(sandboxAdapter(channelRouter({ slack: adapterOf(), email }), resolveSandboxRecipients('dev', list) ?? { slackUserIds: new Set(), emails: new Set() }));
+
+  it('a listed Slack ID gets the DM; an unlisted one is suppressed (NOT_IN_SANDBOX) and Slack is never called for it', async () => {
+    const { id, number } = await seedRequest();
+    const [toGm, toRequester] = await queue([
+      ...newRequestOutbox({ requestId: id, requestNumber: number, actorId: MAIL_ONLY, gmRecipientIds: [GM], requesterId: REQUESTER, isConfidential: false, now }),
+    ]);
+    await expect(dispatchOutbox(sandboxed('U0A07GM001'), toGm ?? '')).resolves.toBe('sent');
+    await expect(dispatchOutbox(sandboxed('U0A07GM001'), toRequester ?? '')).resolves.toBe('suppressed');
+    expect(await entry(toRequester ?? '')).toMatchObject({ state: 'suppressed', last_error_code: 'NOT_IN_SANDBOX' });
+    expect(slack.calls.map((call) => call.body.channel)).toEqual([SLACK_IDS[GM]]);
+  });
+
+  it('e-mail too: an unlisted address is suppressed, a listed one is sent', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [MAIL_ONLY], isConfidential: false, now }));
+    await expect(dispatchOutbox(sandboxed('U0A07GM001'), outboxId ?? '')).resolves.toBe('suppressed');
+    expect(emails).toEqual([]);
+    const second = await seedRequest();
+    const [listed] = await queue(newRequestOutbox({ requestId: second.id, requestNumber: second.number, actorId: REQUESTER, gmRecipientIds: [MAIL_ONLY], isConfidential: false, now }));
+    await expect(dispatchOutbox(sandboxed(`U0A07GM001, ${MAIL_ONLY.toUpperCase()}`), listed ?? '')).resolves.toBe('sent');
+    expect(emails.map((sent) => sent.address)).toEqual([MAIL_ONLY]);
+  });
+
+  it('a listed Slack ID that Slack does not know falls back to e-mail only if that address is listed too', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    slack.answer({ kind: 'error', error: 'user_not_found' });
+    await expect(dispatchOutbox(sandboxed('U0A07GM001'), outboxId ?? '')).resolves.toBe('suppressed');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'suppressed', last_error_code: 'NOT_IN_SANDBOX', delivery_channel: 'email' });
+    expect(emails).toEqual([]);
+  });
+
+  it('an empty dev list sends nothing at all', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    await expect(dispatchOutbox(sandboxed(''), outboxId ?? '')).resolves.toBe('suppressed');
+    expect(slack.calls).toEqual([]);
   });
 });
 
@@ -400,7 +629,7 @@ describe('logs and network (runs last)', () => {
 
   it('logs hold no Slack ID, e-mail, name, request number, message text or token', () => {
     const text = logs.lines.join('\n');
-    for (const secret of [...Object.values(SLACK_IDS), ...Object.keys(NAMES), ...Object.values(NAMES), TITLE, TYPED, TOKEN, 'DEV-07', 'งานภายในมีอัปเดต', 'มีงานใหม่']) {
+    for (const secret of [...Object.values(SLACK_IDS), ...Object.keys(NAMES), ...Object.values(NAMES), TITLE, TYPED, TOKEN, WAIT_NOTE, REPLY_NOTE, 'DEV-07', 'รอการดำเนินการ', 'มีงานใหม่']) {
       expect(text).not.toContain(secret);
     }
   });

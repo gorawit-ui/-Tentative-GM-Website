@@ -17,6 +17,9 @@ const VALID = [
   // F3: the party is left to the domain, which refuses it with WAITING_ON_REQUIRED.
   body('enter_waiting', { ...at }),
   body('change_waiting_party', { ...at, waiting_on: { kind: 'contractor', name: 'ร้านแอร์' } }),
+  // D-A07-1: the GM's optional note to the waited party (shown in their message, general requests only).
+  body('enter_waiting', { ...at, waiting_on: { kind: 'person', person_id: 'employee01@tdfb.co' }, note: 'ขอใบเสนอราคา 2 ร้าน' }),
+  body('change_waiting_party', { ...at, waiting_on: { kind: 'team', team_label: 'ทีมบัญชี', contact_ids: ['a@tdfb.co'] }, note: 'ขอสรุปยอด' }),
   body('follow_up', { ...at }),
   body('follow_up', { ...at, remind: true }),
   body('respond_waiting_party', { request_id: 'req-1', waiting_interval_id: 2 }),
@@ -51,6 +54,8 @@ describe('refused at the boundary', () => {
     ['contact IDs that are not person IDs', body('enter_waiting', { ...at, waiting_on: { kind: 'team', team_label: 'x', contact_ids: ['nope'] } })],
     ['notify that is not a boolean', body('enter_waiting', { ...at, waiting_on: { kind: 'person', person_id: 'a@tdfb.co' }, notify: 'yes' })],
     ['remind that is not a boolean', body('follow_up', { ...at, remind: 1 })],
+    ['a waiting note that is not text', body('enter_waiting', { ...at, waiting_on: { kind: 'person', person_id: 'a@tdfb.co' }, note: 42 })],
+    ['a note on follow-up (the note belongs to entering waiting)', body('follow_up', { ...at, note: 'x' })],
     ['an answer without its interval', body('respond_waiting_party', { request_id: 'req-1' })],
     ['an answer with interval 0', body('respond_waiting_party', { request_id: 'req-1', waiting_interval_id: 0 })],
     ['an answer that carries a revision instead', body('respond_waiting_party', { request_id: 'req-1', expected_revision: 3, waiting_interval_id: 1 })],

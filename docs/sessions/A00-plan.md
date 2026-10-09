@@ -25,7 +25,7 @@
 | 5 | A04 waiting / follow / response + history | A03, A02 | ได้ (ทำแล้ว) | — | FU-12, FU-09, FU-26 ปิดแล้ว; ใหม่ FU-30 (เวลาเตือนจาก settings), FU-31 (คู่ชื่อฝ่ายที่รอ) |
 | 6 | A05 stale / auto-close / presence tick | A02, A03 | ได้ (ทำแล้ว) | P7-ADMIN-04 วันหยุดจริงก่อน pilot | stale ใช้ปฏิทินบริษัทปัจจุบัน (FU-27 เหลือ snapshot สำหรับ B01); ใหม่ FU-32 (หน้าแก้ปฏิทิน A11) |
 | 7 | A07 Slack outbound (disabled/local mode) | A01, A02 | ได้ (ทำแล้ว: adapter + test กับ Slack ปลอม; runtime ยัง local/disabled) | P7-ADMIN-03 สำหรับ sandbox จริง | FU-17; FU-32 ปิด (D-A05-3); ใหม่ FU-33 (ต่อ Slack จริง + sandbox allowlist) |
-| 8 | A08 Gmail outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-02 สำหรับ sandbox จริง | FU-17 |
+| 8 | A08 Gmail outbound (disabled/local mode) | A01, A02 | ได้ (ทำแล้ว: adapter + test กับ Gmail ปลอม, เพดานของแอป, dev sandbox D-A07-8; runtime ยัง local/disabled) | P7-ADMIN-02 สำหรับ sandbox จริง | FU-17; ใหม่ FU-34 (ต่อ Gmail จริง), FU-35 (ช่องหมายเหตุตอนเข้ารอ), FU-36 (หน้าจอใช้ `formatThaiDateTime`) |
 | 9 | A09 Google login / 4 roles / route shell | S12, A01 | ได้ (Auth emulator) | — | — |
 | 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | FU-25 (เวลา tick ล่าสุด, เกิน 30 นาทีสีแดง), FU-32 (แก้ปฏิทิน → stale คำนวณใหม่) |
 | 11 | A10 Admin people CSV / roles | A09 | ได้ (CSV สังเคราะห์) | P7-ADMIN-01 CSV จริง | FU-10, FU-11 |
@@ -38,7 +38,7 @@
 | 18 | A18 mobile GM board | A09, A03, S09 | ได้ | — | FU-13, FU-04 |
 | 19 | A19 desktop Kanban / bounded listeners | A18 | ได้ | — | FU-13 |
 | 20 | A21 GM create cross-team + on-behalf | A09, A01, A04 | ได้ | P7-ADMIN-04 default owner/types จริงก่อน pilot | FU-06, FU-21 |
-| 21 | A20 card actions + waiting sheet | A18, A03, A04 | ได้ | — | FU-04, FU-06, FU-31 (API ของ FU-12/FU-09 และ preview ทำแล้วใน A04) |
+| 21 | A20 card actions + waiting sheet | A18, A03, A04 | ได้ | — | FU-04, FU-06, FU-31, FU-35 (API ของ FU-12/FU-09 และ preview ทำแล้วใน A04) |
 | 22 | A22 waiting-party response UI | A17, A04 | ได้ | — | — |
 | 23 | A23 home focus / presence / contact FAQ | A09, A06, S07 | ได้ (FAQ สังเคราะห์) | P7-ADMIN-04 FAQ/contact จริง | FU-28 (`gm_profile_summaries`) |
 | 24 | A24 notification degraded mode + privacy transitions E2E | A19, A23, A02 | ได้ (Slack/Gmail disabled) | P7-ADMIN-02/03 สำหรับกรณีอนุมัติแล้วจริง | FU-09 |

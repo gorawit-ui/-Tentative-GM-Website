@@ -1,7 +1,7 @@
 // A02 — notification adapters. Only `local` (log-only) and `disabled` exist until A07/A08 and the
 // P7-ADMIN-02/03 approvals: nothing is sent to Slack or e-mail, nobody real is notified.
 import { describe, expect, it, vi } from 'vitest';
-import { channelRouter, disabledAdapter, localAdapter, notificationAdapter, type NotificationAdapter, type OutboundMessage } from './adapters';
+import { channelRouter, disabledAdapter, localAdapter, notificationAdapter, sandboxAdapter, type NotificationAdapter, type OutboundMessage } from './adapters';
 import type { WorkerLogger } from './log';
 
 const message: OutboundMessage = {
@@ -66,5 +66,31 @@ describe('channelRouter', () => {
     await expect(router.send(message)).resolves.toEqual({ kind: 'accepted', providerId: 'slack' });
     await expect(router.send({ ...message, channel: 'email', address: 'someone@tdfb.co' })).resolves.toEqual({ kind: 'accepted', providerId: 'email' });
     expect(seen).toEqual(['slack:slack', 'email:email']);
+  });
+});
+
+describe('sandboxAdapter (D-A07-8)', () => {
+  const sandbox = { slackUserIds: new Set(['U01ABCDE']), emails: new Set(['gm.one@tdfb.co']) };
+  function counting(): NotificationAdapter & { sent: OutboundMessage[] } {
+    const sent: OutboundMessage[] = [];
+    return { sent, send: async (message) => (sent.push(message), { kind: 'accepted', providerId: 'p' }) };
+  }
+
+  it('passes listed recipients through; suppresses the rest without calling the provider', async () => {
+    const inner = counting();
+    const guarded = sandboxAdapter(inner, sandbox);
+    await expect(guarded.send(message)).resolves.toEqual({ kind: 'accepted', providerId: 'p' });
+    await expect(guarded.send({ ...message, address: 'U09OTHER1' })).resolves.toEqual({ kind: 'suppressed', code: 'NOT_IN_SANDBOX' });
+    await expect(guarded.send({ ...message, channel: 'email', address: 'GM.One@tdfb.co' })).resolves.toEqual({ kind: 'accepted', providerId: 'p' });
+    await expect(guarded.send({ ...message, channel: 'email', address: 'employee01@tdfb.co' })).resolves.toEqual({ kind: 'suppressed', code: 'NOT_IN_SANDBOX' });
+    // A Slack ID on the e-mail list (or the reverse) is not a match.
+    await expect(guarded.send({ ...message, channel: 'email', address: 'U01ABCDE' })).resolves.toEqual({ kind: 'suppressed', code: 'NOT_IN_SANDBOX' });
+    expect(inner.sent.map((sent) => sent.address)).toEqual(['U01ABCDE', 'GM.One@tdfb.co']);
+  });
+
+  it('no Slack ID to check (blank) is passed on, so the Slack adapter answers “not mapped” and e-mail is checked next', async () => {
+    const inner = counting();
+    await sandboxAdapter(inner, sandbox).send({ ...message, address: '' });
+    expect(inner.sent).toHaveLength(1);
   });
 });

@@ -37,3 +37,70 @@ export function resolveWebBaseUrl(value: string | undefined): string {
   }
   return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
 }
+
+export const WORKER_ENVIRONMENTS = ['prod', 'dev', 'local'] as const;
+export type WorkerEnvironment = (typeof WORKER_ENVIRONMENTS)[number];
+
+/** `GM_ENVIRONMENT`, read like the API's (default `local`, the emulators). */
+export function resolveWorkerEnvironment(value: string | undefined): WorkerEnvironment {
+  const environment = value ?? 'local';
+  if (!(WORKER_ENVIRONMENTS as readonly string[]).includes(environment)) throw new Error('GM_ENVIRONMENT must be prod, dev or local');
+  return environment as WorkerEnvironment;
+}
+
+/** D-A07-8: who a dev / local worker may notify — approved Slack user IDs and company e-mails. */
+export interface SandboxRecipients {
+  readonly slackUserIds: ReadonlySet<string>;
+  /** Lowercase. */
+  readonly emails: ReadonlySet<string>;
+}
+
+const SLACK_USER_ID = /^[UW][A-Z0-9]{6,}$/;
+const COMPANY_EMAIL = /^[a-z0-9._%+-]+@tdfb\.co$/;
+
+/** A lowercase company address (D-S08-4 person IDs are these); nothing else is ever mailed or sent from. */
+export function isCompanyEmail(value: string): boolean {
+  return COMPANY_EMAIL.test(value);
+}
+
+/**
+ * D-A07-8 `GM_NOTIFY_SANDBOX`: comma-separated Slack user IDs and @tdfb.co e-mails. prod has no list
+ * (setting one stops the worker); dev and local without one notify nobody (fail closed).
+ */
+export function resolveSandboxRecipients(environment: WorkerEnvironment, value: string | undefined): SandboxRecipients | undefined {
+  if (environment === 'prod') {
+    if (value !== undefined) throw new Error('GM_NOTIFY_SANDBOX must not be set in prod (D-A07-8: prod has no sandbox list)');
+    return undefined;
+  }
+  const slackUserIds = new Set<string>();
+  const emails = new Set<string>();
+  for (const raw of (value ?? '').split(',')) {
+    const entry = raw.trim();
+    if (entry === '') continue;
+    if (SLACK_USER_ID.test(entry)) slackUserIds.add(entry);
+    else if (isCompanyEmail(entry.toLowerCase())) emails.add(entry.toLowerCase());
+    else throw new Error('GM_NOTIFY_SANDBOX entries must be Slack user IDs or @tdfb.co e-mails');
+  }
+  return { slackUserIds, emails };
+}
+
+/** A08: the display name when `GM_MAIL_FROM_NAME` is not set. */
+export const DEFAULT_MAIL_FROM_NAME = 'ทีม GM';
+const MAX_MAIL_FROM_NAME = 64;
+
+/**
+ * A08 / Part 7 D4: `GM_MAIL_FROM` — the company's existing central mailbox (or its send-as alias)
+ * that P7-ADMIN-02 approves; never a person's own account (no new licence). Unset → no sender (e-mail
+ * cannot be sent; local / disabled modes do not need one). `GM_MAIL_FROM_NAME` — the display name.
+ */
+export function resolveMailSender(address: string | undefined, name: string | undefined): { readonly address: string; readonly name: string } | undefined {
+  if (address === undefined) return undefined;
+  const mailbox = address.trim().toLowerCase();
+  if (!isCompanyEmail(mailbox)) throw new Error('GM_MAIL_FROM must be one @tdfb.co mailbox address');
+  if (name === undefined) return { address: mailbox, name: DEFAULT_MAIL_FROM_NAME };
+  const display = name.trim();
+  if (display === '' || [...display].length > MAX_MAIL_FROM_NAME || /["<>\r\n\\]/.test(display)) {
+    throw new Error(`GM_MAIL_FROM_NAME must be 1–${MAX_MAIL_FROM_NAME} characters without quotes, angle brackets or line breaks`);
+  }
+  return { address: mailbox, name: display };
+}
