@@ -18,6 +18,7 @@ import { createApiHandler } from '../../apps/api/src/http/app';
 import { channelRouter, notificationAdapter, sandboxAdapter, type NotificationAdapter, type OutboundMessage } from '../../apps/worker/src/adapters';
 import type { WorkerDeps } from '../../apps/worker/src/deps';
 import { adminWorkerStore } from '../../apps/worker/src/firestore-store';
+import type { WorkerStore } from '../../apps/worker/src/store';
 import { consoleWorkerLogger } from '../../apps/worker/src/log';
 import { resolveSandboxRecipients } from '../../apps/worker/src/notification-mode';
 import { dispatchOutbox } from '../../apps/worker/src/outbox-dispatch';
@@ -423,6 +424,60 @@ describe('D-A07-1: who acted, the notes and what to do — read when the message
     const [outboxId] = await queue(relatedAddedOutbox({ requestId: seeded.id, requestNumber: seeded.number, revision: 3, activitySeq: 3, personIds: [MAIL_ONLY], actorId: GM, isConfidential: false, now }));
     await dispatchOutbox(deps(), outboxId ?? '');
     expect(emails.map((sent) => [sent.eventKind, sent.actorName])).toEqual([['related_added', NAMES[GM]]]);
+  });
+
+  /** The store the dispatcher uses, recording every document its transactions read. */
+  function recordingStore(reads: string[]): WorkerStore {
+    const inner = adminWorkerStore(worker.db, { maxAttempts: TEST_MAX_ATTEMPTS });
+    return {
+      due: (...args) => inner.due(...args),
+      openRequests: (...args) => inner.openRequests(...args),
+      runTransaction: (work) =>
+        inner.runTransaction((transaction) =>
+          work({
+            get: async (path) => {
+              reads.push(path);
+              return transaction.get(path);
+            },
+            set: (path, data) => transaction.set(path, data),
+            delete: (path) => transaction.delete(path),
+          }),
+        ),
+    };
+  }
+  const capture = (sent: OutboundMessage[]): NotificationAdapter => ({ send: async (outbound) => (sent.push(outbound), { kind: 'accepted', providerId: 'captured' }) });
+  const PRIVATE_FIELDS = ['summaryTitle', 'actorName', 'waitingNote', 'responderLabel', 'responseNote', 'waitingLabel'];
+  const intervalDoc = (id: string) => `requests/${id}/waiting_intervals/w000001`;
+
+  it('confidential: the dispatcher never reads the actor’s name, the interval’s notes or the public summary — nothing private even reaches the adapter', async () => {
+    const asking = await waitingOnRequester({ is_confidential: true, confidential_grant_ids: [] });
+    const answered = await waitingOnRequester({ is_confidential: true, waiting_party_responded: true }, { responded_at: NOW, responded_by_id: REQUESTER, response_note: REPLY_NOTE });
+    const waiting = await seedRequest({ status: 'waiting', is_confidential: true, current_waiting_interval_id: 1, waiting_on: { kind: 'team', team_label: 'ทีมบัญชี' } });
+    const ids = await queue([
+      ...asked(asking, 'waiting_requested', true),
+      ...respondedOutbox({ requestId: answered.id, requestNumber: answered.number, revision: 4, activitySeq: 4, intervalId: 1, gmRecipientIds: [GM], actorId: REQUESTER, isConfidential: true, now }),
+      ...lifecycleOutbox({ requestId: waiting.id, requestNumber: waiting.number, revision: 3, activitySeq: 3, eventKind: 'request_waiting', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: true, now }),
+    ]);
+    const reads: string[] = [];
+    const sent: OutboundMessage[] = [];
+    for (const outboxId of ids) await expect(dispatchOutbox({ ...deps(capture(sent)), store: recordingStore(reads) }, outboxId)).resolves.toBe('sent');
+    expect(sent).toHaveLength(3);
+    for (const outbound of sent) for (const field of PRIVATE_FIELDS) expect(outbound, field).not.toHaveProperty(field);
+    // Each recipient's own directory entry is read (to choose Slack or e-mail) — never the actor's:
+    // REQUESTER receives notices 1 and 3, GM receives notice 2 (GM asked in 1, REQUESTER answered in 2).
+    const count = (path: string) => reads.filter((read) => read === path).length;
+    expect([count(`people/${REQUESTER}`), count(`people/${GM}`)]).toEqual([2, 1]);
+    for (const path of [intervalDoc(asking.id), intervalDoc(answered.id), `request_summaries/${waiting.id}`]) expect(reads).not.toContain(path);
+  });
+
+  it('the same notices of a general request do read them (so the check above can see a read)', async () => {
+    const asking = await waitingOnRequester();
+    const reads: string[] = [];
+    const sent: OutboundMessage[] = [];
+    const [outboxId] = await queue(asked(asking, 'waiting_requested'));
+    await dispatchOutbox({ ...deps(capture(sent)), store: recordingStore(reads) }, outboxId ?? '');
+    expect(reads).toEqual(expect.arrayContaining([`people/${GM}`, intervalDoc(asking.id)]));
+    expect(sent[0]).toMatchObject({ actorName: NAMES[GM], waitingNote: WAIT_NOTE, summaryTitle: TITLE });
   });
 
   it('confidential: no name, note or title — still which button to press', async () => {
