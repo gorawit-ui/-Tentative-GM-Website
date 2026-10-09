@@ -49,7 +49,7 @@ import {
 import type { CalendarSnapshot, Instant } from '@gm/time';
 import { runLifecycleCommand } from './lifecycle';
 import { runWaitingCommand } from './waiting';
-import { newRequestOutbox } from './outbox';
+import { newRequestOutbox, relatedAddedOutbox } from './outbox';
 import { staleJobDocument, staleJobPath } from './stale-job';
 import { commandFingerprint } from './fingerprint';
 import type { CommandStore, CommandTransaction } from './transaction-port';
@@ -279,10 +279,23 @@ async function create(
     isConfidential: record.is_confidential,
     now,
   });
-  for (const entry of outbox) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, entry.data);
+  // D-A05-1: related persons chosen at creation hear it once (D-A04-3), never the creator; someone
+  // already told about the new request (a GM recipient, the requester) gets that one notice only.
+  const told = new Set(outbox.map((entry) => entry.data.recipient_id));
+  const related = relatedAddedOutbox({
+    requestId,
+    requestNumber,
+    revision: record.revision,
+    activitySeq: record.activity_seq ?? 1,
+    personIds: record.related_person_ids.filter((personId) => !told.has(personId)),
+    actorId: actor.personId,
+    isConfidential: record.is_confidential,
+    now,
+  });
+  for (const entry of [...outbox, ...related]) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, entry.data);
   // A05: the first stale check, 3 business days + 1 ms after creation (Part 6 §6.9).
   transaction.set(staleJobPath(requestId), staleJobDocument(requestId, record, facts.workCalendar, now));
-  return { result: { request_id: requestId, request_number: requestNumber }, outboxIds: outbox.map((entry) => entry.id) };
+  return { result: { request_id: requestId, request_number: requestNumber }, outboxIds: [...outbox, ...related].map((entry) => entry.id) };
 }
 
 /** Default owner facts for routeNewRequest: a gm_task creator is an active GM by definition. */

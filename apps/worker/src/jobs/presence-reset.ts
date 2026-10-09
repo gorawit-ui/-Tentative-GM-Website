@@ -1,16 +1,21 @@
-// A05 — the `presence_reset` job (C7, S07, Part 6 §6.9): one daily job, due at Bangkok midnight,
-// that resets each GM's expired presence to “ไม่ระบุ” with the S07 rule on the latest profile — leave
+// A05 — the `presence_reset` job (C7, S07, Part 6 §6.9): one job per Bangkok day (D-A05-5), started
+// by the first tick of the day, that resets each GM's expired presence to “ไม่ระบุ” with the S07 rule on the latest profile — leave
 // with an end date stays until the end of that day, and a value set for the new day before a late
 // tick is kept. The pinned request is untouched. The UI already shows the effective presence from
-// the expiry, so the reset only keeps the stored value from going stale. It then schedules itself for
-// the next midnight. Reads the GM list and their profiles once a day (a handful of documents).
+// the expiry, so the reset only keeps the stored value from going stale. Reads the GM list and their
+// profiles once a day (a handful of documents).
 import { gmProfileOf } from '@gm/api/directories';
 import { isPersonId } from '@gm/contracts';
 import { resetPresence } from '@gm/domain';
-import { presenceExpiresAt } from '@gm/time';
 import type { JobHandler } from '../scheduled-work';
 
-export const PRESENCE_RESET_JOB_ID = 'presence_reset';
+/**
+ * D-A05-5: one job document per Bangkok date (`presence_reset-YYYY-MM-DD`), so a day whose job failed
+ * for good does not stop the next day; the failed one stays for the Admin to see (FU-25).
+ */
+export function presenceResetJobId(bangkokDate: string): string {
+  return `presence_reset-${bangkokDate}`;
+}
 
 const strings = (value: unknown): readonly string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
 
@@ -30,7 +35,7 @@ export function presenceResetJob(): JobHandler {
         transaction.set(`gm_profiles/${personId}`, { ...rest, presence_status: { kind: 'unspecified' } });
       }
     });
-    // Next Bangkok midnight, whatever time this (possibly late) run happened.
-    return { kind: 'reschedule', at: presenceExpiresAt(context.now) };
+    // The next day has its own job (D-A05-5).
+    return { kind: 'done' };
   };
 }
