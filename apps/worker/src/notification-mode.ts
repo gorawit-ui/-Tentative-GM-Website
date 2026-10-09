@@ -16,3 +16,8 @@ export function resolveNotificationMode(value: string | undefined): Notification
   if (isNotificationMode(value)) return value;
   throw new Error(`GM_NOTIFICATION_ADAPTER must be one of: ${NOTIFICATION_MODES.join(', ')}`);
 }
+
+/** A07 stub (red): implemented in the next commit. */
+export function resolveWebBaseUrl(_value: string | undefined): string {
+  throw new Error('resolveWebBaseUrl: not implemented');
+}

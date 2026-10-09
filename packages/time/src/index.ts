@@ -21,3 +21,4 @@ export {
   mergeIntervals, effectiveWaitingEnd, waitingElapsed, slaElapsed,
   type TimeInterval, type WaitingInterval, type SlaClock,
 } from './waiting-time';
+export { formatThaiDateTime } from './thai-date';

@@ -19,6 +19,11 @@ export interface OutboundMessage {
   /** D-A01-4: the number the recipient sees (confidential requests too: number + neutral text + link). */
   readonly requestNumber: string;
   readonly confidential: boolean;
+  /** A07 stub fields. */
+  readonly summaryTitle?: string;
+  readonly autoCloseDueAt?: number;
+  readonly waitingLabel?: string;
+  readonly variant?: 'unassigned';
 }
 
 export interface NotificationAdapter {
@@ -39,6 +44,14 @@ export function disabledAdapter(): NotificationAdapter {
   return { send: async () => ({ kind: 'permanent', code: 'CHANNEL_DISABLED' }) };
 }
 
-export function notificationAdapter(mode: NotificationMode, log: WorkerLogger): NotificationAdapter {
+export function notificationAdapter(mode: NotificationMode, log: WorkerLogger, _options?: { readonly webBaseUrl: string }): NotificationAdapter {
   return mode === 'local' ? localAdapter(log) : disabledAdapter();
+}
+
+export function channelRouter(_adapters: Readonly<Record<DeliveryChannel, NotificationAdapter>>): NotificationAdapter {
+  return {
+    send: async () => {
+      throw new Error('channelRouter: not implemented');
+    },
+  };
 }

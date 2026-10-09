@@ -58,9 +58,10 @@ export function claimDelivery(entry: DeliveryLeaseState, now: Instant): Delivery
 
 export type DeliveryOutcome =
   | { readonly kind: 'accepted'; readonly providerId: string }
-  | { readonly kind: 'retryable'; readonly code: string }
+  | { readonly kind: 'retryable'; readonly code: string; readonly retryAfterMs?: number }
   | { readonly kind: 'permanent'; readonly code: string }
-  | { readonly kind: 'unknown'; readonly code: string };
+  | { readonly kind: 'unknown'; readonly code: string }
+  | { readonly kind: 'unmapped' };
 
 export interface DeliverySettlement {
   readonly state: DeliveryState;
@@ -82,5 +83,7 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
       return { state: 'failed', errorCode: outcome.code };
     case 'unknown':
       return { state: 'delivery_unknown', errorCode: outcome.code };
+    case 'unmapped':
+      throw new Error('settleDelivery: unmapped not implemented');
   }
 }
