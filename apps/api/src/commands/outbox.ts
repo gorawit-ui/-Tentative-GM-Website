@@ -38,7 +38,7 @@ export interface OutboxEntry {
     readonly waiting_interval_id?: number;
     /** A07: `unassigned` — the all-GM notice of a request routing left unassigned (A3, UI-15 “ยังไม่มอบหมาย”). */
     readonly notice_variant?: 'unassigned';
-    /** D-A07 stub. */
+    /** D-A07-1: who acted, for notices that name them (GM who asked / reminded / took over / added, who answered). */
     readonly actor_id?: string;
   };
 }
@@ -173,6 +173,8 @@ export function lifecycleOutbox(input: {
       ...(input.autoCloseDueAt === undefined ? {} : { auto_close_due_at: input.autoCloseDueAt }),
       revision: input.revision,
       activity_seq: input.activitySeq,
+      // D-A07-1: the previous GM learns who took the request.
+      ...(eventKind === 'request_taken_over' ? { actor_id: input.actorId } : {}),
     },
   }));
 }
@@ -226,6 +228,8 @@ export function waitingPartyOutbox(input: {
         revision: input.revision,
         activity_seq: input.activitySeq,
         waiting_interval_id: input.intervalId,
+        // D-A07-1: the message names the GM who asked / reminded.
+        actor_id: input.actorId,
       }),
     );
 }
@@ -257,6 +261,8 @@ export function respondedOutbox(input: {
         revision: input.revision,
         activity_seq: input.activitySeq,
         waiting_interval_id: input.intervalId,
+        // D-A07-1: the GM hears who answered.
+        actor_id: input.actorId,
       }),
     );
 }
@@ -290,6 +296,8 @@ export function relatedAddedOutbox(input: {
         created_at: input.now,
         revision: input.revision,
         activity_seq: input.activitySeq,
+        // D-A07-1: the message names the GM who added.
+        actor_id: input.actorId,
       }),
     );
 }

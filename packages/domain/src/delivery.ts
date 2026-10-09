@@ -58,8 +58,9 @@ export function claimDelivery(entry: DeliveryLeaseState, now: Instant): Delivery
 
 /**
  * A07: `retryAfterMs` — the provider said when to come back (Slack 429 Retry-After); `unmapped` — the
- * provider does not know the stored address (Slack user not found), so nothing was sent and the worker
- * uses company e-mail instead (A1.2).
+ * provider cannot reach the stored address (Slack user not found, D-A07-4: or disabled; `code` says
+ * which), so nothing was sent and the worker uses company e-mail instead (A1.2). D-A07-8:
+ * `suppressed` — not sent on purpose (a dev recipient outside the sandbox list), never retried.
  */
 export type DeliveryOutcome =
   | { readonly kind: 'accepted'; readonly providerId: string }
@@ -94,8 +95,8 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
       return { state: 'delivery_unknown', errorCode: outcome.code };
     case 'unmapped':
       // Reached only when there is nothing to fall back to: visible to the GM like “no channel”.
-      return { state: 'failed', errorCode: 'SLACK_NOT_MAPPED' };
+      return { state: 'failed', errorCode: outcome.code ?? 'SLACK_NOT_MAPPED' };
     case 'suppressed':
-      throw new Error('D-A07 stub: suppressed not implemented');
+      return { state: 'suppressed', errorCode: outcome.code };
   }
 }

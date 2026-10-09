@@ -38,18 +38,43 @@ export function resolveWebBaseUrl(value: string | undefined): string {
   return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
 }
 
-/** D-A07 stub. */
+export const WORKER_ENVIRONMENTS = ['prod', 'dev', 'local'] as const;
+export type WorkerEnvironment = (typeof WORKER_ENVIRONMENTS)[number];
+
+/** `GM_ENVIRONMENT`, read like the API's (default `local`, the emulators). */
+export function resolveWorkerEnvironment(value: string | undefined): WorkerEnvironment {
+  const environment = value ?? 'local';
+  if (!(WORKER_ENVIRONMENTS as readonly string[]).includes(environment)) throw new Error('GM_ENVIRONMENT must be prod, dev or local');
+  return environment as WorkerEnvironment;
+}
+
+/** D-A07-8: who a dev / local worker may notify — approved Slack user IDs and company e-mails. */
 export interface SandboxRecipients {
   readonly slackUserIds: ReadonlySet<string>;
+  /** Lowercase. */
   readonly emails: ReadonlySet<string>;
 }
 
-/** D-A07 stub. */
-export function resolveWorkerEnvironment(_value: string | undefined): 'prod' | 'dev' | 'local' {
-  throw new Error('D-A07 stub: resolveWorkerEnvironment not implemented');
-}
+const SLACK_USER_ID = /^[UW][A-Z0-9]{6,}$/;
+const COMPANY_EMAIL = /^[a-z0-9._%+-]+@tdfb\.co$/;
 
-/** D-A07 stub. */
-export function resolveSandboxRecipients(_environment: 'prod' | 'dev' | 'local', _value: string | undefined): SandboxRecipients | undefined {
-  throw new Error('D-A07 stub: resolveSandboxRecipients not implemented');
+/**
+ * D-A07-8 `GM_NOTIFY_SANDBOX`: comma-separated Slack user IDs and @tdfb.co e-mails. prod has no list
+ * (setting one stops the worker); dev and local without one notify nobody (fail closed).
+ */
+export function resolveSandboxRecipients(environment: WorkerEnvironment, value: string | undefined): SandboxRecipients | undefined {
+  if (environment === 'prod') {
+    if (value !== undefined) throw new Error('GM_NOTIFY_SANDBOX must not be set in prod (D-A07-8: prod has no sandbox list)');
+    return undefined;
+  }
+  const slackUserIds = new Set<string>();
+  const emails = new Set<string>();
+  for (const raw of (value ?? '').split(',')) {
+    const entry = raw.trim();
+    if (entry === '') continue;
+    if (SLACK_USER_ID.test(entry)) slackUserIds.add(entry);
+    else if (COMPANY_EMAIL.test(entry.toLowerCase())) emails.add(entry.toLowerCase());
+    else throw new Error('GM_NOTIFY_SANDBOX entries must be Slack user IDs or @tdfb.co e-mails');
+  }
+  return { slackUserIds, emails };
 }

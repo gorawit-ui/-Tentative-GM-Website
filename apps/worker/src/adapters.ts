@@ -31,7 +31,7 @@ export interface OutboundMessage {
   readonly waitingLabel?: string;
   /** A07: the all-GM notice of an unassigned request (A3). */
   readonly variant?: 'unassigned';
-  /** D-A07 stub fields. */
+  /** D-A07-1: who acted / answered and the notes — read at send time, general requests only. */
   readonly actorName?: string;
   readonly waitingNote?: string;
   readonly responderLabel?: string;
@@ -66,9 +66,20 @@ export function notificationAdapter(mode: NotificationMode, log: WorkerLogger, o
   return mode === 'local' ? localAdapter(log, options?.webBaseUrl) : disabledAdapter();
 }
 
-/** D-A07 stub. */
-export function sandboxAdapter(inner: NotificationAdapter, _sandbox: SandboxRecipients): NotificationAdapter {
-  return inner;
+/**
+ * D-A07-8: dev / local notify only the approved sandbox list; anyone else is `suppressed` without the
+ * provider being called. A blank Slack ID goes on (the Slack adapter answers “not mapped” and the
+ * e-mail fallback is checked here in turn).
+ */
+export function sandboxAdapter(inner: NotificationAdapter, sandbox: SandboxRecipients): NotificationAdapter {
+  return {
+    send: async (message) => {
+      const address = message.address.trim();
+      const listed =
+        message.channel === 'slack' ? address === '' || sandbox.slackUserIds.has(address) : sandbox.emails.has(address.toLowerCase());
+      return listed ? inner.send(message) : { kind: 'suppressed', code: 'NOT_IN_SANDBOX' };
+    },
+  };
 }
 
 /** One adapter per channel (A1.2): Slack DM or company e-mail, chosen by the dispatcher. */

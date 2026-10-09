@@ -4,10 +4,11 @@
 // itself — the dispatcher settles the answer (A02 back-off, Retry-After, `delivery_unknown`):
 //   ok                                   → accepted (`slack:{channel}:{ts}`)
 //   user/channel not found, no Slack ID  → unmapped: nothing was posted, the worker uses e-mail (A1.2)
+//   the user is disabled (D-A07-4)       → unmapped `SLACK_USER_DISABLED`: e-mail too
 //   429 / `ratelimited`                  → retryable, with Retry-After when Slack gives one
 //   unreachable before sending, 503      → retryable
 //   no answer in time, 500, Slack's own internal error → unknown: it may have been posted
-//   anything else (user disabled, bad token, missing scope…) → permanent `SLACK_<ERROR>`
+//   anything else (bad token, the app's account inactive, missing scope…) → permanent `SLACK_<ERROR>`
 // Tests point `apiBaseUrl` at a fake on 127.0.0.1; the real Slack is used only after P7-ADMIN-03.
 // Nothing here logs the token, the Slack ID, the number or the text.
 import { MINUTE_MS } from '@gm/time';
@@ -32,8 +33,9 @@ export const DEFAULT_SLACK_TIMEOUT_MS = 10_000;
 /** A Retry-After longer than this is treated as this, so an entry is never parked indefinitely. */
 const MAX_RETRY_AFTER_MS = 24 * 60 * MINUTE_MS;
 
-/** Slack does not know the stored ID: nothing was posted. */
+/** Slack cannot reach the stored ID (unknown, or D-A07-4 the user is disabled): nothing was posted. */
 const UNMAPPED_ERRORS: ReadonlySet<string> = new Set(['user_not_found', 'channel_not_found']);
+const DISABLED_ERRORS: ReadonlySet<string> = new Set(['user_disabled']);
 /** Slack failed on its side after receiving the request: it may have been posted. */
 const UNKNOWN_ERRORS: ReadonlySet<string> = new Set(['internal_error', 'fatal_error', 'request_timeout']);
 /** Slack refused before doing anything; worth another try later. */
@@ -75,6 +77,7 @@ async function outcomeOf(response: Response): Promise<DeliveryOutcome> {
   if (body.ok === true) return { kind: 'accepted', providerId: `slack:${String(body.channel ?? '-')}:${String(body.ts ?? '-')}` };
   const error = typeof body.error === 'string' ? body.error : '';
   if (UNMAPPED_ERRORS.has(error)) return { kind: 'unmapped' };
+  if (DISABLED_ERRORS.has(error)) return { kind: 'unmapped', code: errorCode(error) };
   if (error === 'ratelimited') return { kind: 'retryable', code: 'SLACK_RATE_LIMITED', ...retryAfterMs(response.headers.get('retry-after')) };
   if (UNKNOWN_ERRORS.has(error)) return { kind: 'unknown', code: errorCode(error) };
   if (RETRYABLE_ERRORS.has(error)) return { kind: 'retryable', code: errorCode(error) };

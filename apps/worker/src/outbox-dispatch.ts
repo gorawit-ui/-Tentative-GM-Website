@@ -21,11 +21,13 @@
 // waited on or to a person removed from the request. D-A04-3: nor the “added as related” message to
 // someone removed (or no longer granted) before it went out.
 // A07: the claim also reads what the message may say, as it is at send time — the public board title
-// of a general request, the public “waiting on” label for `request_waiting`; a request that is
-// confidential now (or was when queued) gets the neutral text only (C3). Slack not knowing the stored
-// ID means nothing was posted, so the same attempt goes by company e-mail (A1.2) and the entry records
-// `delivery_channel: email`.
-import { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, latestStatusRevision } from '@gm/api/commands';
+// of a general request, the public “waiting on” label for `request_waiting`, and (D-A07-1) the name of
+// the person who acted and the notes of the waiting interval; a request that is confidential now (or
+// was when queued) gets the neutral text of its kind only (C3) and none of these is read. Slack not
+// reaching the person (unknown ID, D-A07-4 disabled user) means nothing was posted, so the same
+// attempt goes by company e-mail (A1.2) and the entry records `delivery_channel: email` and why
+// (`slack_fallback_code`). D-A07-8: in dev the adapter may answer `suppressed` (not on the sandbox list).
+import { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, intervalPath, latestStatusRevision } from '@gm/api/commands';
 import { requesterNoticeFields, requesterNoticeStateOf, type RequestRecord } from '@gm/contracts';
 import {
   DELIVERY_LEASE_MS,
@@ -50,6 +52,10 @@ export type DispatchResult = 'sent' | 'retry' | 'failed' | 'unknown' | 'suppress
 
 /** Event kinds whose notice is pointless once the request is cancelled (Part 6 §6.9: no cancel/supersede sends). */
 const MOOT_WHEN_CANCELLED: ReadonlySet<string> = new Set(['request_created']);
+/** D-A07-1: notices that name the GM who acted. */
+const NAMES_ACTOR: ReadonlySet<string> = new Set(['waiting_requested', 'waiting_reminder', 'request_taken_over', 'related_added']);
+/** D-A07-1: notices that show a note of the waiting interval. */
+const SHOWS_INTERVAL_NOTE: ReadonlySet<string> = new Set(['waiting_requested', 'waiting_reminder', 'waiting_party_responded']);
 
 interface Entry {
   readonly revision: number;
@@ -60,6 +66,8 @@ interface Entry {
   readonly eventKind: string;
   readonly audience: 'gm' | 'requester' | 'watcher' | 'waiting_party' | 'related';
   readonly requestNumber: string;
+  /** D-A07-1: who acted (named in the message of a general request). */
+  readonly actorId?: string;
   /** A04: the interval a message to the waited party belongs to. */
   readonly waitingIntervalId?: number;
   readonly confidential: boolean;
@@ -120,7 +128,46 @@ function parseEntry(stored: StoredData): Entry | undefined {
     ...(Number.isSafeInteger(stored.waiting_interval_id) ? { waitingIntervalId: stored.waiting_interval_id as number } : {}),
     ...(Number.isSafeInteger(stored.auto_close_due_at) ? { autoCloseDueAt: stored.auto_close_due_at as number } : {}),
     ...(stored.notice_variant === 'unassigned' ? { noticeVariant: 'unassigned' as const } : {}),
+    ...(text(stored.actor_id) === undefined ? {} : { actorId: stored.actor_id as string }),
   };
+}
+
+/** D-S10-1: a display name, never an e-mail in its place. */
+function displayName(person: StoredData | undefined): string | undefined {
+  const name = text(person?.name)?.trim();
+  return name === undefined || name === '' || name.includes('@') ? undefined : name;
+}
+
+/**
+ * D-A07-1: the names and notes a general request's message may show, read in the claim transaction
+ * (before any write). A confidential request reads none of them.
+ */
+async function personalParts(transaction: WorkerTransaction, entry: Entry, request: StoredData): Promise<Partial<OutboundMessage>> {
+  const actor = entry.actorId === undefined ? undefined : await transaction.get(`people/${entry.actorId}`);
+  const interval =
+    SHOWS_INTERVAL_NOTE.has(entry.eventKind) && entry.waitingIntervalId !== undefined
+      ? await transaction.get(intervalPath(entry.requestId, entry.waitingIntervalId))
+      : undefined;
+  const parts: { -readonly [K in keyof OutboundMessage]?: OutboundMessage[K] } = {};
+  const name = displayName(actor);
+  if (NAMES_ACTOR.has(entry.eventKind) && name !== undefined) parts.actorName = name;
+  if (entry.eventKind === 'waiting_party_responded' && name !== undefined) {
+    const team = text(actor?.team_label)?.trim();
+    parts.responderLabel = team === undefined || team === '' ? name : `${name} (${team})`;
+  }
+  const waitingNote = text(interval?.note);
+  if (waitingNote !== undefined && entry.eventKind !== 'waiting_party_responded') parts.waitingNote = waitingNote;
+  const responseNote = text(interval?.response_note);
+  if (responseNote !== undefined && entry.eventKind === 'waiting_party_responded') parts.responseNote = responseNote;
+  if (entry.eventKind === 'request_waiting') {
+    // D-S09-1: the public label from the public summary; “other” has no label to show (“ผู้อื่น”).
+    const kind = (request.waiting_on as { kind?: unknown } | undefined)?.kind;
+    const label = kind === 'other' ? undefined : text((await transaction.get(`request_summaries/${entry.requestId}`))?.waiting_on_summary);
+    if (label !== undefined) parts.waitingLabel = label;
+  }
+  const title = text(request.summary_title);
+  if (title !== undefined) parts.summaryTitle = title;
+  return parts;
 }
 
 const ids = (value: unknown): readonly string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
@@ -147,7 +194,7 @@ async function accessStop(transaction: WorkerTransaction, entry: Entry, request:
 
 /** The stored entry without the fields of a running or previous attempt. */
 function withoutAttempt(stored: StoredData): Record<string, unknown> {
-  const { lease_id: _leaseId, lease_until: _leaseUntil, last_error_code: _code, provider_id: _provider, ...rest } = stored;
+  const { lease_id: _leaseId, lease_until: _leaseUntil, last_error_code: _code, provider_id: _provider, slack_fallback_code: _fallback, ...rest } = stored;
   return rest;
 }
 
@@ -256,12 +303,10 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
         : entry.audience === 'related'
           ? await accessStop(transaction, entry, request)
           : undefined;
-  // A07 / C3: confidential now or when queued → number + neutral text + link only.
+  // A07 / C3: confidential now or when queued → number + the neutral line of the kind + link only.
   const confidential = entry.confidential || request?.is_confidential !== false;
-  // D-S09-1: the public label of who it waits on, from the public summary (reads before any write).
-  const waitingLabel =
-    !confidential && entry.eventKind === 'request_waiting' ? text((await transaction.get(`request_summaries/${entry.requestId}`))?.waiting_on_summary) : undefined;
-  const summaryTitle = confidential ? undefined : text(request?.summary_title);
+  // D-A07-1 / D-A07-3: title, names, notes and the waiting label — general requests only (reads before any write).
+  const parts = confidential || request === undefined ? {} : await personalParts(transaction, entry, request);
   const stop = (settlement: DeliverySettlement): Claim => {
     transaction.set(path, { ...settledEntry(stored, settlement, now), last_attempt_at: now });
     if (badge !== undefined) writeBadge(transaction, badge, observationOf(entry, settlement, now));
@@ -306,9 +351,8 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
       requestId: entry.requestId,
       requestNumber: entry.requestNumber,
       confidential,
-      ...(summaryTitle === undefined ? {} : { summaryTitle }),
+      ...parts,
       ...(entry.autoCloseDueAt === undefined ? {} : { autoCloseDueAt: entry.autoCloseDueAt }),
-      ...(waitingLabel === undefined ? {} : { waitingLabel }),
       ...(entry.noticeVariant === undefined ? {} : { variant: entry.noticeVariant }),
     },
   };
@@ -334,9 +378,11 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
 
   let message = claimed.message;
   let outcome = await send(deps, message);
+  let fallbackCode: string | undefined;
   if (outcome.kind === 'unmapped' && message.channel === 'slack') {
-    // A1.2: Slack does not know this person (nothing was posted) → company e-mail, same attempt.
-    deps.log.warn('notification.slack_unmapped', { outbox_id: outboxId, code: 'SLACK_NOT_MAPPED' });
+    // A1.2 / D-A07-4: Slack cannot reach this person (nothing was posted) → company e-mail, same attempt.
+    fallbackCode = outcome.code ?? 'SLACK_NOT_MAPPED';
+    deps.log.warn('notification.slack_unmapped', { outbox_id: outboxId, code: fallbackCode });
     message = { ...message, channel: 'email', address: claimed.entry.recipientId };
     outcome = await send(deps, message);
   }
@@ -346,7 +392,11 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
     if (stored === undefined || stored.state !== 'processing' || stored.lease_id !== leaseId) return 'lease_lost' as const;
     const observation = claimed.entry.audience === 'requester' ? observationOf(claimed.entry, settlement, deps.now()) : undefined;
     const badge = observation === undefined ? undefined : await readBadge(transaction, claimed.entry.requestId);
-    transaction.set(path, { ...settledEntry(stored, settlement, claimed.attemptedAt), delivery_channel: message.channel });
+    transaction.set(path, {
+      ...settledEntry(stored, settlement, claimed.attemptedAt),
+      delivery_channel: message.channel,
+      ...(fallbackCode === undefined ? {} : { slack_fallback_code: fallbackCode }),
+    });
     if (badge !== undefined) writeBadge(transaction, badge, observation);
     return resultOf(settlement);
   });
