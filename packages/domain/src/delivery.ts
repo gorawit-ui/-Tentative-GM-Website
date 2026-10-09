@@ -66,7 +66,8 @@ export type DeliveryOutcome =
   | { readonly kind: 'retryable'; readonly code: string; readonly retryAfterMs?: number }
   | { readonly kind: 'permanent'; readonly code: string }
   | { readonly kind: 'unknown'; readonly code: string }
-  | { readonly kind: 'unmapped' };
+  | { readonly kind: 'unmapped'; readonly code?: string }
+  | { readonly kind: 'suppressed'; readonly code: string };
 
 export interface DeliverySettlement {
   readonly state: DeliveryState;
@@ -94,5 +95,7 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
     case 'unmapped':
       // Reached only when there is nothing to fall back to: visible to the GM like “no channel”.
       return { state: 'failed', errorCode: 'SLACK_NOT_MAPPED' };
+    case 'suppressed':
+      throw new Error('D-A07 stub: suppressed not implemented');
   }
 }

@@ -60,6 +60,7 @@ const NAMES: Readonly<Record<string, string>> = {
 /** D-S09-1 / D-ACL-7: one team per person from the staff list (FU-10 imports it). */
 const TEAMS: Readonly<Record<string, string>> = { [PARTY]: 'ทีมบัญชี', [CONTACT1]: 'ทีมจัดซื้อ', [CONTACT2]: 'ทีมจัดซื้อ' };
 const RESPONSE_NOTE = 'ส่งใบเสนอราคาให้แล้วทางอีเมล';
+const WAIT_NOTE = 'ขอใบเสนอราคา 2 ร้าน ภายในวันศุกร์';
 const VENDOR = 'ร้านแอร์เย็นฉ่ำ';
 const AGENCY = 'สำนักงานเขตบางนา';
 const ROLES: Readonly<Record<string, string>> = {
@@ -1070,6 +1071,45 @@ describe('the same command_id again: no second effect, nobody told twice', () =>
   });
 });
 
+describe('D-A07-1: the notes the messages show are kept with the waiting interval', () => {
+  it('the GM’s note when entering waiting: on the interval (and its history event), trimmed; the message reads it from there', async () => {
+    setNow(MON);
+    const { id } = await inProgressRepair();
+    setNow(MON + HOUR);
+    expect(await enterWaiting(id, { kind: 'person', person_id: PARTY }, { note: `  ${WAIT_NOTE}  ` })).toMatchObject({ status: 200 });
+    expect(await interval(id, 1)).toMatchObject({ interval_id: 1, note: WAIT_NOTE, started_by_id: GM1 });
+    expect(await historyOf(id, 'waiting_started')).toEqual([expect.objectContaining({ interval_id: 1, note: WAIT_NOTE })]);
+    // The DM to the waited party knows who asked (the name is read when it is sent).
+    expect(await noticesOf(id, 'waiting_requested')).toEqual([expect.objectContaining({ recipient_id: PARTY, actor_id: GM1 })]);
+  });
+
+  it('changing the party: the new interval has its own note; a blank note is no note', async () => {
+    setNow(MON);
+    const { id } = await inProgressRepair();
+    await waitingOnParty(id);
+    setNow(MON + HOUR);
+    const reply = await act(GM1, 'change_waiting_party', {
+      request_id: id,
+      expected_revision: await revisionOf(id),
+      waiting_on: { kind: 'team', team_label: 'ทีมจัดซื้อ', contact_ids: [CONTACT1] },
+      note: '   ',
+    });
+    expect(reply).toMatchObject({ status: 200 });
+    expect(await interval(id, 1)).not.toHaveProperty('note');
+    expect(await interval(id, 2)).not.toHaveProperty('note');
+  });
+
+  it('the waited party’s answer note is kept on the interval for the GM’s message; the answer names who answered', async () => {
+    setNow(MON);
+    const { id } = await inProgressRepair();
+    await waitingOnParty(id);
+    setNow(MON + HOUR);
+    expect(await act(PARTY, 'respond_waiting_party', { request_id: id, waiting_interval_id: 1, note: RESPONSE_NOTE })).toMatchObject({ status: 200 });
+    expect(await interval(id, 1)).toMatchObject({ responded_at: MON + HOUR, responded_by_id: PARTY, response_note: RESPONSE_NOTE });
+    expect(await noticesOf(id, 'waiting_party_responded')).toEqual([expect.objectContaining({ recipient_id: GM1, actor_id: PARTY })]);
+  });
+});
+
 describe('logs and network (runs last)', () => {
   it('nothing left the machine', () => {
     expect(blockedHosts).toEqual([]);
@@ -1077,7 +1117,7 @@ describe('logs and network (runs last)', () => {
 
   it('logs hold no e-mail, name, note or party name', () => {
     const text = logs.lines.join('\n');
-    for (const secret of [...Object.keys(NAMES), ...Object.values(NAMES), RESPONSE_NOTE, VENDOR, AGENCY, 'เกี่ยวกับคดีความ', 'Bearer ']) {
+    for (const secret of [...Object.keys(NAMES), ...Object.values(NAMES), RESPONSE_NOTE, WAIT_NOTE, VENDOR, AGENCY, 'เกี่ยวกับคดีความ', 'Bearer ']) {
       expect(text).not.toContain(secret);
     }
   });

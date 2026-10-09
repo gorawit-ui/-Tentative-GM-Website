@@ -108,3 +108,13 @@ describe('A07: Slack Retry-After and a recipient Slack does not know', () => {
     expect(settleDelivery(1, { kind: 'unmapped' }, NOW)).toEqual({ state: 'failed', errorCode: 'SLACK_NOT_MAPPED' });
   });
 });
+
+describe('D-A07-4 / D-A07-8: Slack cannot reach the person; a dev recipient outside the sandbox list', () => {
+  it('a disabled Slack user that reaches settlement (nothing to fall back to) fails with its own code', () => {
+    expect(settleDelivery(1, { kind: 'unmapped', code: 'SLACK_USER_DISABLED' }, NOW)).toEqual({ state: 'failed', errorCode: 'SLACK_USER_DISABLED' });
+  });
+
+  it('not on the dev sandbox list → suppressed with the reason, nothing sent and nothing retried', () => {
+    expect(settleDelivery(1, { kind: 'suppressed', code: 'NOT_IN_SANDBOX' }, NOW)).toEqual({ state: 'suppressed', errorCode: 'NOT_IN_SANDBOX' });
+  });
+});

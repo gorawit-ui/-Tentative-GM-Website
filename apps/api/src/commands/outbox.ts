@@ -38,6 +38,8 @@ export interface OutboxEntry {
     readonly waiting_interval_id?: number;
     /** A07: `unassigned` — the all-GM notice of a request routing left unassigned (A3, UI-15 “ยังไม่มอบหมาย”). */
     readonly notice_variant?: 'unassigned';
+    /** D-A07 stub. */
+    readonly actor_id?: string;
   };
 }
 

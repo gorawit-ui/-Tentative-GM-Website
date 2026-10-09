@@ -22,6 +22,22 @@ export interface NoticeContent {
   readonly waitingLabel?: string;
   /** `unassigned`: the all-GM notice of a request no one was assigned (A3, UI-15). */
   readonly variant?: 'unassigned';
+  /** D-A07 stub fields. */
+  readonly actorName?: string;
+  readonly waitingNote?: string;
+  readonly responderLabel?: string;
+  readonly responseNote?: string;
+}
+
+export interface ComposedNotice {
+  readonly number: string;
+  readonly headline: string;
+  readonly lines: readonly string[];
+  readonly link: string;
+}
+
+export function composeNotice(_notice: NoticeContent, _webBaseUrl: string): ComposedNotice {
+  throw new Error('D-A07 stub: composeNotice not implemented');
 }
 
 export interface RenderedNotice {

@@ -8,7 +8,7 @@
 import type { DeliveryChannel, DeliveryOutcome } from '@gm/domain';
 import type { WorkerLogger } from './log';
 import { renderNotice } from './messages';
-import { DEFAULT_WEB_BASE_URL, type NotificationMode } from './notification-mode';
+import { DEFAULT_WEB_BASE_URL, type NotificationMode, type SandboxRecipients } from './notification-mode';
 
 export interface OutboundMessage {
   readonly outboxId: string;
@@ -31,6 +31,11 @@ export interface OutboundMessage {
   readonly waitingLabel?: string;
   /** A07: the all-GM notice of an unassigned request (A3). */
   readonly variant?: 'unassigned';
+  /** D-A07 stub fields. */
+  readonly actorName?: string;
+  readonly waitingNote?: string;
+  readonly responderLabel?: string;
+  readonly responseNote?: string;
 }
 
 export interface NotificationAdapter {
@@ -59,6 +64,11 @@ export function disabledAdapter(): NotificationAdapter {
 
 export function notificationAdapter(mode: NotificationMode, log: WorkerLogger, options?: { readonly webBaseUrl: string }): NotificationAdapter {
   return mode === 'local' ? localAdapter(log, options?.webBaseUrl) : disabledAdapter();
+}
+
+/** D-A07 stub. */
+export function sandboxAdapter(inner: NotificationAdapter, _sandbox: SandboxRecipients): NotificationAdapter {
+  return inner;
 }
 
 /** One adapter per channel (A1.2): Slack DM or company e-mail, chosen by the dispatcher. */

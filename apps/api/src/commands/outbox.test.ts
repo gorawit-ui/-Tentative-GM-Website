@@ -3,7 +3,7 @@
 // recipient (D-S08-2). D-A01-3: one entry per recipient with `channel: auto` (the worker records the
 // channel it really used). D-A01-4: a requester with an account is told when a GM opens on their behalf.
 import { describe, expect, it } from 'vitest';
-import { latestStatusRevision, lifecycleOutbox, newRequestOutbox, outboxHeadAfter, outboxHeadKey, outboxId } from './outbox';
+import { latestStatusRevision, lifecycleOutbox, newRequestOutbox, outboxHeadAfter, outboxHeadKey, outboxId, relatedAddedOutbox, respondedOutbox, waitingPartyOutbox } from './outbox';
 
 const NOW = Date.parse('2026-12-28T09:00:00+07:00');
 
@@ -260,5 +260,42 @@ describe('D-A06-6: outbox head record', () => {
     expect(latestStatusRevision(outboxHeadAfter('req-1', later, notices(4, 'request_accepted')), 'employee01@tdfb.co')).toBe(5);
     const created = newRequestOutbox({ requestId: 'req-1', requestNumber: 'GM-000001', actorId: 'gm.staff01@tdfb.co', gmRecipientIds: [], requesterId: 'employee01@tdfb.co', isConfidential: false, now: NOW });
     expect(outboxHeadAfter('req-1', undefined, created)).toBeUndefined();
+  });
+});
+
+describe('D-A07-1: notices that name the person who acted carry who that is (server-only outbox)', () => {
+  const common = { requestId: 'req-9', requestNumber: 'GM-0009', revision: 4, activitySeq: 4, isConfidential: false, now: NOW } as const;
+
+  it('the waited party’s message and reminder: the GM who asked', () => {
+    for (const eventKind of ['waiting_requested', 'waiting_reminder'] as const) {
+      const [entry] = waitingPartyOutbox({ ...common, eventKind, eventKey: 'w1', intervalId: 1, recipientIds: ['party@tdfb.co'], actorId: 'gm.staff01@tdfb.co' });
+      expect(entry?.data).toMatchObject({ event_kind: eventKind, recipient_id: 'party@tdfb.co', actor_id: 'gm.staff01@tdfb.co' });
+    }
+  });
+
+  it('“answered” to the GM: who answered', () => {
+    const [entry] = respondedOutbox({ ...common, intervalId: 1, gmRecipientIds: ['gm.staff01@tdfb.co'], actorId: 'party@tdfb.co' });
+    expect(entry?.data).toMatchObject({ event_kind: 'waiting_party_responded', actor_id: 'party@tdfb.co' });
+  });
+
+  it('“added as related”: the GM who added', () => {
+    const [entry] = relatedAddedOutbox({ ...common, personIds: ['r1@tdfb.co'], actorId: 'gm.staff01@tdfb.co' });
+    expect(entry?.data).toMatchObject({ event_kind: 'related_added', actor_id: 'gm.staff01@tdfb.co' });
+  });
+
+  it('take-over: the previous GM learns who took it; the requester’s and watchers’ status notices name nobody', () => {
+    const entries = lifecycleOutbox({
+      ...common,
+      eventKind: 'request_accepted',
+      actorId: 'gm.staff02@tdfb.co',
+      requesterId: 'employee01@tdfb.co',
+      watcherIds: ['watcher01@tdfb.co'],
+      gmRecipients: [{ personId: 'gm.staff01@tdfb.co', eventKind: 'request_taken_over' }],
+    });
+    expect(entries.map((entry) => [entry.data.event_kind, entry.data.actor_id])).toEqual([
+      ['request_accepted', undefined],
+      ['request_accepted', undefined],
+      ['request_taken_over', 'gm.staff02@tdfb.co'],
+    ]);
   });
 });

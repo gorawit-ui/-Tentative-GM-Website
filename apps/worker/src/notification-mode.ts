@@ -37,3 +37,19 @@ export function resolveWebBaseUrl(value: string | undefined): string {
   }
   return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
 }
+
+/** D-A07 stub. */
+export interface SandboxRecipients {
+  readonly slackUserIds: ReadonlySet<string>;
+  readonly emails: ReadonlySet<string>;
+}
+
+/** D-A07 stub. */
+export function resolveWorkerEnvironment(_value: string | undefined): 'prod' | 'dev' | 'local' {
+  throw new Error('D-A07 stub: resolveWorkerEnvironment not implemented');
+}
+
+/** D-A07 stub. */
+export function resolveSandboxRecipients(_environment: 'prod' | 'dev' | 'local', _value: string | undefined): SandboxRecipients | undefined {
+  throw new Error('D-A07 stub: resolveSandboxRecipients not implemented');
+}
