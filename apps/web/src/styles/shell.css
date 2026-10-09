@@ -48,8 +48,9 @@ main.gm-main { max-width: var(--gm-content-max); margin: 0 auto; padding: var(--
 
 /* Bottom navigation: tokens .gm-bottom-nav (80px + safe area); P2: 64px when the screen is at most 700px tall. */
 @media (max-height: 700px) { :root { --gm-bottom-nav: 64px; } }
-.gm-bottom-nav a { gap: 4px; }
-.gm-bottom-nav a span { overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+/* A label that does not fit (e.g. “คำขอของฉัน” at 360px) wraps to a second line between words, never “…”. */
+.gm-bottom-nav a { gap: 4px; padding-inline: 2px; }
+.gm-bottom-nav a span { max-width: 100%; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 @media (max-height: 700px) { .gm-bottom-nav a { gap: 2px; padding-block: 4px; } .gm-bottom-nav a.gm-nav-repair { margin-block: 6px; border-radius: 10px; } }
 
 /* “เมนูเพิ่มเติม”: a sheet from the bottom (native modal dialog). */
@@ -68,7 +69,7 @@ dialog.gm-sheet::backdrop { background: rgb(20 27 18 / 0.5); }
 /* ---------- Desktop from 1024px: sidebar + top bar (Part 3 §0.1, P2) ---------- */
 @media (min-width: 1024px) {
   .gm-app { display: grid; grid-template-columns: var(--gm-app-sidebar) minmax(0, 1fr); }
-  .gm-sidebar { position: sticky; top: 0; z-index: var(--gm-z-nav); display: flex; flex-direction: column; gap: var(--gm-space-8); width: var(--gm-app-sidebar); height: 100dvh; padding: var(--gm-space-6) var(--gm-space-4); overflow-y: auto; background: rgb(var(--gm-surface)); border-right: 1px solid rgb(var(--gm-border)); }
+  .gm-sidebar { position: sticky; top: 0; z-index: var(--gm-z-nav); display: flex; flex-direction: column; gap: var(--gm-space-5); width: var(--gm-app-sidebar); height: 100dvh; padding: var(--gm-space-5) var(--gm-space-4); overflow-y: auto; background: rgb(var(--gm-surface)); border-right: 1px solid rgb(var(--gm-border)); }
   .gm-sidebar .gm-brand-symbol { width: 44px; height: 44px; border-radius: 14px; font-size: 1rem; }
   .gm-sidebar .gm-brand-name { font-size: 1.1rem; }
   .gm-topbar { min-height: 76px; padding: var(--gm-space-3) 28px; }
@@ -79,14 +80,15 @@ dialog.gm-sheet::backdrop { background: rgb(20 27 18 / 0.5); }
   main.gm-main { padding: 28px; }
   h1 { font-size: var(--gm-font-size-h1); }
 }
-.gm-side-nav { display: grid; gap: var(--gm-space-2); }
-.gm-side-nav a { display: flex; align-items: center; gap: var(--gm-space-3); min-height: var(--gm-control-min); padding: var(--gm-space-3); color: rgb(var(--gm-text-muted)); text-decoration: none; border-radius: var(--gm-radius-control); }
+.gm-side-nav { display: grid; gap: var(--gm-space-1); }
+.gm-side-nav a { display: flex; align-items: center; gap: var(--gm-space-3); min-height: var(--gm-control-min); padding: var(--gm-space-2) var(--gm-space-3); color: rgb(var(--gm-text-muted)); line-height: var(--gm-line-height-label); text-decoration: none; border-radius: var(--gm-radius-control); }
 .gm-side-nav a:hover { background: rgb(var(--gm-surface-muted)); }
 .gm-side-nav a[aria-current="page"] { color: rgb(var(--gm-brand-fg)); font-weight: var(--gm-font-weight-semibold); background: rgb(var(--gm-brand-soft)); box-shadow: inset 3px 0 rgb(var(--gm-brand-fg)); }
 .gm-side-nav a.gm-nav-repair, .gm-side-nav a.gm-nav-repair[aria-current="page"] { color: rgb(var(--gm-on-brand)); background: rgb(var(--gm-brand-solid)); box-shadow: none; }
 .gm-side-nav a.gm-nav-repair:hover { background: rgb(var(--gm-brand-hover)); }
 .gm-side-heading { padding: 0 var(--gm-space-3); color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); font-weight: var(--gm-font-weight-medium); letter-spacing: 0.04em; }
-.gm-sidebar-footer { display: grid; gap: var(--gm-space-2); margin-top: auto; padding-top: var(--gm-space-4); color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); border-top: 1px solid rgb(var(--gm-border)); }
+.gm-sidebar-footer { display: grid; gap: var(--gm-space-1); margin-top: auto; padding-top: var(--gm-space-3); color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); line-height: var(--gm-line-height-label); border-top: 1px solid rgb(var(--gm-border)); }
+.gm-sidebar-footer .gm-btn { margin-top: var(--gm-space-2); }
 .gm-sidebar-footer .gm-sidebar-person { color: rgb(var(--gm-text)); font-weight: var(--gm-font-weight-semibold); overflow-wrap: anywhere; }
 
 /* P2: the sidebar folds to 72px from 1024 to 1365px; labels stay for screen readers. */
