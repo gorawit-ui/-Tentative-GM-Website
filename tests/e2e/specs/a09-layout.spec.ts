@@ -48,6 +48,11 @@ const PAGES: readonly PageCase[] = [
 async function visit(page: Page, item: PageCase): Promise<void> {
   await page.goto(item.path);
   await expect(page.getByRole('heading', { level: 1, name: item.heading })).toBeVisible();
+  // Measure the page as people use it: the contact box (login and account pages) has its list.
+  await expect(page.getByText('กำลังโหลดช่องทางติดต่อ…')).toHaveCount(0);
+  if ((await page.getByRole('region', { name: 'ไม่มีบัญชีบริษัท? แจ้งทีม GM' }).count()) > 0) {
+    await expect(page.getByRole('link', { name: /02-000-0000/ })).toBeVisible();
+  }
 }
 
 async function bottomNavBox(page: Page) {
@@ -150,7 +155,8 @@ test('Part 4: IBM Plex Sans Thai Looped (self-hosted) and the token colours, siz
       fill: style.backgroundColor,
       on: style.color,
       radius: style.borderRadius,
-      height: element.getBoundingClientRect().height,
+      // Rounded: layout can land a hair under the CSS pixel (47.99999).
+      height: Math.round(element.getBoundingClientRect().height),
     };
   });
   expect(look).toEqual({ canvas: 'rgb(250, 248, 243)', text: 'rgb(45, 42, 38)', fill: 'rgb(87, 121, 55)', on: 'rgb(255, 255, 255)', radius: '12px', height: 48 });

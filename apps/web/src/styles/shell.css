@@ -51,7 +51,8 @@ main.gm-main { max-width: var(--gm-content-max); margin: 0 auto; padding: var(--
 /* A label that does not fit (e.g. “คำขอของฉัน” at 360px) wraps to a second line between words, never “…”. */
 .gm-bottom-nav a { gap: 4px; padding-inline: 2px; }
 .gm-bottom-nav a span { max-width: 100%; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
-@media (max-height: 700px) { .gm-bottom-nav a { gap: 2px; padding-block: 4px; } .gm-bottom-nav a.gm-nav-repair { margin-block: 6px; border-radius: 10px; } }
+/* 64px when short: icon + two label lines must still fit (20 + 2 × 16.8 + 4 < 64). */
+@media (max-height: 700px) { .gm-bottom-nav a { gap: 0; padding-block: 2px; } .gm-bottom-nav a span { line-height: 1.2; } .gm-bottom-nav a.gm-nav-repair { margin-block: 6px; border-radius: 10px; } }
 
 /* “เมนูเพิ่มเติม”: a sheet from the bottom (native modal dialog). */
 dialog.gm-sheet { width: 100%; max-width: 100%; max-height: calc(100dvh - 24px); margin: auto 0 0; padding: 0; overflow: auto; color: rgb(var(--gm-text)); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-bottom: 0; border-radius: var(--gm-radius-sheet) var(--gm-radius-sheet) 0 0; box-shadow: var(--gm-shadow-dialog); animation: gm-sheet-in var(--gm-duration-base) var(--gm-ease-out); }
