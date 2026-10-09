@@ -167,6 +167,7 @@ export {
   type DeliverySettlement,
   type DeliveryState,
 } from './delivery';
+export { channelAppHealth, channelAppStateAfter, type ChannelAppState, type ChannelHealth } from './channel-health';
 export {
   BOUNDED_RETRY,
   JOB_LEASE_MS,
