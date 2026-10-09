@@ -1,0 +1,142 @@
+/* A09 — the app shell, the login page and the account / placeholder pages (Part 3 §0.1–0.2, UI-01,
+   Part 4 Patch P2, Part 5 Patch F6, reference/Part-5-Prototype.html). app.css imports this file into the
+   `components` layer after tokens.css: no layer here, Tailwind utilities override it. Colours are the
+   token RGB channels; motion uses the token durations and stops under prefers-reduced-motion
+   (tokens.css). */
+
+html { -webkit-text-size-adjust: 100%; }
+body { min-height: 100dvh; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: var(--gm-font-size-h2); line-height: var(--gm-line-height-heading); font-weight: var(--gm-font-weight-semibold); letter-spacing: -0.02em; overflow-wrap: anywhere; }
+h2 { font-size: var(--gm-font-size-h3); line-height: var(--gm-line-height-heading); font-weight: var(--gm-font-weight-semibold); }
+h1[tabindex="-1"]:focus { outline: none; }
+button { color: inherit; }
+svg.gm-icon { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.gm-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.gm-skip-link { position: fixed; top: var(--gm-space-2); left: var(--gm-space-2); z-index: var(--gm-z-skip-link); display: inline-flex; align-items: center; min-height: var(--gm-touch-min); padding: var(--gm-space-3) var(--gm-space-4); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-control-border)); border-radius: var(--gm-radius-control); transform: translateY(-200%); }
+.gm-skip-link:focus { transform: none; }
+
+/* The page enters with a short movement; tokens.css stops it under prefers-reduced-motion. */
+.gm-page { animation: gm-page-enter var(--gm-duration-enter) var(--gm-ease-out); }
+@keyframes gm-page-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Shell: mobile first (one column, top bar, bottom navigation) ---------- */
+:root { --gm-app-sidebar: 232px; }
+.gm-app { min-height: 100dvh; }
+.gm-sidebar { display: none; }
+.gm-main-area { min-width: 0; }
+.gm-topbar { position: sticky; top: 0; z-index: var(--gm-z-sticky); display: flex; align-items: center; justify-content: space-between; gap: var(--gm-space-3); min-height: 64px; padding: var(--gm-space-2) var(--gm-space-4); background: rgb(var(--gm-canvas)); border-bottom: 1px solid rgb(var(--gm-border)); }
+.gm-topbar-title { display: none; min-width: 0; }
+.gm-topbar-title p { color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); line-height: var(--gm-line-height-label); }
+.gm-topbar-title .gm-topbar-page { color: rgb(var(--gm-text)); font-size: var(--gm-font-size-body); font-weight: var(--gm-font-weight-semibold); }
+.gm-topbar-actions { display: flex; align-items: center; gap: var(--gm-space-2); flex-shrink: 0; }
+.gm-desktop-only { display: none; }
+.gm-brand { display: flex; align-items: center; gap: 10px; min-height: var(--gm-touch-min); min-width: 0; color: rgb(var(--gm-text)); text-decoration: none; }
+.gm-brand-symbol { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; background: rgb(var(--gm-brand-solid)); color: rgb(var(--gm-on-brand)); font-size: var(--gm-font-size-caption); font-weight: var(--gm-font-weight-semibold); letter-spacing: -0.04em; }
+.gm-brand-name { display: block; font-weight: var(--gm-font-weight-semibold); line-height: 1.3; }
+.gm-brand-sub { display: block; color: rgb(var(--gm-text-muted)); font-size: 0.75rem; line-height: 1.4; letter-spacing: 0.04em; }
+
+main.gm-main { max-width: var(--gm-content-max); margin: 0 auto; padding: var(--gm-space-5) var(--gm-space-4) var(--gm-space-6); min-width: 0; }
+.gm-page-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--gm-space-3); margin-bottom: var(--gm-space-5); }
+.gm-page-head p { margin-top: var(--gm-space-2); color: rgb(var(--gm-text-muted)); }
+.gm-panel { padding: var(--gm-space-4); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); }
+.gm-not-ready { display: grid; gap: var(--gm-space-2); padding: var(--gm-space-6) var(--gm-space-4); text-align: center; color: rgb(var(--gm-text-muted)); background: rgb(var(--gm-surface)); border: 1px dashed rgb(var(--gm-control-border)); border-radius: var(--gm-radius-card); }
+.gm-not-ready strong { color: rgb(var(--gm-text)); font-weight: var(--gm-font-weight-semibold); }
+.gm-actions { display: flex; flex-wrap: wrap; gap: var(--gm-space-2); margin-top: var(--gm-space-4); }
+.gm-text-link { display: inline-flex; align-items: center; gap: var(--gm-space-2); min-height: var(--gm-touch-min); text-decoration: underline; text-underline-offset: 4px; }
+
+/* Bottom navigation: tokens .gm-bottom-nav (80px + safe area); P2: 64px when the screen is at most 700px tall. */
+@media (max-height: 700px) { :root { --gm-bottom-nav: 64px; } }
+/* A label that does not fit (e.g. “คำขอของฉัน” at 360px) wraps to a second line between words, never “…”. */
+.gm-bottom-nav a { gap: 4px; padding-inline: 2px; }
+.gm-bottom-nav a span { max-width: 100%; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+/* 64px when short: icon + two label lines must still fit (20 + 2 × 16.8 + 4 < 64). */
+@media (max-height: 700px) { .gm-bottom-nav a { gap: 0; padding-block: 2px; } .gm-bottom-nav a span { line-height: 1.2; } .gm-bottom-nav a.gm-nav-repair { margin-block: 6px; border-radius: 10px; } }
+
+/* “เมนูเพิ่มเติม”: a sheet from the bottom (native modal dialog). */
+dialog.gm-sheet { width: 100%; max-width: 100%; max-height: calc(100dvh - 24px); margin: auto 0 0; padding: 0; overflow: auto; color: rgb(var(--gm-text)); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-bottom: 0; border-radius: var(--gm-radius-sheet) var(--gm-radius-sheet) 0 0; box-shadow: var(--gm-shadow-dialog); animation: gm-sheet-in var(--gm-duration-base) var(--gm-ease-out); }
+dialog.gm-sheet::backdrop { background: rgb(20 27 18 / 0.5); }
+@keyframes gm-sheet-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.gm-sheet-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--gm-space-3); padding: var(--gm-space-3) var(--gm-space-4); background: rgb(var(--gm-surface)); border-bottom: 1px solid rgb(var(--gm-border)); }
+.gm-sheet-body { display: grid; gap: var(--gm-space-4); padding: var(--gm-space-4) var(--gm-space-4) calc(var(--gm-space-4) + env(safe-area-inset-bottom, 0px)); }
+.gm-sheet-account { display: grid; gap: 2px; }
+.gm-sheet-account p:last-child { color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); }
+.gm-menu-list { display: grid; gap: var(--gm-space-1); }
+.gm-menu-heading { color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); }
+.gm-menu-list a { display: flex; align-items: center; gap: var(--gm-space-3); min-height: var(--gm-control-min); padding: var(--gm-space-2) var(--gm-space-3); color: rgb(var(--gm-text)); text-decoration: none; border-radius: var(--gm-radius-control); }
+.gm-menu-list a:hover { background: rgb(var(--gm-surface-muted)); }
+
+/* ---------- Desktop from 1024px: sidebar + top bar (Part 3 §0.1, P2) ---------- */
+@media (min-width: 1024px) {
+  .gm-app { display: grid; grid-template-columns: var(--gm-app-sidebar) minmax(0, 1fr); }
+  .gm-sidebar { position: sticky; top: 0; z-index: var(--gm-z-nav); display: flex; flex-direction: column; gap: var(--gm-space-5); width: var(--gm-app-sidebar); height: 100dvh; padding: var(--gm-space-5) var(--gm-space-4); overflow-y: auto; background: rgb(var(--gm-surface)); border-right: 1px solid rgb(var(--gm-border)); }
+  .gm-sidebar .gm-brand-symbol { width: 44px; height: 44px; border-radius: 14px; font-size: 1rem; }
+  .gm-sidebar .gm-brand-name { font-size: 1.1rem; }
+  .gm-topbar { min-height: 76px; padding: var(--gm-space-3) 28px; }
+  .gm-topbar .gm-brand { display: none; }
+  .gm-topbar-title { display: block; }
+  .gm-mobile-only { display: none; }
+  .gm-desktop-only { display: inline-flex; }
+  main.gm-main { padding: 28px; }
+  h1 { font-size: var(--gm-font-size-h1); }
+}
+.gm-side-nav { display: grid; gap: var(--gm-space-1); }
+.gm-side-nav a { display: flex; align-items: center; gap: var(--gm-space-3); min-height: var(--gm-control-min); padding: var(--gm-space-2) var(--gm-space-3); color: rgb(var(--gm-text-muted)); line-height: var(--gm-line-height-label); text-decoration: none; border-radius: var(--gm-radius-control); }
+.gm-side-nav a:hover { background: rgb(var(--gm-surface-muted)); }
+.gm-side-nav a[aria-current="page"] { color: rgb(var(--gm-brand-fg)); font-weight: var(--gm-font-weight-semibold); background: rgb(var(--gm-brand-soft)); box-shadow: inset 3px 0 rgb(var(--gm-brand-fg)); }
+.gm-side-nav a.gm-nav-repair, .gm-side-nav a.gm-nav-repair[aria-current="page"] { color: rgb(var(--gm-on-brand)); background: rgb(var(--gm-brand-solid)); box-shadow: none; }
+.gm-side-nav a.gm-nav-repair:hover { background: rgb(var(--gm-brand-hover)); }
+.gm-side-heading { padding: 0 var(--gm-space-3); color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); font-weight: var(--gm-font-weight-medium); letter-spacing: 0.04em; }
+.gm-sidebar-footer { display: grid; gap: var(--gm-space-1); margin-top: auto; padding-top: var(--gm-space-3); color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); line-height: var(--gm-line-height-label); border-top: 1px solid rgb(var(--gm-border)); }
+.gm-sidebar-footer .gm-btn { margin-top: var(--gm-space-2); }
+.gm-sidebar-footer .gm-sidebar-person { color: rgb(var(--gm-text)); font-weight: var(--gm-font-weight-semibold); overflow-wrap: anywhere; }
+
+/* P2: the sidebar folds to 72px from 1024 to 1365px; labels stay for screen readers. */
+@media (min-width: 1024px) and (max-width: 1365px) {
+  :root { --gm-app-sidebar: 72px; }
+  .gm-sidebar { align-items: center; padding: var(--gm-space-6) 10px; }
+  .gm-sidebar .gm-side-nav { width: 100%; }
+  .gm-sidebar .gm-side-nav a { justify-content: center; }
+  .gm-sidebar .gm-nav-label, .gm-sidebar .gm-brand-copy, .gm-sidebar .gm-side-heading, .gm-sidebar .gm-sidebar-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .gm-sidebar-footer { width: 100%; justify-items: center; }
+}
+
+/* ---------- Login and account pages (UI-01) ---------- */
+.gm-login { display: flex; justify-content: center; align-items: flex-start; min-height: 100dvh; padding: var(--gm-space-6) var(--gm-space-4); }
+.gm-login-card { display: grid; gap: var(--gm-space-4); width: 100%; max-width: 440px; }
+.gm-login-card > p { color: rgb(var(--gm-text-muted)); }
+.gm-login-brand { display: flex; align-items: center; gap: 10px; }
+.gm-login-hint { color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); text-align: center; }
+.gm-notice { display: grid; gap: var(--gm-space-1); padding: var(--gm-space-3) var(--gm-space-4); border: 1px solid; border-radius: var(--gm-radius-control); }
+.gm-notice--warning { color: rgb(var(--gm-warning-fg)); background: rgb(var(--gm-warning-soft)); border-color: rgb(var(--gm-warning-fg)); }
+.gm-notice--danger { color: rgb(var(--gm-danger-fg)); background: rgb(var(--gm-danger-soft)); border-color: rgb(var(--gm-danger-fg)); }
+.gm-notice--info { color: rgb(var(--gm-info-fg)); background: rgb(var(--gm-info-soft)); border-color: rgb(var(--gm-info-fg)); }
+.gm-contact-box { display: grid; gap: var(--gm-space-2); padding: var(--gm-space-4); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); }
+.gm-contact-box > p { color: rgb(var(--gm-text-muted)); }
+.gm-contact-list { display: grid; gap: var(--gm-space-3); margin: var(--gm-space-2) 0 0; padding: 0; list-style: none; }
+.gm-contact-list li { display: grid; gap: 2px; }
+.gm-contact-list .gm-contact-label { font-weight: var(--gm-font-weight-semibold); }
+.gm-contact-list .gm-contact-detail { color: rgb(var(--gm-text-muted)); }
+.gm-account-email { overflow-wrap: anywhere; font-weight: var(--gm-font-weight-semibold); }
+@media (min-width: 768px) {
+  .gm-login { align-items: center; padding: var(--gm-space-10) var(--gm-space-4); }
+  .gm-login-card { width: 440px; padding: var(--gm-space-8); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); box-shadow: var(--gm-shadow-card); }
+  .gm-login-card .gm-contact-box { background: rgb(var(--gm-canvas)); }
+}
+
+/* Home quick links (prototype quick-grid): three across, the first is the brand-filled repair card. */
+.gm-quick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gm-space-2); margin-bottom: var(--gm-space-6); }
+.gm-quick-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--gm-space-2); min-height: 112px; padding: var(--gm-space-3) var(--gm-space-2); color: rgb(var(--gm-text)); text-align: center; text-decoration: none; background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); }
+.gm-quick-card strong { display: block; font-weight: var(--gm-font-weight-semibold); }
+.gm-quick-card .gm-quick-text { display: none; margin-top: var(--gm-space-1); color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); }
+.gm-quick-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; color: rgb(var(--gm-brand-fg)); background: rgb(var(--gm-surface-muted)); border-radius: var(--gm-radius-control); }
+.gm-quick-card:first-child { color: rgb(var(--gm-on-brand)); background: rgb(var(--gm-brand-solid)); border-color: rgb(var(--gm-brand-solid)); }
+.gm-quick-card:first-child .gm-quick-text { color: rgb(var(--gm-on-brand)); }
+.gm-quick-card:first-child .gm-quick-icon { color: rgb(var(--gm-on-brand)); background: rgb(var(--gm-brand-hover)); }
+@media (min-width: 701px) {
+  .gm-quick-grid { gap: var(--gm-space-3); }
+  .gm-quick-card { flex-direction: row; justify-content: flex-start; gap: var(--gm-space-4); padding: var(--gm-space-5); text-align: left; }
+  .gm-quick-card .gm-quick-text { display: block; }
+  .gm-quick-icon { width: 48px; height: 48px; border-radius: 14px; }
+}

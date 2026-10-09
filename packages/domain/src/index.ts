@@ -167,6 +167,7 @@ export {
   type DeliverySettlement,
   type DeliveryState,
 } from './delivery';
+export { channelAppHealth, channelAppStateAfter, type ChannelAppState, type ChannelHealth } from './channel-health';
 export {
   BOUNDED_RETRY,
   JOB_LEASE_MS,
@@ -199,3 +200,13 @@ export {
   type RequesterNoticeReason,
   type RequesterNoticeState,
 } from './requester-notice';
+export {
+  ADMIN_SECTIONS,
+  APP_AREAS,
+  canOpenArea,
+  navigationFor,
+  type AdminSection,
+  type AppArea,
+  type Navigation,
+  type NavigationViewer,
+} from './navigation';
