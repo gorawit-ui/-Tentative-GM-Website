@@ -24,7 +24,7 @@
 | 4 | A06 unread / pending confirms / delivery badge | A01, S12 | ได้ (ทำแล้ว) | — | FU-08 ปิดแล้ว; FU-23 ส่วน badge ทำแล้ว |
 | 5 | A04 waiting / follow / response + history | A03, A02 | ได้ (ทำแล้ว) | — | FU-12, FU-09, FU-26 ปิดแล้ว; ใหม่ FU-30 (เวลาเตือนจาก settings), FU-31 (คู่ชื่อฝ่ายที่รอ) |
 | 6 | A05 stale / auto-close / presence tick | A02, A03 | ได้ (ทำแล้ว) | P7-ADMIN-04 วันหยุดจริงก่อน pilot | stale ใช้ปฏิทินบริษัทปัจจุบัน (FU-27 เหลือ snapshot สำหรับ B01); ใหม่ FU-32 (หน้าแก้ปฏิทิน A11) |
-| 7 | A07 Slack outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-03 สำหรับ sandbox จริง | FU-17 |
+| 7 | A07 Slack outbound (disabled/local mode) | A01, A02 | ได้ (ทำแล้ว: adapter + test กับ Slack ปลอม; runtime ยัง local/disabled) | P7-ADMIN-03 สำหรับ sandbox จริง | FU-17; FU-32 ปิด (D-A05-3); ใหม่ FU-33 (ต่อ Slack จริง + sandbox allowlist) |
 | 8 | A08 Gmail outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-02 สำหรับ sandbox จริง | FU-17 |
 | 9 | A09 Google login / 4 roles / route shell | S12, A01 | ได้ (Auth emulator) | — | — |
 | 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | FU-25 (เวลา tick ล่าสุด, เกิน 30 นาทีสีแดง), FU-32 (แก้ปฏิทิน → stale คำนวณใหม่) |

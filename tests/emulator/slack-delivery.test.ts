@@ -1,0 +1,407 @@
+// A07 — the Slack outbound adapter and how the worker sends through it (Part 6 §6.10, UI-15, Part 2
+// Addendum A1.2, C1, C3). Slack here is a fake on 127.0.0.1 — the real Slack, Google Cloud and
+// Firebase projects are never contacted; the worker runs on the Firestore emulator. Phase A is
+// one-way: a DM with the number, a short Thai text and a link, no action buttons.
+import { randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { MINUTE_MS, formatThaiDateTime } from '@gm/time';
+import { CommandRejected, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
+import { lifecycleOutbox, newRequestOutbox, waitingPartyOutbox, type OutboxEntry } from '../../apps/api/src/commands/outbox';
+import { adminCommandStore } from '../../apps/api/src/firestore/admin-store';
+import { transactionPeopleDirectory, transactionRoutingDirectory } from '../../apps/api/src/firestore/directories';
+import { createApiHandler } from '../../apps/api/src/http/app';
+import { channelRouter, notificationAdapter, type NotificationAdapter, type OutboundMessage } from '../../apps/worker/src/adapters';
+import type { WorkerDeps } from '../../apps/worker/src/deps';
+import { adminWorkerStore } from '../../apps/worker/src/firestore-store';
+import { consoleWorkerLogger } from '../../apps/worker/src/log';
+import { dispatchOutbox } from '../../apps/worker/src/outbox-dispatch';
+import { slackAdapter } from '../../apps/worker/src/slack';
+import { runTick } from '../../apps/worker/src/tick';
+import { blockedHosts } from '../rules/network-guard';
+import { apiHarness, captureLogs, clearAuth, type LogCapture } from './support/api-harness';
+import { startFakeSlack, type FakeSlack } from './support/fake-slack';
+import { TEST_MAX_ATTEMPTS, clearFirestore, emulatorClient, readDoc, writeDoc, type EmulatorClient } from './support/firestore-client-store';
+
+const NOW = Date.parse('2027-01-11T09:00:00+07:00');
+const BASE = 'https://gm-dev.example.test';
+const TOKEN = 'xoxb-a07-test-only-not-a-real-token';
+const TIMEOUT_MS = 400;
+
+// Synthetic people and Slack IDs. Names, e-mails, Slack IDs, numbers and texts must never reach a log.
+const GM = 'a07.gm@tdfb.co';
+const REQUESTER = 'a07.requester@tdfb.co';
+const MAIL_ONLY = 'a07.mail.only@tdfb.co';
+const SLACK_IDS: Readonly<Record<string, string>> = { [GM]: 'U0A07GM001', [REQUESTER]: 'U0A07REQ01' };
+const NAMES: Readonly<Record<string, string>> = { [GM]: 'คุณจีเอ็ม คิว', [REQUESTER]: 'คุณผู้ขอ อาร์', [MAIL_ONLY]: 'คุณอีเมล เอส' };
+const TITLE = 'ไฟดับ — ทางเดิน · WH300';
+const TYPED = 'ผู้แจ้งพิมพ์ว่า ไฟดับตั้งแต่เมื่อคืน กุญแจอยู่ที่ป้อม';
+const SIGNED = 'https://storage.googleapis.com/gm-dev-bucket/requests/x/photo.jpg?X-Goog-Signature=abc';
+
+let worker: EmulatorClient;
+let slack: FakeSlack;
+let logs: LogCapture;
+let now = NOW;
+let count = 0;
+const emails: OutboundMessage[] = [];
+
+const email: NotificationAdapter = {
+  send: async (message) => {
+    emails.push(message);
+    return { kind: 'accepted', providerId: `mail-${message.outboxId}` };
+  },
+};
+
+const adapterOf = () => slackAdapter({ apiBaseUrl: slack.apiBaseUrl, token: TOKEN, webBaseUrl: BASE, timeoutMs: TIMEOUT_MS }, consoleWorkerLogger);
+
+function deps(adapter: NotificationAdapter = channelRouter({ slack: adapterOf(), email })): WorkerDeps {
+  return {
+    store: adminWorkerStore(worker.db, { maxAttempts: TEST_MAX_ATTEMPTS }),
+    adapter,
+    now: () => now,
+    newLeaseId: () => randomUUID(),
+    log: consoleWorkerLogger,
+    jobHandlers: {},
+  };
+}
+
+const message = (change: Partial<OutboundMessage> = {}): OutboundMessage => ({
+  outboxId: 'out-a07-0001',
+  channel: 'slack',
+  address: SLACK_IDS[GM] ?? '',
+  eventKind: 'request_created',
+  audience: 'gm',
+  requestId: 'req-a07-0001',
+  requestNumber: 'DEV-0701',
+  confidential: false,
+  summaryTitle: TITLE,
+  ...change,
+});
+
+/** A request as stored, with typed text, a photo and a GM-only note that must never reach a message. */
+async function seedRequest(fields: Record<string, unknown> = {}): Promise<{ id: string; number: string }> {
+  count += 1;
+  const id = `req-a07-${String(count).padStart(4, '0')}`;
+  const number = `DEV-07${String(count).padStart(2, '0')}`;
+  await writeDoc(worker.db, `requests/${id}`, {
+    request_number: number,
+    status: 'in_progress',
+    revision: 2,
+    is_confidential: false,
+    summary_title: TITLE,
+    description: TYPED,
+    attachment_ids: ['att-a07-1'],
+    requester_id: REQUESTER,
+    related_person_ids: [],
+    ...fields,
+  });
+  await writeDoc(worker.db, `gm_request_details/${id}`, { watcher_ids: [], sensitivity_note: 'บันทึกเฉพาะ GM ห้ามออกไป' });
+  return { id, number };
+}
+
+async function queue(entries: readonly OutboxEntry[]): Promise<string[]> {
+  for (const entry of entries) await writeDoc(worker.db, `outbox/${entry.id}`, entry.data);
+  return entries.map((entry) => entry.id);
+}
+
+const entry = (id: string) => readDoc(worker.db, `outbox/${id}`);
+const texts = () => slack.calls.map((call) => String(call.body.text));
+
+beforeAll(async () => {
+  logs = captureLogs();
+  worker = emulatorClient();
+  slack = await startFakeSlack();
+});
+
+afterAll(async () => {
+  logs?.stop();
+  await slack?.close();
+  await worker?.close();
+});
+
+beforeEach(async () => {
+  await clearFirestore();
+  now = NOW;
+  slack.reset();
+  emails.length = 0;
+  const batch = worker.db.batch();
+  for (const personId of [GM, REQUESTER, MAIL_ONLY]) {
+    batch.set(worker.db.doc(`people/${personId}`), { name: NAMES[personId], email: personId, active: true, ...(SLACK_IDS[personId] === undefined ? {} : { slack_user_id: SLACK_IDS[personId] }) });
+  }
+  await batch.commit();
+});
+
+describe('the Slack adapter against a fake Slack', () => {
+  it('one chat.postMessage per notice, to the person, with the bot token; no buttons; accepted with the message ts', async () => {
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'accepted', providerId: 'slack:D0FAKE0001:1736.000001' });
+    expect(slack.calls).toHaveLength(1);
+    const [call] = slack.calls;
+    expect(call).toMatchObject({ path: '/api/chat.postMessage', authorization: `Bearer ${TOKEN}` });
+    expect(call?.contentType).toMatch(/^application\/json/);
+    expect(call?.body).toEqual({
+      channel: SLACK_IDS[GM],
+      text: `*DEV-0701* มีงานใหม่รอรับเรื่อง\n${TITLE}\n<${BASE}/requests/req-a07-0001|เปิดงาน>`,
+      unfurl_links: false,
+      unfurl_media: false,
+    });
+  });
+
+  it('no Slack ID → “not mapped” (so the auto channel uses company e-mail, A1.2); nothing is sent', async () => {
+    await expect(adapterOf().send(message({ address: '' }))).resolves.toEqual({ kind: 'unmapped' });
+    expect(slack.calls).toEqual([]);
+  });
+
+  it('an event with no template is refused before Slack is called (nothing was sent, so not “unknown”)', async () => {
+    await expect(adapterOf().send(message({ eventKind: 'something_new' }))).resolves.toEqual({ kind: 'permanent', code: 'NO_TEMPLATE' });
+    expect(slack.calls).toEqual([]);
+  });
+
+  it.each(['user_not_found', 'channel_not_found'])('Slack does not know the stored ID (%s) → “not mapped”', async (error) => {
+    slack.answer({ kind: 'error', error });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'unmapped' });
+  });
+
+  it('429 with Retry-After → retryable, carrying the wait Slack asked for', async () => {
+    slack.answer({ kind: 'rate_limited', retryAfterSeconds: 900 });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'retryable', code: 'SLACK_RATE_LIMITED', retryAfterMs: 900_000 });
+  });
+
+  it('no answer after the request reached Slack → unknown (it may be posted); the adapter never sends it again by itself', async () => {
+    slack.answer({ kind: 'hang' });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'unknown', code: 'SLACK_TIMEOUT' });
+    expect(slack.calls).toHaveLength(1);
+  });
+
+  it('Slack unreachable before anything was sent → retryable', async () => {
+    const closed = await startFakeSlack();
+    const apiBaseUrl = closed.apiBaseUrl;
+    await closed.close();
+    const outcome = await slackAdapter({ apiBaseUrl, token: TOKEN, webBaseUrl: BASE, timeoutMs: TIMEOUT_MS }, consoleWorkerLogger).send(message());
+    expect(outcome).toEqual({ kind: 'retryable', code: 'SLACK_UNREACHABLE' });
+  });
+
+  it.each([
+    ['user_disabled', 'SLACK_USER_DISABLED'],
+    ['account_inactive', 'SLACK_ACCOUNT_INACTIVE'],
+    ['invalid_auth', 'SLACK_INVALID_AUTH'],
+    ['missing_scope', 'SLACK_MISSING_SCOPE'],
+  ])('a permanent error (%s) → permanent with its code', async (error, code) => {
+    slack.answer({ kind: 'error', error });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'permanent', code });
+  });
+
+  it('Slack’s own internal error or a 500 → unknown (it may have been posted); 503 → retryable', async () => {
+    slack.answer({ kind: 'error', error: 'internal_error' }, { kind: 'http', status: 500 }, { kind: 'http', status: 503 });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'unknown', code: 'SLACK_INTERNAL_ERROR' });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'unknown', code: 'SLACK_HTTP_500' });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'retryable', code: 'SLACK_HTTP_503' });
+  });
+});
+
+describe('the worker sends through Slack (A02 retry, Part 6 §6.10)', () => {
+  it('a Slack-mapped GM gets the DM; the entry keeps channel auto and records slack + the message ts', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('sent');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', channel: 'auto', delivery_channel: 'slack', provider_id: 'slack:D0FAKE0001:1736.000001', attempts: 1 });
+    expect(texts()).toEqual([`*${number}* มีงานใหม่รอรับเรื่อง\n${TITLE}\n<${BASE}/requests/${id}|เปิดงาน>`]);
+  });
+
+  it('no Slack ID in the directory → company e-mail, Slack is not called', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [MAIL_ONLY], isConfidential: false, now }));
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('sent');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'email' });
+    expect(slack.calls).toEqual([]);
+    expect(emails.map((sent) => sent.address)).toEqual([MAIL_ONLY]);
+  });
+
+  it('Slack does not know the stored ID → the same attempt goes by company e-mail (nothing was posted); the entry says email', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    slack.answer({ kind: 'error', error: 'user_not_found' });
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('sent');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'email', provider_id: `mail-${outboxId}`, attempts: 1 });
+    expect(emails.map((sent) => [sent.channel, sent.address])).toEqual([['email', GM]]);
+  });
+
+  it('429 Retry-After 15 minutes → waits that long (more than the 5-minute back-off), then the tick sends it', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    slack.answer({ kind: 'rate_limited', retryAfterSeconds: 900 });
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('retry');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'pending', attempts: 1, next_attempt_at: NOW + 15 * MINUTE_MS, last_error_code: 'SLACK_RATE_LIMITED' });
+    now = NOW + 10 * MINUTE_MS;
+    await runTick(deps());
+    expect(slack.calls).toHaveLength(1);
+    now = NOW + 15 * MINUTE_MS;
+    await runTick(deps());
+    expect(slack.calls).toHaveLength(2);
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', attempts: 2 });
+  });
+
+  it('no answer after sending → delivery_unknown for the GM to check; later ticks never send it again', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    slack.answer({ kind: 'hang' });
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('unknown');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'delivery_unknown', last_error_code: 'SLACK_TIMEOUT', delivery_channel: 'slack' });
+    for (const minutes of [15, 30, 300]) {
+      now = NOW + minutes * MINUTE_MS;
+      await runTick(deps());
+    }
+    expect(slack.calls).toHaveLength(1);
+  });
+
+  it('a permanent error (the person’s Slack account is disabled) → failed with the cause; the GM badge shows it for a requester', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: GM, gmRecipientIds: [], requesterId: REQUESTER, isConfidential: false, now }));
+    slack.answer({ kind: 'error', error: 'user_disabled' });
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('failed');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'failed', last_error_code: 'SLACK_USER_DISABLED', delivery_channel: 'slack' });
+    expect(await readDoc(worker.db, `gm_request_details/${id}`)).toMatchObject({ requester_not_notified: { code: 'SLACK_USER_DISABLED' } });
+    expect(emails).toEqual([]);
+  });
+});
+
+describe('what a message may say', () => {
+  it('confidential (C3): the number, “งานภายในมีอัปเดต” and the link — no title, nothing else', async () => {
+    const { id, number } = await seedRequest({ is_confidential: true, summary_title: 'ต่อสัญญาเช่าโกดัง บริษัทเอกซ์' });
+    const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_accepted', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: true, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([`*${number}* งานภายในมีอัปเดต\n<${BASE}/requests/${id}|เปิดงาน>`]);
+  });
+
+  it('a request flagged confidential after the notice was queued is still sent with the neutral text', async () => {
+    const { id, number } = await seedRequest({ is_confidential: true });
+    const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_accepted', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([`*${number}* งานภายในมีอัปเดต\n<${BASE}/requests/${id}|เปิดงาน>`]);
+  });
+
+  it('never the typed description, photos, signed URLs or GM-only notes', async () => {
+    const { id, number } = await seedRequest({ description: `${TYPED} ${SIGNED}`, attachment_ids: ['requests/x/photo.jpg'] });
+    await queue([
+      ...newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }),
+      ...lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_accepted', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now }),
+    ]);
+    await runTick(deps());
+    expect(slack.calls).toHaveLength(2);
+    const all = JSON.stringify(slack.calls.map((call) => call.body));
+    for (const secret of [TYPED, 'X-Goog-Signature', 'storage.googleapis.com', 'photo.jpg', 'att-a07', 'บันทึกเฉพาะ GM']) expect(all).not.toContain(secret);
+  });
+
+  it('completed: the requester gets the real auto-close time, written as on screen', async () => {
+    const due = Date.parse('2027-01-14T09:00:00+07:00');
+    const { id, number } = await seedRequest({ status: 'completed', auto_close_due_at: due });
+    const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_completed', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, autoCloseDueAt: due, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()[0]).toContain(`ระบบจะปิดอัตโนมัติ ${formatThaiDateTime(due)} หากไม่มีการตอบกลับ`);
+    expect(texts()[0]).toContain('14 ม.ค. 2570 09:00 น.');
+  });
+
+  it('“waiting”: the public label of who it waits on (D-S09-1), never a person’s name', async () => {
+    const { id, number } = await seedRequest({ status: 'waiting', current_waiting_interval_id: 1 });
+    await writeDoc(worker.db, `request_summaries/${id}`, { request_number: number, status: 'waiting', waiting_on_summary: 'ทีมบัญชี' });
+    const [outboxId] = await queue(lifecycleOutbox({ requestId: id, requestNumber: number, revision: 3, activitySeq: 3, eventKind: 'request_waiting', actorId: GM, requesterId: REQUESTER, watcherIds: [], isConfidential: false, now }));
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()[0]?.split('\n')[0]).toBe(`*${number}* รอผู้อื่น: ทีมบัญชี`);
+  });
+
+  it('the waited party’s DM asks for their part and links to the page with the answer button', async () => {
+    const { id, number } = await seedRequest({ status: 'waiting', current_waiting_interval_id: 1, waiting_party_responded: false, related_person_ids: [REQUESTER] });
+    const [outboxId] = await queue(waitingPartyOutbox({ requestId: id, requestNumber: number, eventKind: 'waiting_requested', eventKey: 'w1', intervalId: 1, recipientIds: [GM], actorId: REQUESTER, isConfidential: false, revision: 3, activitySeq: 3, now }));
+    await writeDoc(worker.db, 'settings/routing', { gm_person_ids: [GM] });
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(texts()).toEqual([`*${number}* รอการดำเนินการจากฝั่งคุณ\n${TITLE}\n<${BASE}/requests/${id}|เปิดงาน>`]);
+  });
+});
+
+describe('“ยังไม่มอบหมาย”: every GM hears it when the default owner is on leave (A3, UI-15)', () => {
+  it('created through the API; the all-GM notice says it is not assigned yet', async () => {
+    const harness = apiHarness(NOW);
+    await clearAuth();
+    const ON_LEAVE = 'a07.gm.leave@tdfb.co';
+    try {
+      const batch = harness.db.batch();
+      batch.set(harness.db.doc(`people/${ON_LEAVE}`), { name: 'คุณจีเอ็ม ลา', email: ON_LEAVE, active: true, slack_user_id: 'U0A07LEAVE' });
+      batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: ON_LEAVE }, gm_person_ids: [ON_LEAVE, GM] });
+      batch.set(harness.db.doc(`gm_profiles/${ON_LEAVE}`), { presence_status: { kind: 'on_leave' }, presence_updated_at: NOW - MINUTE_MS });
+      batch.set(harness.db.doc(`gm_profiles/${GM}`), { presence_status: { kind: 'unspecified' } });
+      batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: [] });
+      await batch.commit();
+      const signedIn = await harness.signIn(REQUESTER);
+      await harness.db.doc(`access/${signedIn.uid}`).set({ person_id: REQUESTER, role: 'requester', enabled: true });
+      const catalog: MaintenanceCatalog = {
+        async resolve(_tx, selection) {
+          if (selection.location_id !== 'loc-wh300') throw new CommandRejected('CATALOG_UNKNOWN', 'unknown');
+          return { location: { id: 'loc-wh300', label: 'WH300' }, symptom: { key: 'light_off', label: 'ไฟดับ' } };
+        },
+      };
+      const server: Server = createServer(
+        createApiHandler({
+          api: harness.deps,
+          commandStore: adminCommandStore(harness.db, { maxAttempts: TEST_MAX_ATTEMPTS }),
+          environment: 'dev',
+          allowedOrigins: ['https://gm-dev.tdfb.co'],
+          newRequestId: () => `req-a07-api-${randomUUID()}`,
+          maintenanceCatalog: catalog,
+          peopleDirectory: transactionPeopleDirectory(),
+          routingDirectory: transactionRoutingDirectory(),
+          taskQueue: { enqueue: async () => undefined },
+        }),
+      );
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const response = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/commands`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${signedIn.idToken}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ command_id: randomUUID(), type: 'create_maintenance', payload: { location_id: 'loc-wh300', symptom_key: 'light_off' } }),
+        });
+        expect(response.status).toBe(200);
+        const { result } = (await response.json()) as { result: { request_id: string; request_number: string } };
+        await runTick(deps());
+        expect(slack.calls.map((call) => call.body.channel)).toEqual([SLACK_IDS[GM]]);
+        expect(texts()[0]?.split('\n')[0]).toBe(`*${result.request_number}* ยังไม่มอบหมาย รอทีม GM รับเรื่อง`);
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+describe('modes: disabled sends nothing; local renders but sends nothing', () => {
+  it('disabled: Slack is never called and the entry fails visibly (CHANNEL_DISABLED); the request is untouched', async () => {
+    const { id, number } = await seedRequest();
+    const before = await readDoc(worker.db, `requests/${id}`);
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    await expect(dispatchOutbox(deps(notificationAdapter('disabled', consoleWorkerLogger, { webBaseUrl: BASE })), outboxId ?? '')).resolves.toBe('failed');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'failed', last_error_code: 'CHANNEL_DISABLED' });
+    expect(slack.calls).toEqual([]);
+    expect(await readDoc(worker.db, `requests/${id}`)).toEqual(before);
+  });
+
+  it('local: the message is rendered (so a template error shows up) but nothing leaves the machine', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    await expect(dispatchOutbox(deps(notificationAdapter('local', consoleWorkerLogger, { webBaseUrl: BASE })), outboxId ?? '')).resolves.toBe('sent');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'slack', provider_id: `local-${outboxId}` });
+    expect(slack.calls).toEqual([]);
+  });
+});
+
+describe('logs and network (runs last)', () => {
+  it('nothing left the machine', () => {
+    expect(blockedHosts).toEqual([]);
+  });
+
+  it('logs hold no Slack ID, e-mail, name, request number, message text or token', () => {
+    const text = logs.lines.join('\n');
+    for (const secret of [...Object.values(SLACK_IDS), ...Object.keys(NAMES), ...Object.values(NAMES), TITLE, TYPED, TOKEN, 'DEV-07', 'งานภายในมีอัปเดต', 'มีงานใหม่']) {
+      expect(text).not.toContain(secret);
+    }
+  });
+});

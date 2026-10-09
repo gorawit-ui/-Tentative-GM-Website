@@ -1,7 +1,7 @@
 // A02 — notification adapters. Only `local` (log-only) and `disabled` exist until A07/A08 and the
 // P7-ADMIN-02/03 approvals: nothing is sent to Slack or e-mail, nobody real is notified.
 import { describe, expect, it, vi } from 'vitest';
-import { disabledAdapter, localAdapter, notificationAdapter, type OutboundMessage } from './adapters';
+import { channelRouter, disabledAdapter, localAdapter, notificationAdapter, type NotificationAdapter, type OutboundMessage } from './adapters';
 import type { WorkerLogger } from './log';
 
 const message: OutboundMessage = {
@@ -42,5 +42,29 @@ describe('notificationAdapter', () => {
     const log = recordingLog();
     await expect(notificationAdapter('local', log).send(message)).resolves.toMatchObject({ kind: 'accepted' });
     await expect(notificationAdapter('disabled', log).send(message)).resolves.toMatchObject({ kind: 'permanent' });
+  });
+});
+
+describe('A07: local mode renders the message (a missing template shows up in dev) and still sends nothing', () => {
+  it('an event with no template is refused as permanent NO_TEMPLATE, not accepted', async () => {
+    const log = recordingLog();
+    await expect(localAdapter(log).send({ ...message, eventKind: 'something_new' })).resolves.toEqual({ kind: 'permanent', code: 'NO_TEMPLATE' });
+    await expect(notificationAdapter('local', log, { webBaseUrl: 'https://gm-dev.example.test' }).send(message)).resolves.toMatchObject({ kind: 'accepted' });
+  });
+});
+
+describe('channelRouter', () => {
+  it('sends each message through the adapter of its channel', async () => {
+    const seen: string[] = [];
+    const named = (name: string): NotificationAdapter => ({
+      send: async (sent) => {
+        seen.push(`${name}:${sent.channel}`);
+        return { kind: 'accepted', providerId: name };
+      },
+    });
+    const router = channelRouter({ slack: named('slack'), email: named('email') });
+    await expect(router.send(message)).resolves.toEqual({ kind: 'accepted', providerId: 'slack' });
+    await expect(router.send({ ...message, channel: 'email', address: 'someone@tdfb.co' })).resolves.toEqual({ kind: 'accepted', providerId: 'email' });
+    expect(seen).toEqual(['slack:slack', 'email:email']);
   });
 });

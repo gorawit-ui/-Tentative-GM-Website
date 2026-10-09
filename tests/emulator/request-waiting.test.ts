@@ -882,6 +882,40 @@ describe('FU-12: add / remove related persons through the API', () => {
     expect((await noticesOf(id, 'related_added'))[0]).toMatchObject({ state: 'suppressed', last_error_code: 'NO_ACCESS' });
   });
 
+  it('D-A05-1: related persons set when the request is created get the same one DM; never the creator; one message each', async () => {
+    setNow(MON);
+    const task = await act(GM1, 'create_gm_task', { summary_title: 'จัดซื้อเก้าอี้ห้องประชุม', category: 'documents_admin', sensitivity_subject: 'general', related_person_ids: [OTHER, R1, GM1] });
+    expect(task.status).toBe(200);
+    const taskId = (task.body.result as { request_id: string }).request_id;
+    expect((await noticesOf(taskId, 'related_added')).map((entry) => [entry.recipient_id, entry.audience, entry.confidential]).sort()).toEqual(
+      [
+        [OTHER, 'related', false],
+        [R1, 'related', false],
+      ].sort(),
+    );
+    expect((await outboxOf(taskId)).filter((entry) => entry.recipient_id === GM1)).toEqual([]);
+    // A GM opens on behalf (default owner GM2 hears of the new request): GM2 listed as related gets that one notice only.
+    const onBehalf = await act(GM1, 'create_on_behalf', {
+      requester: { person_id: EMPLOYEE },
+      details: { type: 'document_request', summary_title: 'ขอหนังสือรับรองเงินเดือน', sensitivity_subject: 'general' },
+      related_person_ids: [R2, GM2],
+    });
+    expect(onBehalf.status).toBe(200);
+    const onBehalfId = (onBehalf.body.result as { request_id: string }).request_id;
+    expect((await outboxOf(onBehalfId)).map((entry) => [entry.recipient_id, entry.event_kind]).sort()).toEqual(
+      [
+        [EMPLOYEE, 'request_created'],
+        [GM2, 'request_created'],
+        [R2, 'related_added'],
+      ].sort(),
+    );
+    // Confidential: the confirmed reader is told with the neutral flag.
+    const secret = await act(GM1, 'create_gm_task', { summary_title: 'ต่อสัญญาเช่าโกดัง', category: 'documents_admin', sensitivity_subject: 'contract', related_person_ids: [R1], confirm_confidential_grant: true });
+    expect(secret.status).toBe(200);
+    const secretId = (secret.body.result as { request_id: string }).request_id;
+    expect(await noticesOf(secretId, 'related_added')).toEqual([expect.objectContaining({ recipient_id: R1, confidential: true })]);
+  });
+
   it('GM only; stale revision refused; a person not related cannot be removed', async () => {
     setNow(MON);
     const { id } = await inProgressRepair();

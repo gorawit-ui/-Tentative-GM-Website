@@ -87,3 +87,24 @@ describe('settleDelivery: bounded back-off, then a failure the GM can see', () =
     expect(settleDelivery(1, { kind: 'unknown', code: 'CONNECTION_LOST' }, NOW)).toEqual({ state: 'delivery_unknown', errorCode: 'CONNECTION_LOST' });
   });
 });
+
+describe('A07: Slack Retry-After and a recipient Slack does not know', () => {
+  it('a retry is never earlier than the provider asked (Retry-After), and never earlier than the A02 back-off', () => {
+    expect(settleDelivery(1, { kind: 'retryable', code: 'SLACK_RATE_LIMITED', retryAfterMs: 15 * MINUTE_MS }, NOW)).toEqual({
+      state: 'pending',
+      nextAttemptAt: NOW + 15 * MINUTE_MS,
+      errorCode: 'SLACK_RATE_LIMITED',
+    });
+    expect(settleDelivery(1, { kind: 'retryable', code: 'SLACK_RATE_LIMITED', retryAfterMs: 30_000 }, NOW)).toEqual({
+      state: 'pending',
+      nextAttemptAt: NOW + 5 * MINUTE_MS,
+      errorCode: 'SLACK_RATE_LIMITED',
+    });
+    // The attempts cap still applies.
+    expect(settleDelivery(5, { kind: 'retryable', code: 'SLACK_RATE_LIMITED', retryAfterMs: 60_000 }, NOW)).toEqual({ state: 'failed', errorCode: 'SLACK_RATE_LIMITED' });
+  });
+
+  it('“not mapped” that reaches settlement (no e-mail to fall back to) is a visible failure', () => {
+    expect(settleDelivery(1, { kind: 'unmapped' }, NOW)).toEqual({ state: 'failed', errorCode: 'SLACK_NOT_MAPPED' });
+  });
+});

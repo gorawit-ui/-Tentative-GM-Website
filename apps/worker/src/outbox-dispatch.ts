@@ -20,6 +20,11 @@
 // one and unanswered, and while the recipient can still read the request — never to a party no longer
 // waited on or to a person removed from the request. D-A04-3: nor the “added as related” message to
 // someone removed (or no longer granted) before it went out.
+// A07: the claim also reads what the message may say, as it is at send time — the public board title
+// of a general request, the public “waiting on” label for `request_waiting`; a request that is
+// confidential now (or was when queued) gets the neutral text only (C3). Slack not knowing the stored
+// ID means nothing was posted, so the same attempt goes by company e-mail (A1.2) and the entry records
+// `delivery_channel: email`.
 import { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, latestStatusRevision } from '@gm/api/commands';
 import { requesterNoticeFields, requesterNoticeStateOf, type RequestRecord } from '@gm/contracts';
 import {
@@ -58,6 +63,10 @@ interface Entry {
   /** A04: the interval a message to the waited party belongs to. */
   readonly waitingIntervalId?: number;
   readonly confidential: boolean;
+  /** A07: `request_completed` — the auto-close time when the notice was made. */
+  readonly autoCloseDueAt?: Instant;
+  /** A07: the all-GM notice of an unassigned request. */
+  readonly noticeVariant?: 'unassigned';
   readonly attempts: number;
   readonly nextAttemptAt: Instant;
   readonly leaseUntil?: Instant;
@@ -109,6 +118,8 @@ function parseEntry(stored: StoredData): Entry | undefined {
     nextAttemptAt,
     ...(Number.isSafeInteger(stored.lease_until) ? { leaseUntil: stored.lease_until as number } : {}),
     ...(Number.isSafeInteger(stored.waiting_interval_id) ? { waitingIntervalId: stored.waiting_interval_id as number } : {}),
+    ...(Number.isSafeInteger(stored.auto_close_due_at) ? { autoCloseDueAt: stored.auto_close_due_at as number } : {}),
+    ...(stored.notice_variant === 'unassigned' ? { noticeVariant: 'unassigned' as const } : {}),
   };
 }
 
@@ -245,6 +256,12 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
         : entry.audience === 'related'
           ? await accessStop(transaction, entry, request)
           : undefined;
+  // A07 / C3: confidential now or when queued → number + neutral text + link only.
+  const confidential = entry.confidential || request?.is_confidential !== false;
+  // D-S09-1: the public label of who it waits on, from the public summary (reads before any write).
+  const waitingLabel =
+    !confidential && entry.eventKind === 'request_waiting' ? text((await transaction.get(`request_summaries/${entry.requestId}`))?.waiting_on_summary) : undefined;
+  const summaryTitle = confidential ? undefined : text(request?.summary_title);
   const stop = (settlement: DeliverySettlement): Claim => {
     transaction.set(path, { ...settledEntry(stored, settlement, now), last_attempt_at: now });
     if (badge !== undefined) writeBadge(transaction, badge, observationOf(entry, settlement, now));
@@ -288,9 +305,22 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
       audience: entry.audience,
       requestId: entry.requestId,
       requestNumber: entry.requestNumber,
-      confidential: entry.confidential,
+      confidential,
+      ...(summaryTitle === undefined ? {} : { summaryTitle }),
+      ...(entry.autoCloseDueAt === undefined ? {} : { autoCloseDueAt: entry.autoCloseDueAt }),
+      ...(waitingLabel === undefined ? {} : { waitingLabel }),
+      ...(entry.noticeVariant === undefined ? {} : { variant: entry.noticeVariant }),
     },
   };
+}
+
+async function send(deps: WorkerDeps, message: OutboundMessage): Promise<DeliveryOutcome> {
+  try {
+    return await deps.adapter.send(message);
+  } catch {
+    // We cannot tell whether the provider got it (§6.10: no external exactly-once claim).
+    return { kind: 'unknown', code: 'ADAPTER_ERROR' };
+  }
 }
 
 export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promise<DispatchResult> {
@@ -302,12 +332,13 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
     return claimed.result;
   }
 
-  let outcome: DeliveryOutcome;
-  try {
-    outcome = await deps.adapter.send(claimed.message);
-  } catch {
-    // We cannot tell whether the provider got it (§6.10: no external exactly-once claim).
-    outcome = { kind: 'unknown', code: 'ADAPTER_ERROR' };
+  let message = claimed.message;
+  let outcome = await send(deps, message);
+  if (outcome.kind === 'unmapped' && message.channel === 'slack') {
+    // A1.2: Slack does not know this person (nothing was posted) → company e-mail, same attempt.
+    deps.log.warn('notification.slack_unmapped', { outbox_id: outboxId, code: 'SLACK_NOT_MAPPED' });
+    message = { ...message, channel: 'email', address: claimed.entry.recipientId };
+    outcome = await send(deps, message);
   }
   const settlement = settleDelivery(claimed.attempts, outcome, deps.now());
   const result = await deps.store.runTransaction(async (transaction) => {
@@ -315,14 +346,14 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
     if (stored === undefined || stored.state !== 'processing' || stored.lease_id !== leaseId) return 'lease_lost' as const;
     const observation = claimed.entry.audience === 'requester' ? observationOf(claimed.entry, settlement, deps.now()) : undefined;
     const badge = observation === undefined ? undefined : await readBadge(transaction, claimed.entry.requestId);
-    transaction.set(path, settledEntry(stored, settlement, claimed.attemptedAt));
+    transaction.set(path, { ...settledEntry(stored, settlement, claimed.attemptedAt), delivery_channel: message.channel });
     if (badge !== undefined) writeBadge(transaction, badge, observation);
     return resultOf(settlement);
   });
   const fields = {
     outbox_id: outboxId,
-    kind: claimed.message.eventKind,
-    channel: claimed.message.channel,
+    kind: message.eventKind,
+    channel: message.channel,
     state: result === 'lease_lost' ? 'lease_lost' : settlement.state,
     attempts: claimed.attempts,
     ...(settlement.errorCode === undefined ? {} : { code: settlement.errorCode }),

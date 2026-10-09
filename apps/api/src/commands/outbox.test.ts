@@ -57,6 +57,28 @@ describe('newRequestOutbox', () => {
   });
 });
 
+describe('A07: the all-GM notice of an unassigned request says so (UI-15 “ยังไม่มอบหมาย”)', () => {
+  it('GM entries carry notice_variant unassigned; the requester entry does not; without it no field', () => {
+    const entries = newRequestOutbox({
+      requestId: 'req-1',
+      requestNumber: 'GM-0001',
+      actorId: 'gm.staff01@tdfb.co',
+      gmRecipientIds: ['gm.staff02@tdfb.co', 'gm.admin01@tdfb.co'],
+      requesterId: 'employee01@tdfb.co',
+      isConfidential: false,
+      noticeVariant: 'unassigned',
+      now: NOW,
+    });
+    expect(entries.map((entry) => [entry.data.audience, entry.data.notice_variant])).toEqual([
+      ['gm', 'unassigned'],
+      ['gm', 'unassigned'],
+      ['requester', undefined],
+    ]);
+    const plain = newRequestOutbox({ requestId: 'req-1', requestNumber: 'GM-0001', actorId: 'a@tdfb.co', gmRecipientIds: ['b@tdfb.co'], isConfidential: false, now: NOW });
+    expect(plain[0]?.data).not.toHaveProperty('notice_variant');
+  });
+});
+
 describe('D-A01-4: the requester', () => {
   const base = { requestId: 'req-9', requestNumber: 'GM-0009', isConfidential: false, now: NOW } as const;
 

@@ -6,7 +6,7 @@
 // suppressed. Results known to have failed are retried a bounded number of times; a send whose result
 // is unknown (connection lost, or the worker died while the provider may have accepted it) becomes
 // `delivery_unknown` for the GM to check — never a blind second send.
-import { MINUTE_MS, type Instant } from '@gm/time';
+import { MINUTE_MS, addElapsed, type Instant } from '@gm/time';
 import { nextRetryAt } from './scheduled-work';
 
 export const DELIVERY_STATES = ['pending', 'processing', 'provider_accepted', 'failed', 'delivery_unknown', 'suppressed'] as const;
@@ -56,11 +56,17 @@ export function claimDelivery(entry: DeliveryLeaseState, now: Instant): Delivery
   }
 }
 
+/**
+ * A07: `retryAfterMs` — the provider said when to come back (Slack 429 Retry-After); `unmapped` — the
+ * provider does not know the stored address (Slack user not found), so nothing was sent and the worker
+ * uses company e-mail instead (A1.2).
+ */
 export type DeliveryOutcome =
   | { readonly kind: 'accepted'; readonly providerId: string }
-  | { readonly kind: 'retryable'; readonly code: string }
+  | { readonly kind: 'retryable'; readonly code: string; readonly retryAfterMs?: number }
   | { readonly kind: 'permanent'; readonly code: string }
-  | { readonly kind: 'unknown'; readonly code: string };
+  | { readonly kind: 'unknown'; readonly code: string }
+  | { readonly kind: 'unmapped' };
 
 export interface DeliverySettlement {
   readonly state: DeliveryState;
@@ -75,12 +81,18 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
     case 'accepted':
       return { state: 'provider_accepted', providerId: outcome.providerId };
     case 'retryable': {
-      const retryAt = nextRetryAt(attempts, now);
-      return retryAt === undefined ? { state: 'failed', errorCode: outcome.code } : { state: 'pending', nextAttemptAt: retryAt, errorCode: outcome.code };
+      const backOff = nextRetryAt(attempts, now);
+      if (backOff === undefined) return { state: 'failed', errorCode: outcome.code };
+      // A07: never earlier than the provider asked, never earlier than the A02 back-off.
+      const asked = outcome.retryAfterMs === undefined || outcome.retryAfterMs <= 0 ? now : addElapsed(now, outcome.retryAfterMs);
+      return { state: 'pending', nextAttemptAt: Math.max(backOff, asked), errorCode: outcome.code };
     }
     case 'permanent':
       return { state: 'failed', errorCode: outcome.code };
     case 'unknown':
       return { state: 'delivery_unknown', errorCode: outcome.code };
+    case 'unmapped':
+      // Reached only when there is nothing to fall back to: visible to the GM like “no channel”.
+      return { state: 'failed', errorCode: 'SLACK_NOT_MAPPED' };
   }
 }

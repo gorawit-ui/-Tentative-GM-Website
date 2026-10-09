@@ -19,12 +19,12 @@ import type { WorkerDeps } from '../../apps/worker/src/deps';
 import { adminWorkerStore } from '../../apps/worker/src/firestore-store';
 import { workerJobHandlers } from '../../apps/worker/src/jobs/index';
 import { consoleWorkerLogger } from '../../apps/worker/src/log';
-import { runJob } from '../../apps/worker/src/scheduled-work';
+import { JobFailed, runJob } from '../../apps/worker/src/scheduled-work';
 import type { WorkerStore } from '../../apps/worker/src/store';
 import { runTick } from '../../apps/worker/src/tick';
 import { blockedHosts } from '../rules/network-guard';
 import { apiHarness, captureLogs, clearAuth, type ApiHarness, type LogCapture } from './support/api-harness';
-import { TEST_MAX_ATTEMPTS, clearFirestore, emulatorClient, readDoc, type EmulatorClient } from './support/firestore-client-store';
+import { TEST_MAX_ATTEMPTS, clearFirestore, emulatorClient, readCollection, readDoc, type EmulatorClient } from './support/firestore-client-store';
 
 const at = (iso: string) => Date.parse(iso);
 const bkk = (local: string) => at(`${local}+07:00`);
@@ -362,6 +362,23 @@ describe('presence resets at Bangkok midnight (C7, S07, Part 6 §6.9)', () => {
       expect((await profile(GM2))?.presence_status, `${day} GM2`).toEqual({ kind: gm2Kind });
     }
     expect(await profile(GM1)).not.toHaveProperty('leave_ends_on');
+  });
+
+  it('D-A05-5: a daily job that failed does not stop the next day — a new one runs; the failed one stays visible', async () => {
+    await harness.db.doc(`gm_profiles/${GM1}`).set({ presence_status: { kind: 'off_site' }, presence_updated_at: new Date(bkk('2027-01-11T10:00:00')) });
+    // Monday's reset fails for good (e.g. a broken profile document); retries are spent.
+    const failing: WorkerDeps = { ...deps(workerA), jobHandlers: { ...workerJobHandlers(directories), presence_reset: async () => Promise.reject(new JobFailed('PROBE_BROKEN', true)) } };
+    setNow(bkk('2027-01-11T10:30:00'));
+    await runTick(failing);
+    const jobs = async () => [...(await readCollection(harness.db, 'scheduled_work')).values()].filter((job) => job.kind === 'presence_reset');
+    expect((await jobs()).map((job) => job.state)).toEqual(['failed']);
+    // Tuesday: the first tick after midnight starts that day's job, which resets the expired value.
+    setNow(bkk('2027-01-12T00:05:00'));
+    await tick();
+    expect(await profile(GM1)).toMatchObject({ presence_status: { kind: 'unspecified' } });
+    const states = (await jobs()).map((job) => [job.state, job.last_error_code ?? null]);
+    expect(states).toEqual(expect.arrayContaining([['failed', 'PROBE_BROKEN']]));
+    expect(states.filter(([state]) => state !== 'failed')).toHaveLength(1);
   });
 
   it('a late tick does not clear what a GM set for the new day', async () => {

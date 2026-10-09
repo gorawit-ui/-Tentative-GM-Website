@@ -1,7 +1,8 @@
 // gm-worker entrypoint (Cloud Run, IAM-only; locally against the emulators with `npm run dev`).
 // A02: the tick (one Scheduler job in prod, manual tick in dev) and outbox tasks. Notifications use
-// the local or disabled adapter only until A07/A08. Credentials come from the runtime; nothing here
-// creates cloud resources. Not imported by tests.
+// the local or disabled adapter only: A07's Slack adapter is wired after P7-ADMIN-03 (FU-33), A08's
+// e-mail after P7-ADMIN-02. `GM_WEB_BASE_URL` is where message links point (P7-INFRA-01 sets the real
+// domain). Credentials come from the runtime; nothing here creates cloud resources. Not imported by tests.
 import { randomUUID } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -12,15 +13,16 @@ import { adminWorkerStore } from './firestore-store';
 import { createWorkerHandler, workerOperations } from './http';
 import { workerJobHandlers } from './jobs/index';
 import { consoleWorkerLogger } from './log';
-import { resolveNotificationMode } from './notification-mode';
+import { resolveNotificationMode, resolveWebBaseUrl } from './notification-mode';
 import { startServer } from './server';
 
 const notificationMode = resolveNotificationMode(process.env.GM_NOTIFICATION_ADAPTER);
+const webBaseUrl = resolveWebBaseUrl(process.env.GM_WEB_BASE_URL);
 console.info(`gm-worker notification adapter: ${notificationMode}`);
 const db = getFirestore(initializeApp());
 const deps: WorkerDeps = {
   store: adminWorkerStore(db),
-  adapter: notificationAdapter(notificationMode, consoleWorkerLogger),
+  adapter: notificationAdapter(notificationMode, consoleWorkerLogger, { webBaseUrl }),
   now: () => Date.now(),
   newLeaseId: () => randomUUID(),
   log: consoleWorkerLogger,
