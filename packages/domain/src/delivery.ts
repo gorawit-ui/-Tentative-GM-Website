@@ -68,13 +68,16 @@ export type DeliveryOutcome =
   | { readonly kind: 'permanent'; readonly code: string }
   | { readonly kind: 'unknown'; readonly code: string }
   | { readonly kind: 'unmapped'; readonly code?: string }
-  | { readonly kind: 'suppressed'; readonly code: string };
+  | { readonly kind: 'suppressed'; readonly code: string }
+  | { readonly kind: 'deferred'; readonly code: string; readonly retryAt: Instant };
 
 export interface DeliverySettlement {
   readonly state: DeliveryState;
   readonly nextAttemptAt?: Instant;
   readonly providerId?: string;
   readonly errorCode?: string;
+  /** A08 stub. */
+  readonly attemptRefunded?: boolean;
 }
 
 /** The entry's state after its `attempts`-th send ended with `outcome`. */
@@ -98,5 +101,7 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
       return { state: 'failed', errorCode: outcome.code ?? 'SLACK_NOT_MAPPED' };
     case 'suppressed':
       return { state: 'suppressed', errorCode: outcome.code };
+    case 'deferred':
+      throw new Error('A08 stub: deferred not implemented');
   }
 }

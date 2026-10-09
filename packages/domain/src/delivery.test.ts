@@ -118,3 +118,14 @@ describe('D-A07-4 / D-A07-8: Slack cannot reach the person; a dev recipient outs
     expect(settleDelivery(1, { kind: 'suppressed', code: 'NOT_IN_SANDBOX' }, NOW)).toEqual({ state: 'suppressed', errorCode: 'NOT_IN_SANDBOX' });
   });
 });
+
+describe('A08: the app’s own e-mail cap (Part 6 §6.10: 30/min, 500/day) defers without using an attempt', () => {
+  it('deferred → pending at the time the cap opens again; the attempt is given back, so the message is never dropped', () => {
+    expect(settleDelivery(5, { kind: 'deferred', code: 'EMAIL_CAP_REACHED', retryAt: NOW + 60_000 }, NOW)).toEqual({
+      state: 'pending',
+      nextAttemptAt: NOW + 60_000,
+      errorCode: 'EMAIL_CAP_REACHED',
+      attemptRefunded: true,
+    });
+  });
+});

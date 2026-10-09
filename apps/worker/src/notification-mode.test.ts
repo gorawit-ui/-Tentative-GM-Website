@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveNotificationMode, resolveSandboxRecipients, resolveWebBaseUrl, resolveWorkerEnvironment } from './notification-mode';
+import { resolveMailSender, resolveNotificationMode, resolveSandboxRecipients, resolveWebBaseUrl, resolveWorkerEnvironment } from './notification-mode';
 
 describe('resolveNotificationMode', () => {
   it('defaults to the local (log-only) adapter', () => {
@@ -68,5 +68,24 @@ describe('resolveSandboxRecipients (D-A07-8: dev sends only to approved Slack ID
 
   it.each(['someone@gmail.com', 'gm.one@tdfb.co.th', 'not-an-id', 'u0abc12345', 'gm one@tdfb.co'])('refuses %j (only Slack user IDs and @tdfb.co e-mails)', (entry) => {
     expect(() => resolveSandboxRecipients('dev', `U0ABC12345,${entry}`)).toThrow('GM_NOTIFY_SANDBOX');
+  });
+});
+
+describe('resolveMailSender (A08, Part 7 D4: the company’s existing central mailbox; P7-ADMIN-02 names it)', () => {
+  it('not set → no sender (e-mail cannot be sent; local / disabled modes do not need one)', () => {
+    expect(resolveMailSender(undefined, undefined)).toBeUndefined();
+  });
+
+  it('a company address; the display name defaults to “ทีม GM”; the address is compared in lowercase', () => {
+    expect(resolveMailSender('gm-notify@tdfb.co', undefined)).toEqual({ address: 'gm-notify@tdfb.co', name: 'ทีม GM' });
+    expect(resolveMailSender(' GM-Notify@TDFB.CO ', 'ทีม GM (แจ้งเตือนอัตโนมัติ)')).toEqual({ address: 'gm-notify@tdfb.co', name: 'ทีม GM (แจ้งเตือนอัตโนมัติ)' });
+  });
+
+  it.each(['gm-notify@gmail.com', 'gm-notify@tdfb.co.th', 'gm notify@tdfb.co', 'a@tdfb.co,b@tdfb.co', 'gm-notify@tdfb.co\r\nBcc: x@y.z', ''])('refuses the address %j', (address) => {
+    expect(() => resolveMailSender(address, undefined)).toThrow('GM_MAIL_FROM');
+  });
+
+  it.each(['ทีม "GM"', 'ทีม <GM>', 'ทีม\nGM', 'ก'.repeat(65), ' '])('refuses the display name %j', (name) => {
+    expect(() => resolveMailSender('gm-notify@tdfb.co', name)).toThrow('GM_MAIL_FROM_NAME');
   });
 });

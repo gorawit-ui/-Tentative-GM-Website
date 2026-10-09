@@ -34,3 +34,8 @@ export function presenceExpiresAt(setAt: Instant, leaveEndsOn?: string): Instant
   }
   return startOfDay(BANGKOK, lastDay + 1);
 }
+
+/** A08 stub. */
+export function startOfNextBangkokDay(_instant: Instant): Instant {
+  throw new Error('A08 stub: startOfNextBangkokDay not implemented');
+}

@@ -13,7 +13,7 @@ export {
 export { addBusinessDuration, addDuration, businessDuration } from './business-time';
 export { autoCloseDue, isAutoCloseDue, staleDueAt, staleState, type StaleState } from './lifecycle-clocks';
 export { businessDateBucket, nextWorkingMorning, type BusinessDateBucket } from './business-date';
-export { bangkokDateOf, presenceExpiresAt } from './presence-clock';
+export { bangkokDateOf, presenceExpiresAt, startOfNextBangkokDay } from './presence-clock';
 export { BOARD_RECENT_WINDOW_MS, boardRecentCutoff } from './board-window';
 export { MINUTE_MS, addElapsed } from './elapsed';
 export { formatBusinessDuration, type DurationTextContext } from './display';

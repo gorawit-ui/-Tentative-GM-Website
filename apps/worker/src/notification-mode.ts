@@ -78,3 +78,8 @@ export function resolveSandboxRecipients(environment: WorkerEnvironment, value: 
   }
   return { slackUserIds, emails };
 }
+
+/** A08 stub. */
+export function resolveMailSender(_address: string | undefined, _name: string | undefined): { readonly address: string; readonly name: string } | undefined {
+  throw new Error('A08 stub: resolveMailSender not implemented');
+}
