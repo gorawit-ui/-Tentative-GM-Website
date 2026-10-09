@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "./tokens.css" layer(components);
+@config "./tailwind.config.cjs";
+
+/* A09 — the P1 entry above (Part 4 Patch, Part 6 §6.3), then the app's own CSS, every rule in a layer:
+   the self-hosted IBM Plex Sans Thai Looped (OFL; Thai and Latin, the token weights 400/500/600) in
+   `base`, the shell and page styles in `components` after the tokens, so Tailwind utilities override
+   both. tokens.css, tokens.json and tailwind.config.cjs are reference/gm-design-tokens unchanged. */
+@import "@fontsource/ibm-plex-sans-thai-looped/thai-400.css" layer(base);
+@import "@fontsource/ibm-plex-sans-thai-looped/thai-500.css" layer(base);
+@import "@fontsource/ibm-plex-sans-thai-looped/thai-600.css" layer(base);
+@import "@fontsource/ibm-plex-sans-thai-looped/latin-400.css" layer(base);
+@import "@fontsource/ibm-plex-sans-thai-looped/latin-500.css" layer(base);
+@import "@fontsource/ibm-plex-sans-thai-looped/latin-600.css" layer(base);
+@import "./shell.css" layer(components);

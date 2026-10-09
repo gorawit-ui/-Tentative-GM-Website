@@ -7,3 +7,4 @@ export { countAwaitingConfirmation, getRequestDetail, listComments, listGmHistor
 export { createUploadUrl, createViewUrl, finalizeUpload, type UploadPurpose, type UploadUrl, type ViewUrl } from './files';
 export { previewRelated, previewWaiting } from './previews';
 export { storageUrlSigner } from './url-signer';
+export { MAX_PUBLIC_CONTACTS, PUBLIC_CONTACT_TTL_MS, publicContactSource, publicContactsOf, type PublicContactSource } from './public-contact';
