@@ -105,6 +105,14 @@ describe('ACL matrix — shape', () => {
   });
 });
 
+describe('D-A04-4: the public visibility epoch has its own row', () => {
+  it('system_counters/public_visibility is listed (and so shown in ACL-MATRIX.md) as server/API only', () => {
+    const row = RESOURCES.find((resource) => resource.key === 'system_counters.public_visibility');
+    expect(row).toMatchObject({ path: 'system_counters/public_visibility', allow: {} });
+    expect(row?.description).toContain('public_visibility_epoch');
+  });
+});
+
 describe('ACL matrix — default deny', () => {
   it('an unknown resource or anything not listed is denied', () => {
     expect(decide('gm_admin', 'no_such_resource', 'get')).toBe('deny');
@@ -142,6 +150,8 @@ describe('ACL matrix — default deny', () => {
       'outbox',
       'outbox_heads',
       'system_counters',
+      // D-A04-4: the public visibility epoch is read by the API only.
+      'system_counters.public_visibility',
     ]) {
       for (const subject of SUBJECT_KEYS) {
         for (const operation of ACL_OPERATIONS) expect(decide(subject, key, operation), `${subject} ${key} ${operation}`).toBe('deny');

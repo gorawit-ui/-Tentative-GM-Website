@@ -5,17 +5,39 @@
 //      `delivery_unknown`; due `pending` entries (no task, a failed hand-off — FU-20 — or a back-off
 //      that is over) are sent through the same dispatcher Cloud Tasks uses;
 //   2. due `scheduled_work` jobs.
+// A05: the lease transaction also starts the daily `presence_reset` job if it is missing, and when the
+// company calendar's content changed since the last tick (hash kept on the tick record) it schedules
+// one `stale` recompute of the open requests — so an Admin's new holiday counts at once, while a
+// normal tick reads only due work (2 extra reads per tick, never every open request).
 // Then the lease is released and the finish time recorded (Admin: last successful tick, §6.13). The
 // lease is shorter than the interval, so a tick that died never blocks the next one; every item has
 // its own lease, so overlapping work never sends or runs the same item twice.
+import { createHash } from 'node:crypto';
+import { companyCalendarOf } from '@gm/api/directories';
+import { canonicalCalendarSnapshotJson } from '@gm/contracts';
 import { TICK_LEASE_MS, TICK_WORK_BUDGET_MS, claimTick } from '@gm/domain';
 import { addElapsed, type Instant } from '@gm/time';
+import { PRESENCE_RESET_JOB_ID } from './jobs/presence-reset';
 import { DEFAULT_LIMITS, type WorkerDeps } from './deps';
 import { dispatchOutbox, type DispatchResult } from './outbox-dispatch';
 import { runJob, type JobResult } from './scheduled-work';
 import { DUE_FIELD, type DueCollection, type DueCursor } from './store';
 
 export const TICK_LEASE_PATH = 'scheduled_work/tick';
+const CALENDAR_PATH = 'calendars/company';
+
+/** Content hash of the company calendar (timezone, open weekdays, holidays), or undefined if unusable. */
+function calendarHash(stored: Readonly<Record<string, unknown>> | undefined): string | undefined {
+  if (stored === undefined) return undefined;
+  try {
+    const calendar = companyCalendarOf(stored);
+    const content = { timezone: 'Asia/Bangkok' as const, open_weekdays: calendar.openWeekdays, holidays: calendar.holidays };
+    return createHash('sha256').update(canonicalCalendarSnapshotJson(content), 'utf8').digest('hex');
+  } catch {
+    // An invalid calendar is the command's problem (CALENDAR_NOT_CONFIGURED); the tick goes on.
+    return undefined;
+  }
+}
 
 export interface OutboxCounts {
   readonly sent: number;
@@ -87,7 +109,23 @@ export async function runTick(deps: WorkerDeps): Promise<TickReport> {
     const lease = await transaction.get(TICK_LEASE_PATH);
     const leaseUntil = Number.isSafeInteger(lease?.lease_until) ? (lease?.lease_until as number) : undefined;
     if (claimTick(leaseUntil === undefined ? undefined : { lease_until: leaseUntil }, startedAt) === 'busy') return false;
-    transaction.set(TICK_LEASE_PATH, { ...lease, kind: 'tick', lease_id: leaseId, lease_until: addElapsed(startedAt, TICK_LEASE_MS), last_started_at: startedAt });
+    const hash = deps.jobHandlers?.stale === undefined ? undefined : calendarHash(await transaction.get(CALENDAR_PATH));
+    const presenceJob = deps.jobHandlers?.presence_reset === undefined ? undefined : await transaction.get(`scheduled_work/${PRESENCE_RESET_JOB_ID}`);
+    if (hash !== undefined && hash !== lease?.calendar_hash) {
+      // One recompute per calendar content (a first tick with no record recomputes too: safe default).
+      transaction.set(`scheduled_work/stale_calendar-${hash.slice(0, 16)}`, { kind: 'stale', scope: 'calendar', calendar_hash: hash, state: 'scheduled', next_run_at: startedAt, attempts: 0, created_at: startedAt });
+    }
+    if (deps.jobHandlers?.presence_reset !== undefined && presenceJob === undefined) {
+      transaction.set(`scheduled_work/${PRESENCE_RESET_JOB_ID}`, { kind: 'presence_reset', state: 'scheduled', next_run_at: startedAt, attempts: 0, created_at: startedAt });
+    }
+    transaction.set(TICK_LEASE_PATH, {
+      ...lease,
+      kind: 'tick',
+      lease_id: leaseId,
+      lease_until: addElapsed(startedAt, TICK_LEASE_MS),
+      last_started_at: startedAt,
+      ...(hash === undefined ? {} : { calendar_hash: hash }),
+    });
     return true;
   });
   if (!acquired) {

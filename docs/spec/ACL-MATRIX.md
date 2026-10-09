@@ -10,7 +10,7 @@
 - **การเขียนจาก client** (create / update / delete) ปฏิเสธทุก collection ทุก role — ทุกการเปลี่ยนแปลงผ่าน API ซึ่งตรวจสิทธิ์ด้วยกติกา domain ชุดเดียวกัน (Admin SDK ข้าม Rules)
 - **อ่าน**: `get` = เปิด document หนึ่งรายการ, `list` = query ทั้ง collection โดยไม่กรอง (Rules ไม่กรองผลให้) และ**ต้องมี limit ไม่เกิน 200** ไม่มี limit หรือเกินถูกปฏิเสธทุก collection (D-S10-4) หน้า “ดูทั้งหมด” แบ่งหน้าละ 50
 - บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified (ตรวจหลังแปลงเป็นตัวพิมพ์เล็ก TDFB.CO จึงเป็นโดเมนเดียวกัน ส่วนโดเมนหน้าตาคล้ายถูกปฏิเสธ, D-S10-5) และ `access/{uid}.enabled` = true; role อ่านจาก `access/{uid}` ไม่ใช่ custom claim
-- ขนาด matrix: 16 role × 43 collection/path × 5 operation = 3440 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
+- ขนาด matrix: 16 role × 44 collection/path × 5 operation = 3520 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
 
 ## สิทธิ์พื้นฐาน: ทุกบัญชีที่ใช้งานได้
 
@@ -241,6 +241,8 @@ API ใช้ Admin SDK จึงข้าม Rules ทุก endpoint ตรว
 | `waiting_preview.general` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันรอผู้อื่น (A04): ผู้รับแจ้ง/คนที่จะเป็น related/ต้องยืนยัน grant หรือไม่ — GM เท่านั้น |
 | `waiting_preview.confidential` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันรอผู้อื่นของงานลับ — GM เท่านั้น |
 | `related_preview.general` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันเพิ่มผู้เกี่ยวข้อง (FU-12) — GM เท่านั้น |
+| `gm_history.general` | `gm_staff`, `gm_admin` | ประวัติเฉพาะ GM (D-A04-8 เหตุผลปลดธงลับ; watcher contribution) — GM เท่านั้น |
+| `gm_history.confidential` | `gm_staff`, `gm_admin` | ประวัติเฉพาะ GM ของงานลับ — GM เท่านั้น |
 | `related_preview.confidential` | `gm_staff`, `gm_admin` | ดูก่อนยืนยันเพิ่มผู้เกี่ยวข้องของงานลับ: ใครต้องได้ grant (D-ACL-2) — GM เท่านั้น |
 
 ## หน้าจอ → แหล่งข้อมูล

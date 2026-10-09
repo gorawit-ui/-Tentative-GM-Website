@@ -7,8 +7,8 @@
 // Missing routing settings or company calendar refuse the command rather than guess (fail closed).
 import { isPersonId } from '@gm/contracts';
 import { REQUEST_TYPES, type GmMember, type GmProfile, type PresenceStatus, type RoutingSettings } from '@gm/domain';
-import { snapshotCalendar, type IsoWeekday } from '@gm/time';
-import { CommandRejected, type PeopleDirectory, type RoutingDirectory } from '../commands/execute-command';
+import { snapshotCalendar, type CalendarSnapshot, type IsoWeekday } from '@gm/time';
+import { CommandRejected, type PeopleDirectory, type ReadTransaction, type RoutingDirectory } from '../commands/execute-command';
 import type { StoredData } from '../commands/transaction-port';
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
@@ -45,7 +45,8 @@ function presenceOf(stored: StoredData | undefined): PresenceStatus {
   return { kind: 'unspecified' };
 }
 
-function profileOf(personId: string, stored: StoredData | undefined): GmProfile | undefined {
+/** `gm_profiles/{person_id}` as the domain profile (also used by the worker's presence reset, A05). */
+export function gmProfileOf(personId: string, stored: StoredData | undefined): GmProfile | undefined {
   if (stored === undefined) return undefined;
   return {
     personId,
@@ -56,13 +57,30 @@ function profileOf(personId: string, stored: StoredData | undefined): GmProfile 
   };
 }
 
+/**
+ * The company work calendar as it is now (`calendars/company`, P7-ADMIN-04 / A11). Stale uses it
+ * (FU-27 decision, A05); missing → refused rather than guessed (D-A01-2).
+ */
+export async function transactionCompanyCalendar(transaction: ReadTransaction): Promise<CalendarSnapshot> {
+  const calendar = await transaction.get('calendars/company');
+  if (calendar === undefined) throw new CommandRejected('CALENDAR_NOT_CONFIGURED', 'The company work calendar is not set up yet');
+  return companyCalendarOf(calendar);
+}
+
+export function companyCalendarOf(calendar: StoredData): CalendarSnapshot {
+  return snapshotCalendar({
+    timeZone: String(calendar.timezone),
+    openWeekdays: (Array.isArray(calendar.open_weekdays) ? calendar.open_weekdays : []) as IsoWeekday[],
+    holidays: strings(calendar.holidays),
+  });
+}
+
 export function transactionRoutingDirectory(): RoutingDirectory {
   return {
     async load(transaction) {
       const routing = await transaction.get('settings/routing');
       if (routing === undefined) throw new CommandRejected('ROUTING_NOT_CONFIGURED', 'Default owners and GM members are not set up yet');
-      const calendar = await transaction.get('calendars/company');
-      if (calendar === undefined) throw new CommandRejected('CALENDAR_NOT_CONFIGURED', 'The company work calendar is not set up yet');
+      const workCalendar = await transactionCompanyCalendar(transaction);
       const owners = (routing.default_owner_by_type ?? {}) as Record<string, unknown>;
       const defaultOwnerByType: RoutingSettings['defaultOwnerByType'] = Object.fromEntries(
         REQUEST_TYPES.filter((type) => type !== 'gm_task' && isPersonId(owners[type])).map((type) => [type, owners[type] as string]),
@@ -71,16 +89,12 @@ export function transactionRoutingDirectory(): RoutingDirectory {
       for (const personId of new Set(strings(routing.gm_person_ids).filter(isPersonId))) {
         const person = await transaction.get(`people/${personId}`);
         const profile = await transaction.get(`gm_profiles/${personId}`);
-        members.push({ personId, active: person?.active === true, profile: profileOf(personId, profile) });
+        members.push({ personId, active: person?.active === true, profile: gmProfileOf(personId, profile) });
       }
       return {
         settings: { defaultOwnerByType },
         members,
-        workCalendar: snapshotCalendar({
-          timeZone: String(calendar.timezone),
-          openWeekdays: (Array.isArray(calendar.open_weekdays) ? calendar.open_weekdays : []) as IsoWeekday[],
-          holidays: strings(calendar.holidays),
-        }),
+        workCalendar,
       };
     },
   };

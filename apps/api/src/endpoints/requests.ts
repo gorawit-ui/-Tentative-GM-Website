@@ -2,7 +2,7 @@
 // (fresh access/{uid}) and applies the same domain predicates as the Rules (ACL matrix fixture).
 // A request the caller may not read answers 404, like a missing one.
 import { MAX_LIST_LIMIT, pageLimit, requesterNoticeFields, requesterNoticeStateOf, type RequestDetailDocument, type RequestRecord } from '@gm/contracts';
-import { canReadRequestDetail, requesterNoticeAfter, type AccessViewer, type RequestAclFacts } from '@gm/domain';
+import { canReadRequestDetail, isGm, requesterNoticeAfter, type AccessViewer, type RequestAclFacts } from '@gm/domain';
 import { fromStored, toStored } from '../firestore/admin-store';
 import { authenticate, guarded } from './authenticate';
 import type { ApiDeps } from './deps';
@@ -204,5 +204,19 @@ export function markSeen(
       }
       return { activity_seq: visible, last_seen_activity_seq: lastSeen, has_update: visible > lastSeen };
     });
+  });
+}
+
+/**
+ * D-A04-8: `gm_history` — what only GM read (Part 6 §6.4 “GM ผ่าน API”), e.g. the GM Admin's reason for
+ * removing the confidential flag. A reader who is not GM is refused; a non-reader gets 404.
+ */
+export function listGmHistory(deps: ApiDeps, idToken: string | undefined, requestId: string, limit?: number) {
+  return guarded(deps, 'gm_history.read', requestId, async () => {
+    const { viewer } = await authenticate(deps, idToken);
+    await readableRequest(deps, viewer, requestId);
+    if (!isGm(viewer)) throw new ApiError(403, 'GM_ONLY');
+    const snapshot = await deps.db.collection(`requests/${requestId}/gm_history`).limit(pageLimit(limit)).get();
+    return snapshot.docs.map((document) => ({ id: document.id, ...fromStored(document.data()) }));
   });
 }

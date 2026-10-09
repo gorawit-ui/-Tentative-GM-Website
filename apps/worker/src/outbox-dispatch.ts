@@ -18,7 +18,8 @@
 // same transaction.
 // A04 (F05 §9.3): a message to the waited party is sent only while its interval is still the current
 // one and unanswered, and while the recipient can still read the request — never to a party no longer
-// waited on or to a person removed from the request.
+// waited on or to a person removed from the request. D-A04-3: nor the “added as related” message to
+// someone removed (or no longer granted) before it went out.
 import { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, latestStatusRevision } from '@gm/api/commands';
 import { requesterNoticeFields, requesterNoticeStateOf, type RequestRecord } from '@gm/contracts';
 import {
@@ -52,7 +53,7 @@ interface Entry {
   readonly requestId: string;
   readonly recipientId: string;
   readonly eventKind: string;
-  readonly audience: 'gm' | 'requester' | 'watcher' | 'waiting_party';
+  readonly audience: 'gm' | 'requester' | 'watcher' | 'waiting_party' | 'related';
   readonly requestNumber: string;
   /** A04: the interval a message to the waited party belongs to. */
   readonly waitingIntervalId?: number;
@@ -75,7 +76,9 @@ function parseEntry(stored: StoredData): Entry | undefined {
   const eventKind = text(stored.event_kind);
   const requestNumber = text(stored.request_number);
   const audience =
-    stored.audience === 'requester' || stored.audience === 'gm' || stored.audience === 'watcher' || stored.audience === 'waiting_party' ? stored.audience : undefined;
+    stored.audience === 'requester' || stored.audience === 'gm' || stored.audience === 'watcher' || stored.audience === 'waiting_party' || stored.audience === 'related'
+      ? stored.audience
+      : undefined;
   const attempts = Number.isSafeInteger(stored.attempts) ? (stored.attempts as number) : undefined;
   const nextAttemptAt = Number.isSafeInteger(stored.next_attempt_at) ? (stored.next_attempt_at as number) : undefined;
   if (
@@ -119,6 +122,11 @@ const ids = (value: unknown): readonly string[] => (Array.isArray(value) ? value
 async function waitingPartyStop(transaction: WorkerTransaction, entry: Entry, request: StoredData): Promise<string | undefined> {
   if (request.status !== 'waiting' || request.current_waiting_interval_id !== entry.waitingIntervalId) return 'WAITING_ENDED';
   if (request.waiting_party_responded === true) return 'ALREADY_RESPONDED';
+  return accessStop(transaction, entry, request);
+}
+
+/** The recipient can still read the request detail: requester, related (general) or granted (confidential), or GM. */
+async function accessStop(transaction: WorkerTransaction, entry: Entry, request: StoredData): Promise<string | undefined> {
   if (request.requester_id === entry.recipientId) return undefined;
   const readers = request.is_confidential === false ? ids(request.related_person_ids) : ids(request.confidential_grant_ids);
   if (readers.includes(entry.recipientId)) return undefined;
@@ -229,7 +237,14 @@ async function claim(transaction: WorkerTransaction, path: string, outboxId: str
   const superseded =
     STATUS_NOTICE_KINDS.has(entry.eventKind) &&
     latestStatusRevision(await transaction.get(`${OUTBOX_HEADS_COLLECTION}/${entry.requestId}`), entry.recipientId) > entry.revision;
-  const waitingStop = request !== undefined && WAITING_PARTY_NOTICE_KINDS.has(entry.eventKind) ? await waitingPartyStop(transaction, entry, request) : undefined;
+  const waitingStop =
+    request === undefined
+      ? undefined
+      : WAITING_PARTY_NOTICE_KINDS.has(entry.eventKind)
+        ? await waitingPartyStop(transaction, entry, request)
+        : entry.audience === 'related'
+          ? await accessStop(transaction, entry, request)
+          : undefined;
   const stop = (settlement: DeliverySettlement): Claim => {
     transaction.set(path, { ...settledEntry(stored, settlement, now), last_attempt_at: now });
     if (badge !== undefined) writeBadge(transaction, badge, observationOf(entry, settlement, now));

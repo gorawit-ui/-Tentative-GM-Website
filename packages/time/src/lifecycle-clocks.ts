@@ -37,3 +37,11 @@ export function autoCloseDue(completedAt: Instant, calendar: CalendarSnapshot): 
 export function isAutoCloseDue(completedAt: Instant, now: Instant, calendar: CalendarSnapshot): boolean {
   return businessDuration(completedAt, now, calendar) >= AUTO_CLOSE_AFTER_MS;
 }
+
+/**
+ * A05 — when the stale check is due (Part 6 §6.9): the first instant past 3 business days, i.e. 3 BD
+ * + 1 ms of *business* time — on a closed-day edge that is the next open day, not 1 ms of wall clock.
+ */
+export function staleDueAt(lastUpdatedAt: Instant, calendar: CalendarSnapshot): Instant {
+  return addBusinessDuration(lastUpdatedAt, STALE_AFTER_MS + 1, calendar);
+}

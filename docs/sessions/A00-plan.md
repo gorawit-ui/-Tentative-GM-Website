@@ -23,11 +23,11 @@
 | 3 | A03 lifecycle persistence / revision | A01 | ได้ (ทำแล้ว รวม auto-close job) | — | FU-04 (assign), FU-02 (คอมเมนต์ GM = ความคืบหน้า) |
 | 4 | A06 unread / pending confirms / delivery badge | A01, S12 | ได้ (ทำแล้ว) | — | FU-08 ปิดแล้ว; FU-23 ส่วน badge ทำแล้ว |
 | 5 | A04 waiting / follow / response + history | A03, A02 | ได้ (ทำแล้ว) | — | FU-12, FU-09, FU-26 ปิดแล้ว; ใหม่ FU-30 (เวลาเตือนจาก settings), FU-31 (คู่ชื่อฝ่ายที่รอ) |
-| 6 | A05 stale / auto-close / presence tick | A02, A03 | ได้ (calendar สังเคราะห์) | P7-ADMIN-04 วันหยุดจริงก่อน pilot | FU-27 (`work_calendar_snapshot`); auto-close job ทำแล้วใน A03 เหลือ stale + presence |
+| 6 | A05 stale / auto-close / presence tick | A02, A03 | ได้ (ทำแล้ว) | P7-ADMIN-04 วันหยุดจริงก่อน pilot | stale ใช้ปฏิทินบริษัทปัจจุบัน (FU-27 เหลือ snapshot สำหรับ B01); ใหม่ FU-32 (หน้าแก้ปฏิทิน A11) |
 | 7 | A07 Slack outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-03 สำหรับ sandbox จริง | FU-17 |
 | 8 | A08 Gmail outbound (disabled/local mode) | A01, A02 | ได้เฉพาะ disabled/local | P7-ADMIN-02 สำหรับ sandbox จริง | FU-17 |
 | 9 | A09 Google login / 4 roles / route shell | S12, A01 | ได้ (Auth emulator) | — | — |
-| 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | FU-25 (เวลา tick ล่าสุด, เกิน 30 นาทีสีแดง) |
+| 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ข้อมูลสังเคราะห์) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR | FU-25 (เวลา tick ล่าสุด, เกิน 30 นาทีสีแดง), FU-32 (แก้ปฏิทิน → stale คำนวณใหม่) |
 | 11 | A10 Admin people CSV / roles | A09 | ได้ (CSV สังเคราะห์) | P7-ADMIN-01 CSV จริง | FU-10, FU-11 |
 | 12 | A12 public QR landing + repair step 1–3 | A09, A11 | ได้ | — | FU-21 (503 ยังตั้งค่าไม่ครบ → ข้อความไทย + ติดต่อ GM) |
 | 13 | A13 duplicate watch backend + interstitial | A12, A01 | ได้ | — | FU-08, FU-15 (contribution) |

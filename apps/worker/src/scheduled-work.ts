@@ -38,6 +38,8 @@ export interface JobContext {
    * past `expected_revision` / is gone (`superseded`); otherwise run `work` with the request as read.
    */
   runChecked<T>(work: (transaction: WorkerTransaction, request: StoredData | undefined) => Promise<T>): Promise<CheckedRun<T>>;
+  /** A05: a page of open request IDs (the recompute after a calendar change only). */
+  openRequests(after: string | undefined, limit: number): Promise<readonly string[]>;
 }
 
 export type JobHandler = (context: JobContext) => Promise<JobOutcome>;
@@ -126,6 +128,7 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<JobResult
   const context: JobContext = {
     job,
     now: deps.now(),
+    openRequests: (after, limit) => deps.store.openRequests(after, limit),
     runChecked: (work) =>
       deps.store.runTransaction(async (transaction) => {
         const current = await transaction.get(path);

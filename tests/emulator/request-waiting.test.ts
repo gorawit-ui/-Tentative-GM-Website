@@ -552,13 +552,23 @@ describe('notices: the waited party by kind, the GM on a response, never the act
     expect(await noticesOf(own.id, 'waiting_party_responded')).toEqual([]);
   });
 
-  it('resume tells the requester and watchers that work goes on; never the GM who resumed', async () => {
+  it('D-A04-2: resume sends nobody a message — the requester and watchers only get the update dot', async () => {
     setNow(MON);
     const { id } = await inProgressRepair();
     expect(await act(WATCHER, 'watch_request', { request_id: id })).toMatchObject({ status: 200 });
     await waitingOnParty(id);
-    await act(GM1, 'resume_work', { request_id: id, expected_revision: await revisionOf(id) });
-    expect(recipients(await noticesOf(id, 'request_resumed'))).toEqual([EMPLOYEE, WATCHER].sort());
+    const seenSeq = (await request(id))?.activity_seq as number;
+    for (const person of [EMPLOYEE, WATCHER]) {
+      expect(await call('POST', person, `/api/requests/${id}/seen`, { activity_seq: seenSeq })).toMatchObject({ status: 200, body: { has_update: false } });
+    }
+    const before = (await outboxOf(id)).length;
+    expect(await act(GM1, 'resume_work', { request_id: id, expected_revision: await revisionOf(id) })).toMatchObject({ status: 200 });
+    expect(await outboxOf(id)).toHaveLength(before);
+    expect(await noticesOf(id, 'request_resumed')).toEqual([]);
+    for (const person of [EMPLOYEE, WATCHER]) {
+      const mine = await call('GET', person, '/api/me/requests');
+      expect((mine.body.items as { request_id: string; has_update: boolean }[]).find((item) => item.request_id === id), person).toMatchObject({ has_update: true, activity_seq: seenSeq + 1 });
+    }
   });
 });
 
@@ -837,6 +847,41 @@ describe('FU-12: add / remove related persons through the API', () => {
     expect(await call('GET', R1, `/api/requests/${id}`)).toMatchObject({ status: 404 });
   });
 
+  it('D-A04-3: people added as related get one DM when added; nothing when removed; the waited party gets only the waiting DM', async () => {
+    setNow(MON);
+    const { id, number } = await inProgressRepair();
+    await act(GM1, 'add_related_persons', { request_id: id, expected_revision: await revisionOf(id), person_ids: [OTHER, R1] });
+    const added = await noticesOf(id, 'related_added');
+    expect(added.map((entry) => [entry.recipient_id, entry.audience]).sort()).toEqual(
+      [
+        [OTHER, 'related'],
+        [R1, 'related'],
+      ].sort(),
+    );
+    for (const entry of added) expect(entry).toMatchObject({ request_number: number, confidential: false, state: 'pending' });
+    // Nobody new: nothing changes, nobody is told again.
+    expect(await act(GM1, 'add_related_persons', { request_id: id, expected_revision: await revisionOf(id), person_ids: [OTHER] })).toMatchObject({ status: 200 });
+    expect(await noticesOf(id, 'related_added')).toHaveLength(2);
+    // Removing is not announced.
+    await act(GM1, 'remove_related_person', { request_id: id, expected_revision: await revisionOf(id), person_id: R1 });
+    expect((await outboxOf(id)).filter((entry) => entry.recipient_id === R1).map((entry) => entry.event_kind)).toEqual(['related_added']);
+    // Becoming related by being waited on: one message, the one asking them.
+    await waitingOnParty(id);
+    expect((await outboxOf(id)).filter((entry) => entry.recipient_id === PARTY).map((entry) => entry.event_kind)).toEqual(['waiting_requested']);
+  });
+
+  it('D-A04-3: confidential request — the person added with the grant is told (neutral text); removed before the send → not told', async () => {
+    setNow(MON);
+    const { id } = await inProgressDocument();
+    await act(GM2, 'mark_confidential', { request_id: id, expected_revision: await revisionOf(id), sensitivity_reason: 'contract', keep_related_person_ids: [] });
+    await act(GM2, 'add_related_persons', { request_id: id, expected_revision: await revisionOf(id), person_ids: [R1], confirm_confidential_grant: true });
+    expect(await noticesOf(id, 'related_added')).toEqual([expect.objectContaining({ recipient_id: R1, audience: 'related', confidential: true })]);
+    await act(GM2, 'remove_related_person', { request_id: id, expected_revision: await revisionOf(id), person_id: R1 });
+    setNow(MON + 60_000);
+    await runTick(workerDeps());
+    expect((await noticesOf(id, 'related_added'))[0]).toMatchObject({ state: 'suppressed', last_error_code: 'NO_ACCESS' });
+  });
+
   it('GM only; stale revision refused; a person not related cannot be removed', async () => {
     setNow(MON);
     const { id } = await inProgressRepair();
@@ -899,8 +944,22 @@ describe('FU-09: flag confidential later (kept related persons) and GM Admin rem
     expect(await publicSummary(id)).toMatchObject({ status: 'in_progress' });
     expect(await boardCount()).toBe(count - 1);
     expect(await epoch()).toBe(visibility + 1);
-    expect(await historyOf(id, 'confidential_flag_removed')).toEqual([expect.objectContaining({ actor_id: ADMIN, reason: 'ตรวจแล้วไม่ใช่เรื่องลับ', previous_sensitivity_reason: 'personnel' })]);
+    // D-A04-8: everyone with detail access sees only that it became a general request.
+    const removed = await historyOf(id, 'confidential_flag_removed');
+    expect(removed).toEqual([expect.objectContaining({ actor_id: ADMIN, at: MON + 2 * HOUR })]);
+    expect(removed[0]).not.toHaveProperty('reason');
+    expect(removed[0]).not.toHaveProperty('previous_sensitivity_reason');
     expect(await call('GET', R2, `/api/requests/${id}`)).toMatchObject({ status: 200 });
+    const seenByRelated = await call('GET', R2, `/api/requests/${id}/history`);
+    expect(seenByRelated.status).toBe(200);
+    expect(JSON.stringify(seenByRelated.body)).not.toContain('ตรวจแล้วไม่ใช่เรื่องลับ');
+    // The reason is GM-only (gm_history through the API).
+    const gmHistory = await call('GET', GM1, `/api/requests/${id}/gm-history`);
+    expect(gmHistory.status).toBe(200);
+    expect(gmHistory.body.items).toEqual([expect.objectContaining({ kind: 'confidential_flag_removed', actor_id: ADMIN, reason: 'ตรวจแล้วไม่ใช่เรื่องลับ', previous_sensitivity_reason: 'personnel' })]);
+    expect(await call('GET', EMPLOYEE, `/api/requests/${id}/gm-history`)).toMatchObject({ status: 403 });
+    expect(await call('GET', R2, `/api/requests/${id}/gm-history`)).toMatchObject({ status: 403 });
+    expect(await call('GET', OTHER, `/api/requests/${id}/gm-history`)).toMatchObject({ status: 404 });
   });
 });
 

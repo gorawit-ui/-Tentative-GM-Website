@@ -20,6 +20,7 @@ import {
   finalizeUpload,
   getRequestDetail,
   listComments,
+  listGmHistory,
   listHistory,
   listWaitingIntervals,
   listMyRequests,
@@ -191,6 +192,8 @@ async function call(endpoint: ApiEndpoint, token: string | undefined): Promise<u
       return previewWaiting(deps, token, requestId, { waiting_on: { kind: 'government', name: 'สำนักงานเขตตัวอย่าง' } });
     case 'related_preview':
       return previewRelated(deps, token, requestId, { person_ids: [] });
+    case 'gm_history':
+      return listGmHistory(deps, token, requestId);
   }
 }
 
@@ -244,6 +247,7 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
             break;
           case 'history':
           case 'waiting_intervals':
+          case 'gm_history':
           case 'comments':
             expect(result).toHaveLength(1);
             break;
@@ -281,7 +285,7 @@ describe('every subject × every read/file endpoint matches the API matrix', () 
   });
 
   it('covers every endpoint of the matrix', () => {
-    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(12);
+    expect(new Set(API_ENDPOINTS.map((endpoint) => endpoint.kind)).size).toBe(13);
   });
 });
 

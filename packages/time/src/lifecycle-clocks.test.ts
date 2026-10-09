@@ -2,7 +2,7 @@
 // stale: strictly MORE than 3 business days since last_updated_at ("เกิน").
 // auto-close: AT LEAST 3 business days since completed_at ("ครบ").
 import { describe, expect, it } from 'vitest';
-import { BUSINESS_DAY_MS, autoCloseDue, isAutoCloseDue, staleState, type CalendarSnapshot } from './index';
+import { BUSINESS_DAY_MS, autoCloseDue, isAutoCloseDue, staleDueAt, staleState, type CalendarSnapshot } from './index';
 
 const at = (iso: string) => Date.parse(iso);
 const utc = (instant: number) => new Date(instant).toISOString();
@@ -75,5 +75,26 @@ describe('staleState — last_updated_at + more than 3 business days', () => {
 
   it('rejects now before last_updated_at', () => {
     expect(() => staleState(lastUpdatedAt, lastUpdatedAt - 1, COMPANY)).toThrow(RangeError);
+  });
+});
+
+describe('A05 staleDueAt — when the tick should look (Part 6 §6.9: 3 BD + 1 ms of business time)', () => {
+  it('Mon 09:00 → Thu 09:00:00.001 (stale only after exactly 3 business days have passed)', () => {
+    const updated = at('2027-01-11T09:00:00+07:00');
+    const due = staleDueAt(updated, COMPANY);
+    expect(utc(due)).toBe(utc(at('2027-01-14T09:00:00+07:00') + 1));
+    expect(staleState(updated, due - 1, COMPANY).stale).toBe(false);
+    expect(staleState(updated, due, COMPANY).stale).toBe(true);
+  });
+
+  it('on a holiday edge the extra millisecond is business time, not wall-clock: it lands on the next open day', () => {
+    // Mon 28 Dec 00:00 + 3 BD = end of Wed 30 Dec; Thu 31 Dec and Fri 1 Jan are holidays.
+    const due = staleDueAt(at('2026-12-28T00:00:00+07:00'), COMPANY);
+    expect(utc(due)).toBe(utc(at('2027-01-04T00:00:00+07:00') + 1));
+    expect(staleState(at('2026-12-28T00:00:00+07:00'), at('2027-01-03T23:59:59+07:00'), COMPANY).stale).toBe(false);
+  });
+
+  it('weekends are skipped: Fri 09:00 → Wed 09:00:00.001', () => {
+    expect(utc(staleDueAt(at('2027-01-08T09:00:00+07:00'), COMPANY))).toBe(utc(at('2027-01-13T09:00:00+07:00') + 1));
   });
 });

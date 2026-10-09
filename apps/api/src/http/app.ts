@@ -24,6 +24,7 @@ import {
   finalizeUpload,
   getRequestDetail,
   listComments,
+  listGmHistory,
   listHistory,
   listMyRequests,
   listWaitingIntervals,
@@ -161,6 +162,13 @@ function routes(deps: HttpDeps): readonly Route[] {
       method: 'GET',
       pattern: new RegExp(`^/api/requests/${SEGMENT}/history$`),
       handle: async ({ token, params }) => ({ status: 200, body: { items: await listHistory(api, token, params[0]!) } }),
+    },
+    {
+      // D-A04-8: GM-only history (reason for removing the confidential flag).
+      name: 'requests.gm_history',
+      method: 'GET',
+      pattern: new RegExp(`^/api/requests/${SEGMENT}/gm-history$`),
+      handle: async ({ token, params }) => ({ status: 200, body: { items: await listGmHistory(api, token, params[0]!) } }),
     },
     {
       name: 'requests.waiting_intervals',

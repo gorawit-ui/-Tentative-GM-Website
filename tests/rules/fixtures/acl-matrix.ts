@@ -262,6 +262,7 @@ export function seedDocuments(): ReadonlyMap<string, object> {
     'outbox_heads/req-1': { request_id: 'req-1', status_revision_by_recipient: {} },
     'scheduled_work/job-1': { state: 'pending' },
     'system_counters/request_sequence': { last_issued: 902 },
+    'system_counters/public_visibility': { public_visibility_epoch: 3 },
     'imports/imp-1': { state: 'preview' },
     'integration_inbox/in-1': { provider: 'slack' },
     'integration_state/slack': { cursor: 'x' },
@@ -433,6 +434,11 @@ export const RESOURCES: readonly AclResource[] = [
       'unknown_collection/doc-1',
     ] as const
   ).map((path) => deniedEverywhere(path.slice(0, path.indexOf('/')), path, 'server/API เท่านั้น หรือ path ที่ไม่มีกติกา')),
+  deniedEverywhere(
+    'system_counters.public_visibility',
+    'system_counters/public_visibility',
+    '`public_visibility_epoch` (D-A04-4): เพิ่มใน transaction ที่ติด/ปลดธงลับ; อ่านเฉพาะ server/API (B aggregates เทียบ epoch) — client ทุก role ปฏิเสธ',
+  ),
 ];
 
 /** The decision for one cell; anything not explicitly allowed is denied. */
