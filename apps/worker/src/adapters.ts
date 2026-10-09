@@ -1,10 +1,11 @@
 // A02 — notification adapters. Until the P7-ADMIN-02/03 approvals the worker runs one of two modes:
 // `local` renders the message (A07: a missing template shows up in dev) and logs that it would go
 // out, then accepts it — nothing leaves the machine, nobody real is notified; `disabled` refuses, so
-// the entry ends `failed` and the GM sees it was not sent. A07: the Slack adapter (`./slack`) exists
-// and is tested against a local fake, but no runtime mode uses it until P7-ADMIN-03 (FU-33);
-// `channelRouter` sends each message through the adapter of its channel. The adapter gets only what
-// it needs to address, number and word the message — never the description, photos or notes.
+// the entry ends `failed` and the GM sees it was not sent. A07 / A08: the Slack (`./slack`) and Gmail
+// (`./gmail`) adapters exist and are tested against local fakes, but no runtime mode uses them until
+// P7-ADMIN-03 / P7-ADMIN-02 (FU-33 / FU-34); `channelRouter` sends each message through the adapter of
+// its channel and (D-A07-8) `sandboxAdapter` keeps dev to the approved recipients. The adapter gets
+// only what it needs to address, number and word the message — never the description or photos.
 import type { DeliveryChannel, DeliveryOutcome } from '@gm/domain';
 import type { WorkerLogger } from './log';
 import { renderNotice } from './messages';

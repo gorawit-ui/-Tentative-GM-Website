@@ -60,7 +60,8 @@ export function claimDelivery(entry: DeliveryLeaseState, now: Instant): Delivery
  * A07: `retryAfterMs` — the provider said when to come back (Slack 429 Retry-After); `unmapped` — the
  * provider cannot reach the stored address (Slack user not found, D-A07-4: or disabled; `code` says
  * which), so nothing was sent and the worker uses company e-mail instead (A1.2). D-A07-8:
- * `suppressed` — not sent on purpose (a dev recipient outside the sandbox list), never retried.
+ * `suppressed` — not sent on purpose (a dev recipient outside the sandbox list), never retried. A08:
+ * `deferred` — the app's own sending cap is reached; try again at `retryAt` without using an attempt.
  */
 export type DeliveryOutcome =
   | { readonly kind: 'accepted'; readonly providerId: string }
@@ -76,7 +77,7 @@ export interface DeliverySettlement {
   readonly nextAttemptAt?: Instant;
   readonly providerId?: string;
   readonly errorCode?: string;
-  /** A08 stub. */
+  /** A08: the attempt did not count (the app's own cap deferred it; nothing was tried). */
   readonly attemptRefunded?: boolean;
 }
 
@@ -102,6 +103,7 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
     case 'suppressed':
       return { state: 'suppressed', errorCode: outcome.code };
     case 'deferred':
-      throw new Error('A08 stub: deferred not implemented');
+      // A08 / Part 6 §6.10: over the app's own cap — kept in the outbox, never dropped.
+      return { state: 'pending', nextAttemptAt: outcome.retryAt, errorCode: outcome.code, attemptRefunded: true };
   }
 }

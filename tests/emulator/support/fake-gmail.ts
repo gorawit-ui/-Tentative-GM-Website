@@ -57,7 +57,9 @@ function decodeMail(path: string, authorization: string | undefined, rawBase64Ur
   }
   for (const key of Object.keys(headers)) headers[key] = decodeWords(headers[key] ?? '');
   const content = split < 0 ? '' : raw.slice(split + 4);
-  const body = headers['content-transfer-encoding']?.toLowerCase() === 'base64' ? Buffer.from(content.replace(/\r\n/g, ''), 'base64').toString('utf8') : content;
+  const decoded = headers['content-transfer-encoding']?.toLowerCase() === 'base64' ? Buffer.from(content.replace(/\r\n/g, ''), 'base64').toString('utf8') : content;
+  // Text travels in canonical form (CRLF, RFC 2045); compared in tests with \n.
+  const body = decoded.replace(/\r\n/g, '\n');
   return { path, authorization, raw, headers, headerLines, body };
 }
 

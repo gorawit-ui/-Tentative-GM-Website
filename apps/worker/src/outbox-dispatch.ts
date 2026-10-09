@@ -394,6 +394,8 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
     const badge = observation === undefined ? undefined : await readBadge(transaction, claimed.entry.requestId);
     transaction.set(path, {
       ...settledEntry(stored, settlement, claimed.attemptedAt),
+      // A08: deferred by the app's own e-mail cap — nothing was tried, the attempt is given back.
+      ...(settlement.attemptRefunded === true ? { attempts: claimed.attempts - 1 } : {}),
       delivery_channel: message.channel,
       ...(fallbackCode === undefined ? {} : { slack_fallback_code: fallbackCode }),
     });

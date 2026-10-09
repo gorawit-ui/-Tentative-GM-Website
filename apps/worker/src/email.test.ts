@@ -45,7 +45,9 @@ function parse(mime: string): Parsed {
     headers.set(last, line.slice(colon + 1).trim());
   }
   const raw = mime.slice(split + 4);
-  const body = headers.get('content-transfer-encoding')?.toLowerCase() === 'base64' ? Buffer.from(raw.replace(/\r\n/g, ''), 'base64').toString('utf8') : raw;
+  // Text is sent in canonical form (CRLF line ends, RFC 2045); compared here with \n.
+  const decoded = headers.get('content-transfer-encoding')?.toLowerCase() === 'base64' ? Buffer.from(raw.replace(/\r\n/g, ''), 'base64').toString('utf8') : raw;
+  const body = decoded.replace(/\r\n/g, '\n');
   return { headerLines, headers, body };
 }
 
@@ -75,11 +77,11 @@ describe('emailContent: subject “[number] short line”, a plain body, the foo
 
   it('confidential (C3, A1.2): no title, name or note in the subject or the body — the neutral line and what to do', () => {
     const content = emailContent(
-      composeNotice({ ...base, confidential: true, eventKind: 'waiting_requested', audience: 'waiting_party', summaryTitle: 'ต่อสัญญาเช่าโกดัง', actorName: 'ป๊อป', waitingNote: 'ลับ' }, BASE),
+      composeNotice({ ...base, confidential: true, eventKind: 'waiting_requested', audience: 'waiting_party', summaryTitle: 'ต่อสัญญาเช่าโกดัง', actorName: 'ป๊อป', waitingNote: 'บันทึกเฉพาะเรื่องสัญญา' }, BASE),
     );
     expect(content.subject).toBe('[GM-0427] รอการดำเนินการจากฝั่งคุณ');
     expect(content.body).toBe(['GM-0427 รอการดำเนินการจากฝั่งคุณ', "ทำเสร็จแล้ว กด 'ฝั่งฉันเรียบร้อยแล้ว' ในลิงก์", '', `เปิดงาน: ${BASE}/requests/req-0427`, '', '-- ', EMAIL_FOOTER].join('\n'));
-    for (const secret of ['ต่อสัญญา', 'ป๊อป', 'ลับ']) expect(`${content.subject}\n${content.body}`).not.toContain(secret);
+    for (const secret of ['ต่อสัญญา', 'ป๊อป', 'บันทึกเฉพาะเรื่องสัญญา']) expect(`${content.subject}\n${content.body}`).not.toContain(secret);
   });
 
   it('no Slack markup leaks into e-mail (no *bold*, no <link|label>, no &amp;)', () => {

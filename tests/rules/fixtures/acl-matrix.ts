@@ -263,6 +263,7 @@ export function seedDocuments(): ReadonlyMap<string, object> {
     'scheduled_work/job-1': { state: 'pending' },
     'system_counters/request_sequence': { last_issued: 902 },
     'system_counters/public_visibility': { public_visibility_epoch: 3 },
+    'system_counters/email_send': { day: '2027-01-11', day_count: 1, minute: 28_284_240, minute_count: 1 },
     'imports/imp-1': { state: 'preview' },
     'integration_inbox/in-1': { provider: 'slack' },
     'integration_state/slack': { cursor: 'x' },
@@ -438,6 +439,11 @@ export const RESOURCES: readonly AclResource[] = [
     'system_counters.public_visibility',
     'system_counters/public_visibility',
     '`public_visibility_epoch` (D-A04-4): เพิ่มใน transaction ที่ติด/ปลดธงลับ; อ่านเฉพาะ server/API (B aggregates เทียบ epoch) — client ทุก role ปฏิเสธ',
+  ),
+  deniedEverywhere(
+    'system_counters.email_send',
+    'system_counters/email_send',
+    'ตัวนับอีเมลที่ส่ง (A08, Part 6 §6.10: เพดานของแอป 30 ฉบับ/นาที, 500 ฉบับ/วัน): worker เท่านั้น — client ทุก role ปฏิเสธ',
   ),
 ];
 

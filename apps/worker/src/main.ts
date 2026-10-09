@@ -1,7 +1,7 @@
 // gm-worker entrypoint (Cloud Run, IAM-only; locally against the emulators with `npm run dev`).
 // A02: the tick (one Scheduler job in prod, manual tick in dev) and outbox tasks. Notifications use
 // the local or disabled adapter only: A07's Slack adapter is wired after P7-ADMIN-03 (FU-33), A08's
-// e-mail after P7-ADMIN-02. `GM_WEB_BASE_URL` is where message links point (P7-INFRA-01 sets the real
+// Gmail adapter after P7-ADMIN-02 (FU-34). `GM_WEB_BASE_URL` is where message links point (P7-INFRA-01 sets the real
 // domain). D-A07-8: dev and local notify only the `GM_NOTIFY_SANDBOX` list (Slack IDs / company e-mails;
 // none = nobody), prod has no list. Credentials come from the runtime; nothing here creates cloud
 // resources. Not imported by tests.
