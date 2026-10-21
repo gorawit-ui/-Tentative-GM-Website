@@ -5,9 +5,12 @@
 // (a queue failure leaves the request and its pending outbox for recovery, A02). Responses are
 // no-store; errors carry a code (and a field path for contract errors), never request data. The log
 // line per request has the route name, status and code only.
+import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { ContractRejected, parseCommand } from '@gm/contracts';
-import { LifecycleRejected, RequestRejected, type DeploymentEnvironment } from '@gm/domain';
+import { ContractRejected, parseAdminCommand, parseCommand } from '@gm/contracts';
+import { LifecycleRejected, RequestRejected, requireGmAdmin, type DeploymentEnvironment } from '@gm/domain';
+import { executeAdminCommand } from '../admin/commands';
+import { readCalendar, readHealth, readPlaces } from '../admin/reads';
 import {
   CommandRejected,
   executeCommand,
@@ -34,6 +37,7 @@ import {
   previewWaiting,
   publicContactSource,
   type ApiDeps,
+  type Caller,
   type UploadPurpose,
 } from '../endpoints/index';
 import { route as healthRoute } from '../routes';
@@ -56,7 +60,14 @@ export interface HttpDeps {
   readonly taskQueue: TaskQueue;
   /** Request body cap (default 64 KiB; commands and file requests are small JSON). */
   readonly maxBodyBytes?: number;
+  /** A11: suffix of a new area ID (default 12 random hex characters). */
+  readonly newAreaId?: () => string;
+  /** A11: a new QR code ID — 128 random bits, base64url (default `crypto.randomBytes`). */
+  readonly newQrId?: () => string;
 }
+
+const randomAreaId = () => randomBytes(6).toString('hex');
+const randomQrId = () => randomBytes(16).toString('base64url');
 
 const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
 const ALLOWED_METHODS = 'GET, POST';
@@ -81,13 +92,25 @@ const FORBIDDEN_CODES = new Set(['GM_ONLY', 'GM_ADMIN_ONLY', 'FLAG_NOT_ALLOWED',
  * A04: so does the waited party's answer that came after the GM resumed / changed the party, or
  * after another contact of the team answered first (A2.2).
  */
-const CONFLICT_CODES = new Set(['COMMAND_ID_CONFLICT', 'REVISION_CONFLICT', 'ALREADY_ACCEPTED', 'NOT_WAITING', 'STALE_WAITING_INTERVAL', 'ALREADY_RESPONDED']);
+const CONFLICT_CODES = new Set([
+  'COMMAND_ID_CONFLICT',
+  'REVISION_CONFLICT',
+  'ALREADY_ACCEPTED',
+  'NOT_WAITING',
+  'STALE_WAITING_INTERVAL',
+  'ALREADY_RESPONDED',
+  // A11: the Admin's change clashes with what is there (Part 3 §13 states: keep the form, say why).
+  'AREA_LABEL_TAKEN',
+  'AREA_HAS_QR',
+  'HOLIDAY_EXISTS',
+]);
+const NOT_FOUND_CODES = new Set(['REQUEST_NOT_FOUND', 'LOCATION_NOT_FOUND', 'AREA_NOT_FOUND', 'QR_NOT_FOUND', 'HOLIDAY_NOT_FOUND']);
 const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY']);
 
 function statusOfDomainCode(code: string): number {
   if (FORBIDDEN_CODES.has(code)) return 403;
   if (CONFLICT_CODES.has(code)) return 409;
-  if (code === 'REQUEST_NOT_FOUND') return 404;
+  if (NOT_FOUND_CODES.has(code)) return 404;
   if (UNAVAILABLE_CODES.has(code)) return 503;
   return 422;
 }
@@ -123,6 +146,8 @@ async function readJson(request: IncomingMessage, limit: number): Promise<Record
   return parsed as Record<string, unknown>;
 }
 
+const actorOf = (caller: Caller) => ({ personId: caller.viewer.personId, role: caller.viewer.role });
+
 function routes(deps: HttpDeps): readonly Route[] {
   const { api } = deps;
   const publicContacts = publicContactSource(api);
@@ -133,6 +158,51 @@ function routes(deps: HttpDeps): readonly Route[] {
       method: 'GET',
       pattern: /^\/api\/public\/contact$/,
       handle: async () => ({ status: 200, body: { contacts: await publicContacts.get() } }),
+    },
+    {
+      // A11: Admin pages (Part 3 §13) — GM Admin only, checked here on every call.
+      name: 'admin.places',
+      method: 'GET',
+      pattern: /^\/api\/admin\/places$/,
+      handle: async ({ token }) => {
+        requireGmAdmin(actorOf(await authenticate(api, token)));
+        return { status: 200, body: await readPlaces(api) };
+      },
+    },
+    {
+      name: 'admin.calendar',
+      method: 'GET',
+      pattern: /^\/api\/admin\/calendar$/,
+      handle: async ({ token }) => {
+        requireGmAdmin(actorOf(await authenticate(api, token)));
+        return { status: 200, body: await readCalendar(api) };
+      },
+    },
+    {
+      name: 'admin.health',
+      method: 'GET',
+      pattern: /^\/api\/admin\/health$/,
+      handle: async ({ token }) => {
+        requireGmAdmin(actorOf(await authenticate(api, token)));
+        return { status: 200, body: await readHealth(api) };
+      },
+    },
+    {
+      name: 'admin.commands',
+      method: 'POST',
+      pattern: /^\/api\/admin\/commands$/,
+      async handle({ token, body }) {
+        const actor = actorOf(await authenticate(api, token));
+        requireGmAdmin(actor);
+        const command = parseAdminCommand(await body());
+        const outcome = await executeAdminCommand(deps.commandStore, command, {
+          actor,
+          now: api.now(),
+          newAreaId: deps.newAreaId ?? randomAreaId,
+          newQrId: deps.newQrId ?? randomQrId,
+        });
+        return { status: 200, body: { replayed: outcome.replayed, result: outcome.result } };
+      },
     },
     {
       name: 'commands.execute',

@@ -4,10 +4,11 @@
 //   settings/routing            default_owner_by_type, gm_person_ids (P7-ADMIN-04, A10)
 //   gm_profiles/{person_id}     presence_status, leave_ends_on, presence_updated_at
 //   calendars/company           timezone, open_weekdays, holidays    (P7-ADMIN-04, A11)
+//   settings/notifications      working_morning_time (FU-30, A11)
 // Missing routing settings or company calendar refuse the command rather than guess (fail closed).
 import { isPersonId } from '@gm/contracts';
 import { REQUEST_TYPES, type GmMember, type GmProfile, type PresenceStatus, type RoutingSettings } from '@gm/domain';
-import { snapshotCalendar, type CalendarSnapshot, type IsoWeekday } from '@gm/time';
+import { isLocalTimeOfDay, snapshotCalendar, type CalendarSnapshot, type IsoWeekday } from '@gm/time';
 import { CommandRejected, type PeopleDirectory, type ReadTransaction, type RoutingDirectory } from '../commands/execute-command';
 import type { StoredData } from '../commands/transaction-port';
 
@@ -96,6 +97,11 @@ export function transactionRoutingDirectory(): RoutingDirectory {
         members,
         workCalendar,
       };
+    },
+    // FU-30 / D-S06-2: the Admin's reminder time (A11 calendar page); unset or unreadable → default.
+    async workingMorningTime(transaction) {
+      const stored = (await transaction.get('settings/notifications'))?.working_morning_time;
+      return isLocalTimeOfDay(stored) ? (stored as string) : undefined;
     },
   };
 }

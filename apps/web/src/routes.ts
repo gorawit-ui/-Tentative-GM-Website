@@ -1,12 +1,12 @@
 // A09 — the phase A routes of Part 2 §3.1 and the area each one belongs to. Query parameters are the
 // context of the page, never a permission: the area is checked with `canOpenArea`, and the API checks
 // every read and command again.
-import { ADMIN_SECTIONS, type AdminSection, type AppArea } from '@gm/domain';
+import { ADMIN_SECTIONS, isQrId, type AdminSection, type AppArea } from '@gm/domain';
 
 export type AppRoute =
   | { readonly area: Exclude<AppArea, 'request_detail' | 'admin'> }
   | { readonly area: 'request_detail'; readonly requestId: string }
-  | { readonly area: 'admin'; readonly section: AdminSection }
+  | { readonly area: 'admin'; readonly section: AdminSection; readonly itemId?: string; readonly view?: 'print' }
   | { readonly area: 'not_found' };
 
 export const HOME_PATH = '/';
@@ -17,6 +17,9 @@ export const ON_BEHALF_PATH = '/requests/new?type=maintenance&origin=gm_on_behal
 export const BOARD_PATH = '/board';
 export const TEAM_PATH = '/team';
 export const adminPath = (section: AdminSection) => `/admin/${section}`;
+/** A11: one location's areas, and the print page of one QR code. */
+export const locationPath = (locationId: string) => `/admin/locations/${encodeURIComponent(locationId)}`;
+export const qrPrintPath = (qrId: string) => `/admin/qr/${qrId}/print`;
 
 /** The path each menu entry links to. */
 export const AREA_PATHS: Readonly<Record<Exclude<AppArea, 'request_detail' | 'admin'>, string>> = {
@@ -58,6 +61,10 @@ export function routeOf(pathname: string, search: string): AppRoute {
   const admin = /^\/admin\/([^/]+)$/.exec(pathname);
   const section = ADMIN_SECTIONS.find((candidate) => candidate === admin?.[1]);
   if (section !== undefined) return { area: 'admin', section };
+  const location = /^\/admin\/locations\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})$/.exec(pathname);
+  if (location?.[1] !== undefined) return { area: 'admin', section: 'locations', itemId: location[1] };
+  const print = /^\/admin\/qr\/([^/]+)\/print$/.exec(pathname);
+  if (print?.[1] !== undefined && isQrId(print[1])) return { area: 'admin', section: 'qr', itemId: print[1], view: 'print' };
   return { area: 'not_found' };
 }
 

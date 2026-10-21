@@ -170,9 +170,9 @@ function reminderDocument(reminder: ReminderOutcome): Record<string, unknown> {
   };
 }
 
-function followedUp(context: Context, remind: boolean | undefined): Step {
+function followedUp(context: Context, remind: boolean | undefined, workingMorningTime: string | undefined): Step {
   const { loaded, actor, now, state, routing } = context;
-  const outcome = followUp(state, { actor, now, remind, calendar: routing.workCalendar });
+  const outcome = followUp(state, { actor, now, remind, calendar: routing.workCalendar, workingMorningTime });
   if (outcome.event.kind !== 'followed_up') throw new Error('followUp returns followed_up');
   const { intervalId, remindedAt } = outcome.event;
   const next = { ...withWaitingState(loaded.record, outcome.state), ...advanced(loaded.record, now) };
@@ -406,6 +406,9 @@ export async function runWaitingCommand(
   }
   const interval = record.current_waiting_interval_id === undefined ? undefined : await transaction.get(intervalPath(loaded.requestId, record.current_waiting_interval_id));
   const routing = await context.routingDirectory.load(transaction);
+  // FU-30: read with everything else, before the first write; only a reminder may need it.
+  const workingMorningTime =
+    command.type === 'follow_up' && command.payload.remind === true ? await context.routingDirectory.workingMorningTime?.(transaction) : undefined;
   const step: Context = { loaded, actor, now, routing, state: toWaitingState(record, interval), interval };
   // D-S06-4: GM Staff / Admin already read every request; they are told but never added or granted.
   const gmPersonIds = routing.members.map((member) => member.personId);
@@ -415,7 +418,7 @@ export async function runWaitingCommand(
       case 'change_waiting_party':
         return openWaiting(step, command, gmPersonIds);
       case 'follow_up':
-        return followedUp(step, command.payload.remind);
+        return followedUp(step, command.payload.remind, workingMorningTime);
       case 'respond_waiting_party':
         return answered(step, command);
       case 'resume_work':

@@ -89,6 +89,10 @@ export function adminCommandStore(db: Firestore, options: { readonly maxAttempts
             delete: (path) => {
               transaction.delete(db.doc(path));
             },
+            list: async (collection, field, value, limit) => {
+              const snapshot = await transaction.get(db.collection(collection).where(field, '==', value).limit(limit));
+              return snapshot.docs.map((document) => ({ id: document.id, data: fromStored(document.data()) }));
+            },
           };
           return work(port);
         },

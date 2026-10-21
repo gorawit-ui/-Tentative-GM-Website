@@ -24,6 +24,9 @@ test.afterEach(() => {
 /** A name only this viewport project uses (the four projects share one emulator). */
 const own = (testInfo: TestInfo, what: string) => `${what} ${testInfo.project.name}`;
 
+/** One area of the list: a card on mobile, a table row on desktop (§13.1). */
+const areaRow = (page: Page, name: string) => page.getByTestId('area-list').locator('li, tbody tr').filter({ hasText: name });
+
 async function expectLayout(page: Page): Promise<void> {
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   expect(await smallTargets(page)).toEqual([]);
@@ -59,6 +62,8 @@ test.describe('สถานที่และบริเวณ (§13.1)', () =>
     for (const label of ['ห้องแพ็คชั้น 1', 'ห้อง QA ชั้น 1', 'ออฟฟิศชั้น 2', 'คลังสินค้าชั้น 3', 'คลังสินค้าชั้น 4', 'ห้องเก็บของชั้น 5']) {
       await expect(page.getByTestId('area-list').getByText(label, { exact: true })).toBeVisible();
     }
+    if (isMobileWidth(page)) await expect(page.getByRole('table')).toHaveCount(0);
+    else await expect(page.getByRole('table', { name: 'บริเวณของ WH300' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'สถานที่ทั้งหมด' })).toBeVisible();
     await expectLayout(page);
   });
@@ -69,7 +74,7 @@ test.describe('สถานที่และบริเวณ (§13.1)', () =>
     const input = page.getByLabel('ชื่อบริเวณใหม่');
     await input.fill(name);
     await page.getByRole('button', { name: 'เพิ่มบริเวณ' }).click();
-    const row = page.getByTestId('area-list').getByRole('listitem').filter({ hasText: name });
+    const row = areaRow(page, name);
     await expect(row).toBeVisible();
     await expect(page.getByRole('status').filter({ hasText: 'เพิ่มบริเวณแล้ว' })).toBeVisible();
     await expect(input).toHaveValue('');
@@ -79,21 +84,23 @@ test.describe('สถานที่และบริเวณ (§13.1)', () =>
     await page.getByRole('button', { name: 'เพิ่มบริเวณ' }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'มีบริเวณชื่อนี้ในสถานที่นี้แล้ว' })).toBeVisible();
     await expect(input).toHaveValue(name);
+    // The browser logs the refused request itself; that 409 is the answer this step expects.
+    problems = problems.filter((line) => !line.includes('status of 409'));
     await input.fill('');
 
     await row.getByRole('button', { name: 'แก้ชื่อ' }).click();
     const renamed = `${name} (ใหม่)`;
     await row.getByLabel('ชื่อบริเวณ').fill(renamed);
     await row.getByRole('button', { name: 'บันทึกชื่อ' }).click();
-    const renamedRow = page.getByTestId('area-list').getByRole('listitem').filter({ hasText: renamed });
+    const renamedRow = areaRow(page, renamed);
     await expect(renamedRow).toBeVisible();
 
     // D-S08-3: closed, not deleted — it stays on the list with its status.
-    await renamedRow.getByRole('button', { name: 'ปิดใช้งาน' }).click();
+    await renamedRow.getByRole('button', { name: 'ปิดใช้งาน', exact: true }).click();
     await expect(renamedRow.getByText('ปิดใช้งานแล้ว')).toBeVisible();
-    await expect(renamedRow.getByRole('button', { name: 'เปิดใช้งาน' })).toBeVisible();
-    await renamedRow.getByRole('button', { name: 'เปิดใช้งาน' }).click();
-    await expect(renamedRow.getByRole('button', { name: 'ปิดใช้งาน' })).toBeVisible();
+    await expect(renamedRow.getByRole('button', { name: 'เปิดใช้งาน', exact: true })).toBeVisible();
+    await renamedRow.getByRole('button', { name: 'เปิดใช้งาน', exact: true }).click();
+    await expect(renamedRow.getByRole('button', { name: 'ปิดใช้งาน', exact: true })).toBeVisible();
     await expectLayout(page);
   });
 });
@@ -154,9 +161,9 @@ test.describe('QR ของบริเวณ (§13.2)', () => {
     await page.getByLabel('บริเวณ', { exact: true }).selectOption({ label: first });
     await expect(page.getByText('บริเวณนี้ยังไม่มี QR')).toBeVisible();
     await page.getByLabel('บริเวณ', { exact: true }).selectOption({ label: second });
-    await preview.getByRole('button', { name: 'ปิดใช้งาน QR' }).click();
+    await preview.getByRole('button', { name: 'ปิดใช้งาน QR', exact: true }).click();
     await expect(preview.getByText('QR นี้ปิดใช้งานแล้ว')).toBeVisible();
-    await expect(preview.getByRole('button', { name: 'เปิดใช้งาน QR' })).toBeVisible();
+    await expect(preview.getByRole('button', { name: 'เปิดใช้งาน QR', exact: true })).toBeVisible();
     await expectLayout(page);
   });
 });

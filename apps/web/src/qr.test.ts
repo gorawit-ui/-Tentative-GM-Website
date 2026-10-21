@@ -48,3 +48,16 @@ describe('qrSvgPath', () => {
     expect(path).toBe(`M${QR_QUIET_ZONE} ${QR_QUIET_ZONE}h1v1h-1z M${QR_QUIET_ZONE + 1} ${QR_QUIET_ZONE + 1}h1v1h-1z`);
   });
 });
+
+describe('qrSvgDocument', () => {
+  it('a sample download carries the watermark across the code; the final one does not', async () => {
+    const { qrSvgDocument } = await import('./qr');
+    expect(qrSvgDocument('https://gm-dev.tdfb.co/q/Qr1234567890abcdefghij', 'QR ของ WH300', 'ตัวอย่าง ห้ามพิมพ์ติดจริง')).toContain('>ตัวอย่าง ห้ามพิมพ์ติดจริง</text>');
+    expect(qrSvgDocument('https://gm.tdfb.co/q/Qr1234567890abcdefghij', 'QR ของ WH300')).not.toContain('<text');
+  });
+
+  it('the title is escaped', async () => {
+    const { qrSvgDocument } = await import('./qr');
+    expect(qrSvgDocument('https://gm.tdfb.co/q/Qr1234567890abcdefghij', 'A & <B>')).toContain('<title>A &amp; &lt;B&gt;</title>');
+  });
+});

@@ -114,6 +114,8 @@ export interface RoutingFacts {
 
 export interface RoutingDirectory {
   load(transaction: ReadTransaction): Promise<RoutingFacts>;
+  /** FU-30: the reminder time set by the Admin (`HH:MM`), or undefined for the default 09:00. */
+  workingMorningTime?(transaction: ReadTransaction): Promise<string | undefined>;
 }
 
 export interface CommandContext {

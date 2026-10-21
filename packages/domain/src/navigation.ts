@@ -8,8 +8,8 @@ import type { Role } from './request-creation';
 export const APP_AREAS = ['home', 'my_requests', 'repair', 'board', 'team', 'request_detail', 'gm_create', 'gm_on_behalf', 'admin'] as const;
 export type AppArea = (typeof APP_AREAS)[number];
 
-/** Part 2 §3.1 “Admin ใน A”, in the order of the route table. */
-export const ADMIN_SECTIONS = ['locations', 'qr', 'users', 'calendars', 'content'] as const;
+/** Part 2 §3.1 “Admin ใน A”, in the order of the route table; A11 adds the system health page (FU-25). */
+export const ADMIN_SECTIONS = ['locations', 'qr', 'users', 'calendars', 'content', 'health'] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
 /** Who is looking, from access/{uid} (a verified company sign-in is checked before this). */

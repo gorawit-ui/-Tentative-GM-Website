@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import type { DeliveryOutcome } from '@gm/domain';
 import { snapshotCalendar, waitingElapsed } from '@gm/time';
 import { CommandRejected, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
@@ -348,6 +348,8 @@ describe('every S06 command is saved through the API', () => {
 
   it('FU-30: the Admin’s reminder time (settings/notifications) replaces the default 09:00', async () => {
     await harness.db.doc('settings/notifications').set({ working_morning_time: '08:30' });
+    // The other tests of this file use the default.
+    onTestFinished(() => harness.db.doc('settings/notifications').delete().then(() => undefined));
     setNow(at('2026-12-30T10:00:00+07:00'));
     const { id } = await inProgressRepair();
     await waitingOnParty(id);

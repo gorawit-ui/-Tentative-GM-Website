@@ -5,6 +5,10 @@
 import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router';
 import { canOpenArea, type Role } from '@gm/domain';
 import { AREA_LABELS } from './labels';
+import { CalendarPage } from './admin/CalendarPage';
+import { HealthPage } from './admin/HealthPage';
+import { LocationDetailPage, LocationsPage } from './admin/LocationsPage';
+import { QrPage, QrPrintPage } from './admin/QrPages';
 import { AccountStatePage } from './pages/AccountStatePage';
 import { AdminPage, FormPage, ForbiddenPage, HomePage, NotFoundPage, PlaceholderPage } from './pages/AppPages';
 import { LoginPage } from './pages/LoginPage';
@@ -54,6 +58,22 @@ function Page({ route, role, name }: { readonly route: AppRoute; readonly role: 
     case 'team':
       return <PlaceholderPage title="ติดต่อทีม GM" what="หน้าที่ของทีม GM ช่องทางติดต่อ FAQ และลิงก์บริการเดิม" />;
     case 'admin':
+      return <AdminSectionPage route={route} />;
+  }
+}
+
+/** A11: the Admin pages that exist; the rest stay “ยังไม่เปิดใช้งาน” (users A10, content A23). */
+function AdminSectionPage({ route }: { readonly route: Extract<AppRoute, { area: 'admin' }> }) {
+  switch (route.section) {
+    case 'locations':
+      return route.itemId === undefined ? <LocationsPage /> : <LocationDetailPage key={route.itemId} locationId={route.itemId} />;
+    case 'qr':
+      return route.view === 'print' && route.itemId !== undefined ? <QrPrintPage qrId={route.itemId} /> : <QrPage />;
+    case 'calendars':
+      return <CalendarPage />;
+    case 'health':
+      return <HealthPage />;
+    default:
       return <AdminPage section={route.section} />;
   }
 }

@@ -31,6 +31,7 @@ const ADMIN_ICONS: Readonly<Record<AdminSection, IconName>> = {
   users: 'users',
   calendars: 'calendar',
   content: 'file',
+  health: 'pulse',
 };
 
 const isMenuArea = (area: AppArea): area is MenuArea => area !== 'request_detail' && area !== 'admin';
