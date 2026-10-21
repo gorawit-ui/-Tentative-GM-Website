@@ -257,3 +257,4 @@ export {
   type CompanyCalendarContent,
 } from './company-calendar';
 export { accessFor, defaultOwnerIssue, isGmRole, linkDecision, planPersonActive, planPersonRole, type DefaultOwnerIssue, type PersonFacts } from './people-admin';
+export { MAINTENANCE_SYMPTOMS, OTHER_SYMPTOM_KEY, maintenanceSymptom, repairTitlePreview, type MaintenanceSymptom } from './maintenance-catalog';

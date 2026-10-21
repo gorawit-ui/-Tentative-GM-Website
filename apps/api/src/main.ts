@@ -8,7 +8,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { REQUEST_NUMBER_PREFIXES, type DeploymentEnvironment } from '@gm/domain';
-import { CommandRejected } from './commands/index';
+import { firestoreMaintenanceCatalog } from './firestore/catalog';
 import { consoleLogger, storageUrlSigner, type StorageBucket } from './endpoints/index';
 import type { SignableBucket } from './endpoints/url-signer';
 import { adminCommandStore } from './firestore/admin-store';
@@ -41,8 +41,8 @@ const handler = createApiHandler({
   environment,
   allowedOrigins: resolveAllowedOrigins(environment, process.env.GM_ALLOWED_ORIGINS),
   newRequestId: () => `req-${randomUUID()}`,
-  // Places/areas/symptoms come with A11/A12; until then repair requests are refused, not guessed.
-  maintenanceCatalog: { resolve: async () => Promise.reject(new CommandRejected('CATALOG_NOT_READY', 'Locations and symptoms are not set up yet')) },
+  // FU-19 (A12): the Admin's active places and areas (A11) and the brief's symptoms.
+  maintenanceCatalog: firestoreMaintenanceCatalog(),
   peopleDirectory: transactionPeopleDirectory(),
   routingDirectory: transactionRoutingDirectory(),
   // The Cloud Tasks client needs the queue, region and service account from P7-INFRA-01 (FU-20);

@@ -234,6 +234,6 @@ describe('logs and network (runs last)', () => {
   });
 
   it('nothing left the machine', () => {
-    expect(blockedHosts()).toEqual([]);
+    expect(blockedHosts).toEqual([]);
   });
 });

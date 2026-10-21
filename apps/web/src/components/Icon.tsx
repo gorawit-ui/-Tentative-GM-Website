@@ -36,6 +36,7 @@ const PATHS = {
   file: <path d="M14 3H5v18h14V8ZM14 3v6h5M8 13h8M8 17h6" />,
   phone: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />,
   back: <path d="m15 5-7 7 7 7" />,
+  check: <path d="m5 12 5 5 9-10" />,
   pulse: <path d="M3 12h4l3-7 4 14 3-7h4" />,
   link: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
   lock: (

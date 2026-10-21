@@ -23,6 +23,8 @@ import {
 import {
   ApiError,
   authenticate,
+  readQrState,
+  readRepairOptions,
   countAwaitingConfirmation,
   createUploadUrl,
   createViewUrl,
@@ -122,7 +124,7 @@ const CONFLICT_CODES = new Set([
   'PERSON_EXISTS',
 ]);
 const NOT_FOUND_CODES = new Set(['REQUEST_NOT_FOUND', 'LOCATION_NOT_FOUND', 'AREA_NOT_FOUND', 'QR_NOT_FOUND', 'HOLIDAY_NOT_FOUND', 'PERSON_NOT_FOUND']);
-const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY']);
+const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY', 'PLACES_NOT_SET_UP']);
 
 function statusOfDomainCode(code: string): number {
   if (FORBIDDEN_CODES.has(code)) return 403;
@@ -303,6 +305,19 @@ function routes(deps: HttpDeps): readonly Route[] {
         }
         return { status: 200, body: { replayed: outcome.replayed, result: outcome.result } };
       },
+    },
+    {
+      // A12: the repair form (every signed-in active account, D-S04-6); nothing before login.
+      name: 'repair.options',
+      method: 'GET',
+      pattern: /^\/api\/repair\/options$/,
+      handle: async ({ token }) => ({ status: 200, body: await readRepairOptions(api, token) }),
+    },
+    {
+      name: 'repair.qr',
+      method: 'GET',
+      pattern: new RegExp(`^/api/repair/qr/${SEGMENT}$`),
+      handle: async ({ token, params }) => ({ status: 200, body: await readQrState(api, token, params[0] ?? '') }),
     },
     {
       name: 'requests.detail',

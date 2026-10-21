@@ -199,12 +199,13 @@ test.describe('F6: ระหว่างกรอก', () => {
         const box = button.getBoundingClientRect();
         return box.top >= 0 && box.bottom <= limit;
       }).length,
-      bar?.y ?? viewport?.height ?? 0,
+      // Above the action bar and inside the first screen (no scrolling).
+      Math.min(bar?.y ?? Number.POSITIVE_INFINITY, viewport?.height ?? 0),
     );
     expect(visible).toBeGreaterThanOrEqual(4);
     if (isMobileWidth(page)) {
-      // The last choice can be scrolled to above the bar.
-      await choice(page, 'อื่นๆ').scrollIntoViewIfNeeded();
+      // The end of the form scrolls clear of the bar (F6): scrolled to the bottom, the last choice is above it.
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
       const last = await choice(page, 'อื่นๆ').boundingBox();
       expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual((await page.getByTestId('repair-action-bar').boundingBox())?.y ?? 0);
     }

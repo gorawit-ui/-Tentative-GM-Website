@@ -3,37 +3,11 @@
 // own idempotency key (a retry of the same click never runs twice). Errors come back as codes.
 import type { AdminCalendarView, AdminHealthView, AdminPlacesView, PeopleImportRow } from '@gm/contracts';
 import type { Role } from '@gm/domain';
-import { auth, webConfig } from '../firebase';
+import { ApiCallError, apiCall } from '../api-client';
 
-export class AdminApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-  constructor(status: number, code: string) {
-    super(code);
-    this.name = 'AdminApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
+export { ApiCallError as AdminApiError } from '../api-client';
 
-async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
-  const user = auth.currentUser;
-  if (user === null) throw new AdminApiError(401, 'UNAUTHENTICATED');
-  let response: Response;
-  try {
-    response = await fetch(`${webConfig.apiBaseUrl}${path}`, {
-      method,
-      credentials: 'omit',
-      headers: { authorization: `Bearer ${await user.getIdToken()}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-  } catch {
-    throw new AdminApiError(0, 'NETWORK');
-  }
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) throw new AdminApiError(response.status, typeof payload.error === 'string' ? payload.error : 'INTERNAL');
-  return payload as T;
-}
+const call = apiCall;
 
 export const getPlaces = () => call<AdminPlacesView>('GET', '/api/admin/places');
 export const getCalendar = () => call<AdminCalendarView>('GET', '/api/admin/calendar');
@@ -131,6 +105,6 @@ const MESSAGES: Readonly<Record<string, string>> = {
 };
 
 export function adminErrorText(error: unknown): string {
-  const code = error instanceof AdminApiError ? error.code : 'INTERNAL';
+  const code = error instanceof ApiCallError ? error.code : 'INTERNAL';
   return MESSAGES[code] ?? `บันทึกไม่สำเร็จ (${code}) ลองใหม่อีกครั้ง`;
 }
