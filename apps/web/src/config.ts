@@ -14,6 +14,11 @@ export interface WebConfig {
    * any https origin is accepted. Unset → the page's own origin, and the print page is a sample.
    */
   readonly publicBaseUrl?: string;
+  /**
+   * D-A11-3: the production domain that lifts the QR print watermark (proposed https://gm.tdfb.co,
+   * confirmed by the administrators at P7-INFRA-01). Unset → every printed QR is a sample.
+   */
+  readonly prodBaseUrl?: string;
 }
 
 export type WebEnv = Readonly<Record<string, string | undefined>>;
@@ -68,5 +73,6 @@ export function resolveWebConfig(env: WebEnv): WebConfig {
     firestoreEmulator: localHost(value(env, 'VITE_GM_FIRESTORE_EMULATOR_HOST', '127.0.0.1:8080'), 'VITE_GM_FIRESTORE_EMULATOR_HOST'),
     apiBaseUrl: localUrl(value(env, 'VITE_GM_API_BASE_URL', 'http://127.0.0.1:8787'), 'VITE_GM_API_BASE_URL'),
     ...(value(env, 'VITE_GM_PUBLIC_BASE_URL', '') === '' ? {} : { publicBaseUrl: publicOrigin(value(env, 'VITE_GM_PUBLIC_BASE_URL', ''), 'VITE_GM_PUBLIC_BASE_URL') }),
+    ...(value(env, 'VITE_GM_PROD_BASE_URL', '') === '' ? {} : { prodBaseUrl: publicOrigin(value(env, 'VITE_GM_PROD_BASE_URL', ''), 'VITE_GM_PROD_BASE_URL') }),
   };
 }

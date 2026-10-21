@@ -4,7 +4,7 @@
 import type { AdminCalendarView, AdminHealthView, AdminPlacesView } from '@gm/contracts';
 import { DEFAULT_WORKING_MORNING_TIME, SLACK_FALLBACK_CODES, companyCalendarContentOf, systemHealth, type FailedJob } from '@gm/domain';
 import { isLocalTimeOfDay } from '@gm/time';
-import type { Query } from 'firebase-admin/firestore';
+import { Timestamp, type Query } from 'firebase-admin/firestore';
 import type { ApiDeps } from '../endpoints/deps';
 import { fromStored } from '../firestore/admin-store';
 import { COMPANY_CALENDAR_PATH, NOTIFICATION_SETTINGS_PATH } from './commands';
@@ -14,6 +14,8 @@ export const MAX_ADMIN_LOCATIONS = 50;
 export const MAX_ADMIN_AREAS = 1000;
 export const MAX_ADMIN_QR_CODES = 1000;
 export const MAX_FAILED_JOBS_SHOWN = 20;
+/** D-A11-6: notices counted on the health page are those of the last 7 days. */
+export const HEALTH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const orderOf = (data: Readonly<Record<string, unknown>>) => (typeof data.order === 'number' ? data.order : Number.MAX_SAFE_INTEGER);
 const labelOf = (data: Readonly<Record<string, unknown>>) => String(data.label ?? '');
@@ -85,24 +87,22 @@ export async function readHealth(api: Pick<ApiDeps, 'db' | 'now'>): Promise<Admi
   const now = api.now();
   const outbox = db.collection('outbox');
   const failedJobsQuery = db.collection('scheduled_work').where('state', '==', 'failed');
-  const [tick, slackApp, failed, deliveryUnknown, emailCapPending, fallbackTotal, fallbackCounts, failedJobs, failedJobCount] = await Promise.all([
+  // D-A11-6: what went wrong in the last 7 days (by the time of the attempt that settled it); the
+  // e-mail cap queue is what waits now, so it is counted whole.
+  const since = now - HEALTH_WINDOW_MS;
+  const recent = (query: Query) => query.where('next_attempt_at', '>=', Timestamp.fromMillis(since));
+  const [tick, slackApp, failed, deliveryUnknown, emailCapPending, fallbackCounts, failedJobs, failedJobCount] = await Promise.all([
     db.doc('scheduled_work/tick').get(),
     db.doc('integration_state/slack_app').get(),
-    countOf(outbox.where('state', '==', 'failed')),
-    countOf(outbox.where('state', '==', 'delivery_unknown')),
+    countOf(recent(outbox.where('state', '==', 'failed'))),
+    countOf(recent(outbox.where('state', '==', 'delivery_unknown'))),
     countOf(outbox.where('state', '==', 'pending').where('last_error_code', '==', 'EMAIL_CAP_REACHED')),
-    countOf(outbox.where('slack_fallback_code', '!=', null)),
-    Promise.all(SLACK_FALLBACK_CODES.map(async (code) => [code, await countOf(outbox.where('slack_fallback_code', '==', code))] as const)),
+    Promise.all(SLACK_FALLBACK_CODES.map(async (code) => [code, await countOf(recent(outbox.where('slack_fallback_code', '==', code)))] as const)),
     failedJobsQuery.limit(MAX_FAILED_JOBS_SHOWN).get(),
     countOf(failedJobsQuery),
   ]);
   const slackFallback: Record<string, number> = {};
-  let known = 0;
-  for (const [code, count] of fallbackCounts) {
-    if (count > 0) slackFallback[code] = count;
-    known += count;
-  }
-  if (fallbackTotal > known) slackFallback.OTHER = fallbackTotal - known;
+  for (const [code, count] of fallbackCounts) if (count > 0) slackFallback[code] = count;
   const jobs: FailedJob[] = failedJobs.docs.map((doc) => {
     const data = fromStored(doc.data());
     const at = typeof data.last_attempt_at === 'number' ? data.last_attempt_at : typeof data.next_run_at === 'number' ? data.next_run_at : undefined;

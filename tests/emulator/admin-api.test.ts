@@ -8,7 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { isQrId } from '@gm/domain';
 import { CommandRejected } from '../../apps/api/src/commands/index';
-import { adminCommandStore } from '../../apps/api/src/firestore/admin-store';
+import { adminCommandStore, toStored } from '../../apps/api/src/firestore/admin-store';
 import { transactionPeopleDirectory, transactionRoutingDirectory } from '../../apps/api/src/firestore/directories';
 import { createApiHandler } from '../../apps/api/src/http/app';
 import { blockedHosts } from '../rules/network-guard';
@@ -331,8 +331,9 @@ describe('system health (FU-25)', () => {
     const batch = harness.db.batch();
     batch.set(harness.db.doc('scheduled_work/tick'), { last_started_at: lastCompleted - 2_000, last_completed_at: lastCompleted });
     batch.set(harness.db.doc('integration_state/slack_app'), { status: 'app_error', code: 'SLACK_INVALID_AUTH', since: NOW - 90 * MIN });
+    // Stored as the worker stores them (instants as Timestamps).
     const outbox = (id: string, data: Record<string, unknown>) =>
-      batch.set(harness.db.doc(`outbox/${id}`), { request_id: 'req-x', recipient_id: 'a11.someone.private@tdfb.co', event_kind: 'request_created', next_attempt_at: NOW, ...data });
+      batch.set(harness.db.doc(`outbox/${id}`), toStored({ request_id: 'req-x', recipient_id: 'a11.someone.private@tdfb.co', event_kind: 'request_created', next_attempt_at: NOW, ...data }));
     outbox('o1', { state: 'failed', last_error_code: 'SLACK_CHANNEL_NOT_FOUND' });
     outbox('o2', { state: 'failed', last_error_code: 'NO_CHANNEL' });
     outbox('o3', { state: 'delivery_unknown', last_error_code: 'LEASE_EXPIRED' });

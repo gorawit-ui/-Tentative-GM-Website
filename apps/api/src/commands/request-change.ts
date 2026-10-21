@@ -25,6 +25,7 @@ import {
   GM_SUMMARIES_COLLECTION,
   OUTBOX_COLLECTION,
   PUBLIC_SUMMARIES_COLLECTION,
+  outboxDocument,
   REQUESTS_COLLECTION,
   type CommandResult,
   type PeopleDirectory,
@@ -210,7 +211,7 @@ export async function persistChange(
   // A05: the stale check moves with every write (GM progress, revision, or no longer open).
   transaction.set(staleJobPath(requestId), staleJobDocument(requestId, next, routing.workCalendar, now));
   for (const write of change.extraWrites ?? []) transaction.set(write.path, write.data);
-  for (const notice of notices) transaction.set(`${OUTBOX_COLLECTION}/${notice.id}`, notice.data);
+  for (const notice of notices) transaction.set(`${OUTBOX_COLLECTION}/${notice.id}`, outboxDocument(notice.data));
   if (head !== undefined) transaction.set(headPath, head);
   return {
     result: { request_id: requestId, request_number: next.request_number, revision: next.revision, status: next.status },

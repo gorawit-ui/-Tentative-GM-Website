@@ -213,7 +213,6 @@ export {
 export {
   MAX_PLACE_LABEL_CHARS,
   PLACE_SEED,
-  PROD_PUBLIC_BASE_URL,
   QR_PATH,
   isQrId,
   placeLabelOf,
@@ -221,9 +220,11 @@ export {
   planLocationActive,
   planMoveQr,
   planNewArea,
+  planNewLocation,
   planQrActive,
   planQrForArea,
   planRenameArea,
+  planRenameLocation,
   qrPrintMode,
   qrTargetUrl,
   requireGmAdmin,
@@ -246,6 +247,7 @@ export {
 } from './admin-health';
 export {
   DEFAULT_COMPANY_CALENDAR,
+  PHASE_A_WEEKDAYS,
   companyCalendarContentOf,
   planOpenWeekdays,
   planPutHoliday,

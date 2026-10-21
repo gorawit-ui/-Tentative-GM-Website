@@ -2,7 +2,7 @@
 // each, idempotent by `command_id` like request commands (`commands/{id}`: same key + same body →
 // the first result again; same key + another body → COMMAND_ID_CONFLICT). The role is checked before
 // anything is read; the rules are @gm/domain's; every read happens before the first write.
-//   locations/{id}      label, active, order                  (5 from the brief; closed, never deleted)
+//   locations/{id}      label, active, order                  (5 from the brief + the Admin's, D-A11-4; closed, never deleted)
 //   areas/{id}          location_id, label, active, order, qr_id?
 //   qr_codes/{qr_id}    location_id, area_id, active          (random 128-bit ID, moves without reprint)
 //   calendars/company   timezone, open_weekdays, holidays (ค.ศ.), holiday_names, revision
@@ -15,12 +15,14 @@ import {
   planLocationActive,
   planMoveQr,
   planNewArea,
+  planNewLocation,
   planOpenWeekdays,
   planPutHoliday,
   planQrActive,
   planQrForArea,
   planRemoveHoliday,
   planRenameArea,
+  planRenameLocation,
   requireGmAdmin,
   type Actor,
   type AreaFacts,
@@ -37,6 +39,8 @@ export const COMPANY_CALENDAR_PATH = 'calendars/company';
 export const NOTIFICATION_SETTINGS_PATH = 'settings/notifications';
 /** Bounded read of one location's areas (names must stay unique within it). */
 export const MAX_AREAS_PER_LOCATION = 200;
+/** Bounded read of every location (names must stay unique, D-A11-4). */
+export const MAX_LOCATIONS = 50;
 
 export interface AdminCommandContext {
   readonly actor: Actor;
@@ -75,6 +79,12 @@ const areaFacts = (id: string, stored: StoredData | undefined): AreaFacts | unde
 const qrFacts = (id: string, stored: StoredData | undefined): QrFacts | undefined =>
   stored === undefined ? undefined : { id, areaId: String(stored.area_id ?? ''), locationId: String(stored.location_id ?? ''), active: stored.active !== false };
 
+async function allLocations(transaction: CommandTransaction): Promise<readonly LocationFacts[]> {
+  if (transaction.listAll === undefined) throw new Error('this store cannot list locations');
+  const rows = await transaction.listAll('locations', MAX_LOCATIONS);
+  return rows.map((row) => locationFacts(row.id, row.data)).filter((location): location is LocationFacts => location !== undefined);
+}
+
 async function siblingAreas(transaction: CommandTransaction, locationId: string): Promise<readonly AreaFacts[]> {
   if (transaction.list === undefined) throw new Error('this store cannot list areas');
   const rows = await transaction.list('areas', 'location_id', locationId, MAX_AREAS_PER_LOCATION);
@@ -112,6 +122,20 @@ async function run(transaction: CommandTransaction, command: AdminCommand, conte
         created += 1;
       });
       return { created };
+    }
+    case 'add_location': {
+      const all = await allLocations(transaction);
+      const planned = planNewLocation(all, command.payload.label);
+      const locationId = `loc-${areaSuffix}`;
+      transaction.set(locationPath(locationId), { label: planned.label, active: true, order: all.length + 1, created_at: now, updated_at: now });
+      return { location_id: locationId };
+    }
+    case 'rename_location': {
+      const { location_id: locationId, label } = command.payload;
+      const all = await allLocations(transaction);
+      const planned = planRenameLocation(all.find((location) => location.id === locationId), all, label);
+      transaction.update(locationPath(locationId), { label: planned.label, updated_at: now });
+      return { location_id: locationId };
     }
     case 'add_area': {
       const { location_id: locationId, label } = command.payload;

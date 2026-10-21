@@ -93,6 +93,44 @@ function LocationList({ places }: { readonly places: AdminPlacesView }) {
   );
 }
 
+/** D-A11-4: a new location (its ID is made once and never changes). */
+function AddLocation({ onDone }: { readonly onDone: () => Promise<void> }) {
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<Saved>({ kind: 'idle' });
+  return (
+    <section className="gm-admin-panel gm-admin-stack" aria-labelledby="add-location-heading">
+      <h2 id="add-location-heading">เพิ่มสถานที่</h2>
+      <form
+        className="gm-admin-add-form"
+        onSubmit={async (event: FormEvent) => {
+          event.preventDefault();
+          setBusy(true);
+          try {
+            await adminCommand('add_location', { label });
+            setLabel('');
+            await onDone();
+            setSaved({ kind: 'done', text: 'เพิ่มสถานที่แล้ว เพิ่มบริเวณของสถานที่นี้ต่อได้เลย' });
+          } catch (error) {
+            setSaved({ kind: 'error', text: adminErrorText(error) });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label className="gm-field">
+          <span>ชื่อสถานที่ใหม่</span>
+          <input className="gm-input" value={label} maxLength={60} onChange={(event) => setLabel(event.target.value)} placeholder="เช่น คลังสินค้า บางนา" required />
+        </label>
+        <button type="submit" className="gm-btn gm-btn--secondary" disabled={busy}>
+          เพิ่มสถานที่
+        </button>
+      </form>
+      <SaveLine saved={saved} />
+    </section>
+  );
+}
+
 export function LocationsPage() {
   const { state, reload } = useAdminData(getPlaces);
   return (
@@ -102,8 +140,60 @@ export function LocationsPage() {
       </AdminHead>
       {state.kind === 'loading' && <Loading what="กำลังโหลดสถานที่…" />}
       {state.kind === 'failed' && <LoadFailed onRetry={() => void reload()} />}
-      {state.kind === 'ready' && (state.data.locations.length === 0 ? <SeedOffer onDone={reload} /> : <LocationList places={state.data} />)}
+      {state.kind === 'ready' &&
+        (state.data.locations.length === 0 ? (
+          <SeedOffer onDone={reload} />
+        ) : (
+          <div className="gm-admin-sections">
+            <LocationList places={state.data} />
+            <AddLocation onDone={reload} />
+          </div>
+        ))}
     </>
+  );
+}
+
+/** D-A11-4: rename keeps the ID — QR codes and open requests point at the ID, so they show the new name. */
+function RenameLocation({ location, run }: { readonly location: AdminLocationView; readonly run: (type: string, payload: Record<string, unknown>, done: string) => Promise<boolean> }) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(location.label);
+  if (!editing) {
+    return (
+      <div>
+        <button type="button" className="gm-btn gm-btn--secondary" onClick={() => setEditing(true)}>
+          แก้ชื่อสถานที่
+        </button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="gm-admin-add-form"
+      onSubmit={async (event: FormEvent) => {
+        event.preventDefault();
+        if (await run('rename_location', { location_id: location.id, label }, 'บันทึกชื่อสถานที่แล้ว QR เดิมใช้ต่อได้')) setEditing(false);
+      }}
+    >
+      <label className="gm-field">
+        <span>ชื่อสถานที่</span>
+        <input className="gm-input" value={label} maxLength={60} onChange={(event) => setLabel(event.target.value)} required />
+      </label>
+      <div className="gm-admin-row-buttons">
+        <button type="submit" className="gm-btn gm-btn--primary">
+          บันทึกชื่อสถานที่
+        </button>
+        <button
+          type="button"
+          className="gm-btn gm-btn--secondary"
+          onClick={() => {
+            setLabel(location.label);
+            setEditing(false);
+          }}
+        >
+          ยกเลิก
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -299,7 +389,8 @@ export function LocationDetailPage({ locationId }: { readonly locationId: string
         <AreaList location={location} areas={areas} run={run} />
       </section>
       <section className="gm-admin-panel gm-admin-stack" aria-labelledby="location-state-heading">
-        <h2 id="location-state-heading">สถานะของสถานที่</h2>
+        <h2 id="location-state-heading">ชื่อและสถานะของสถานที่</h2>
+        <RenameLocation key={location.label} location={location} run={run} />
         <p className="gm-admin-muted">ปิดใช้งานแล้วเลือกเป็นที่อยู่ใหม่หรือเพิ่มบริเวณไม่ได้ งานเดิมยังแสดงชื่อเดิม</p>
         <div>
           <button

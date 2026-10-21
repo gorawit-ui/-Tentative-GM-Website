@@ -17,6 +17,8 @@ import {
 
 export const ADMIN_COMMAND_TYPES = [
   'seed_places',
+  'add_location',
+  'rename_location',
   'add_area',
   'rename_area',
   'set_area_active',
@@ -33,6 +35,8 @@ export type AdminCommandType = (typeof ADMIN_COMMAND_TYPES)[number];
 
 export type AdminCommand =
   | { readonly command_id: string; readonly type: 'seed_places'; readonly payload: Record<string, never> }
+  | { readonly command_id: string; readonly type: 'add_location'; readonly payload: { readonly label: string } }
+  | { readonly command_id: string; readonly type: 'rename_location'; readonly payload: { readonly location_id: string; readonly label: string } }
   | { readonly command_id: string; readonly type: 'add_area'; readonly payload: { readonly location_id: string; readonly label: string } }
   | { readonly command_id: string; readonly type: 'rename_area'; readonly payload: { readonly area_id: string; readonly label: string } }
   | { readonly command_id: string; readonly type: 'set_area_active'; readonly payload: { readonly area_id: string; readonly active: boolean } }
@@ -79,6 +83,14 @@ function payloadOf(type: AdminCommandType, value: unknown): AdminCommand['payloa
     case 'seed_places':
       strictObject(value, path, []);
       return {};
+    case 'add_location': {
+      const payload = strictObject(value, path, ['label']);
+      return { label: stringField(payload, path, 'label') };
+    }
+    case 'rename_location': {
+      const payload = strictObject(value, path, ['location_id', 'label']);
+      return { location_id: idField(payload, path, 'location_id'), label: stringField(payload, path, 'label') };
+    }
     case 'add_area': {
       const payload = strictObject(value, path, ['location_id', 'label']);
       return { location_id: idField(payload, path, 'location_id'), label: stringField(payload, path, 'label') };

@@ -99,6 +99,7 @@ const CONFLICT_CODES = new Set([
   'ALREADY_RESPONDED',
   // A11: the Admin's change clashes with what is there (Part 3 §13 states: keep the form, say why).
   'AREA_LABEL_TAKEN',
+  'LOCATION_LABEL_TAKEN',
   'AREA_HAS_QR',
   'HOLIDAY_EXISTS',
 ]);

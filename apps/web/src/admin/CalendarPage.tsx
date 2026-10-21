@@ -8,7 +8,7 @@ import { useId, useState, type FormEvent } from 'react';
 import type { AdminCalendarView } from '@gm/contracts';
 import { BUDDHIST_ERA_OFFSET, CALENDAR_CE_YEARS, THAI_MONTHS, THAI_WEEKDAYS, bangkokDateOf, datesOfMonth, formatThaiDate, isoDateFromThaiInput, toBuddhistYear, type ThaiDateInputError } from '@gm/time';
 import { adminCommand, adminErrorText, getCalendar } from './api';
-import { AdminHead, LoadFailed, Loading, SaveLine, useAdminData, useWide, type Saved } from './common';
+import { AdminHead, ConfirmDialog, LoadFailed, Loading, SaveLine, useAdminData, useWide, type Saved } from './common';
 
 const SAVED_TEXT = 'บันทึกแล้ว มีผลภายใน 15 นาที';
 const PILOT_FROM = '2026-12-01';
@@ -144,6 +144,7 @@ function HolidayRow({ holiday, onSaved }: { readonly holiday: { readonly date: s
   const [fields, setFields] = useState<DateFields>(fieldsOf(holiday.date));
   const [name, setName] = useState(holiday.name ?? '');
   const [error, setError] = useState<string | undefined>(undefined);
+  const [confirming, setConfirming] = useState(false);
   const label = `${formatThaiDate(holiday.date, { weekday: true })}${holiday.name === undefined ? '' : ` · ${holiday.name}`}`;
   if (!editing) {
     return (
@@ -153,18 +154,7 @@ function HolidayRow({ holiday, onSaved }: { readonly holiday: { readonly date: s
           <button type="button" className="gm-btn gm-btn--secondary" onClick={() => setEditing(true)}>
             แก้ไข
           </button>
-          <button
-            type="button"
-            className="gm-btn gm-btn--secondary"
-            onClick={async () => {
-              try {
-                await adminCommand('remove_holiday', { date: holiday.date });
-                await onSaved(`ลบวันหยุดแล้ว มีผลภายใน 15 นาที`);
-              } catch (failure) {
-                setError(adminErrorText(failure));
-              }
-            }}
-          >
+          <button type="button" className="gm-btn gm-btn--secondary" onClick={() => setConfirming(true)}>
             ลบ
           </button>
         </div>
@@ -172,6 +162,26 @@ function HolidayRow({ holiday, onSaved }: { readonly holiday: { readonly date: s
           <p className="gm-notice gm-notice--danger" role="alert">
             {error}
           </p>
+        )}
+        {confirming && (
+          <ConfirmDialog
+            title="ลบวันหยุดนี้?"
+            confirm="ลบวันหยุด"
+            onCancel={() => setConfirming(false)}
+            onConfirm={async () => {
+              try {
+                await adminCommand('remove_holiday', { date: holiday.date });
+                setConfirming(false);
+                await onSaved('ลบวันหยุดแล้ว มีผลภายใน 15 นาที');
+              } catch (failure) {
+                setConfirming(false);
+                setError(adminErrorText(failure));
+              }
+            }}
+          >
+            <p className="font-semibold">{label}</p>
+            <p>วันนี้จะกลับเป็นวันทำงาน งานค้างและการปิดอัตโนมัติจะนับวันนี้ด้วยภายใน 15 นาที</p>
+          </ConfirmDialog>
         )}
       </li>
     );
@@ -240,55 +250,27 @@ function MonthView({ ceYear, month, holidays, openWeekdays }: { readonly ceYear:
   );
 }
 
-function Weekdays({ calendar, onSaved }: { readonly calendar: AdminCalendarView; readonly onSaved: (text: string) => Promise<void> }) {
-  const [days, setDays] = useState<ReadonlySet<number>>(new Set(calendar.open_weekdays));
-  const [error, setError] = useState<string | undefined>(undefined);
+/**
+ * D-A11-1: phase A keeps one company calendar, Monday–Friday — a Saturday chosen for a factory would
+ * count for the office too. The days are shown (so the Admin sees what counts) but cannot be changed.
+ */
+function Weekdays({ calendar }: { readonly calendar: AdminCalendarView }) {
+  const open = new Set(calendar.open_weekdays);
   return (
-    <form
-      className="gm-admin-panel gm-admin-stack"
-      aria-labelledby="weekdays-heading"
-      onSubmit={async (event: FormEvent) => {
-        event.preventDefault();
-        try {
-          await adminCommand('set_open_weekdays', { open_weekdays: [...days].sort((a, b) => a - b) });
-          setError(undefined);
-          await onSaved(SAVED_TEXT);
-        } catch (failure) {
-          setError(adminErrorText(failure));
-        }
-      }}
-    >
+    <section className="gm-admin-panel gm-admin-stack" aria-labelledby="weekdays-heading">
       <h2 id="weekdays-heading">วันทำงานในสัปดาห์</h2>
-      <fieldset className="gm-checks">
+      <fieldset className="gm-checks" disabled>
         <legend className="gm-sr-only">วันทำงานในสัปดาห์</legend>
         {THAI_WEEKDAYS.map((day, index) => (
           <label key={day} className="gm-check">
-            <input
-              type="checkbox"
-              checked={days.has(index + 1)}
-              onChange={(event) => {
-                const next = new Set(days);
-                if (event.target.checked) next.add(index + 1);
-                else next.delete(index + 1);
-                setDays(next);
-              }}
-            />
+            <input type="checkbox" checked={open.has(index + 1)} readOnly />
             <span className="gm-check-box" aria-hidden="true" />
             <span>{day}</span>
           </label>
         ))}
       </fieldset>
-      {error !== undefined && (
-        <p className="gm-notice gm-notice--danger" role="alert">
-          {error}
-        </p>
-      )}
-      <div>
-        <button type="submit" className="gm-btn gm-btn--secondary" disabled={days.size === 0}>
-          บันทึกวันทำงาน
-        </button>
-      </div>
-    </form>
+      <p className="gm-admin-muted">ทั้งบริษัทใช้จันทร์–ศุกร์ ตั้งวันเปิดทำการเสาร์–อาทิตย์รายสถานที่ได้ในรุ่นถัดไป (B02)</p>
+    </section>
   );
 }
 
@@ -451,7 +433,7 @@ export function CalendarPage() {
             </p>
           )}
           <SaveLine saved={saved} />
-          <Weekdays key={`weekdays-${state.data.open_weekdays.join('')}`} calendar={state.data} onSaved={onSaved} />
+          <Weekdays calendar={state.data} />
           <AddHoliday defaultBeYear={toBuddhistYear(ceYear)} onSaved={(iso) => onSaved(SAVED_TEXT, iso)} />
           <Holidays calendar={state.data} ceYear={ceYear} setCeYear={setCeYear} onSaved={onSaved} />
           <PilotCheck calendar={state.data} />

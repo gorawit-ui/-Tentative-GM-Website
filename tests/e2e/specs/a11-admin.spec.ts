@@ -286,7 +286,8 @@ test.describe('สุขภาพระบบ (FU-25)', () => {
     await expect(slack).toContainText('20 ต.ค. 2569 08:00 น.');
     await expect(slack).toContainText('ส่งทางอีเมลแทน');
     await expect(page.getByTestId('health-jobs')).toContainText('presence_reset-2026-10-19');
-    await expect(page.getByTestId('health-outbox')).toContainText('ส่งไม่สำเร็จ 1');
+    // Counts are of the last 7 days (D-A11-6); the fixture's dates are fixed, so only the wording here.
+    await expect(page.getByTestId('health-outbox')).toContainText(/ส่งไม่สำเร็จ \d+/);
     await expect(page.getByText('a11.fixture.private@tdfb.co')).toHaveCount(0);
     await expectLayout(page);
   });
