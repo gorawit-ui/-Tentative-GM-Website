@@ -10,9 +10,9 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { CommandRejected, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
+import { CommandRejected, refreshRequestNames, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
 import { adminCommandStore } from '../../apps/api/src/firestore/admin-store';
-import { transactionPeopleDirectory, transactionRoutingDirectory } from '../../apps/api/src/firestore/directories';
+import { transactionCompanyCalendar, transactionPeopleDirectory, transactionRoutingDirectory } from '../../apps/api/src/firestore/directories';
 import { createApiHandler } from '../../apps/api/src/http/app';
 import { localAdapter } from '../../apps/worker/src/adapters';
 import type { WorkerDeps } from '../../apps/worker/src/deps';
@@ -232,6 +232,16 @@ describe('import: preview first, then save (P7-ADMIN-01, D-S08-4, FU-10)', () =>
     expect(await readDoc(harness.db, `people/${EMPLOYEE}`)).not.toHaveProperty('slack_user_id');
   });
 
+  it('FU-10: a team column not chosen leaves stored teams alone (preview says “same”); a chosen one sets the single value', async () => {
+    await importPeople([{ line: 2, email: EMPLOYEE, name: 'คุณพนักงาน เดิม', team: 'ฝ่ายบัญชี' }], { slackColumn: false });
+    expect(await readDoc(harness.db, `people/${EMPLOYEE}`)).toMatchObject({ team_label: 'ฝ่ายบัญชี' });
+    const withoutTeam: Row[] = [{ line: 2, email: EMPLOYEE, name: 'คุณพนักงาน เดิม' }];
+    expect((await preview(withoutTeam, false)).body).toMatchObject({ rows: [{ line: 2, email: EMPLOYEE, status: 'same' }] });
+    expect(await importPeople(withoutTeam, { slackColumn: false })).toMatchObject({ status: 200, body: { result: { unchanged: 1, updated: 0 } } });
+    expect(await readDoc(harness.db, `people/${EMPLOYEE}`)).toMatchObject({ team_label: 'ฝ่ายบัญชี' });
+    expect(await readDoc(harness.db, `people_picker/${EMPLOYEE}`)).toMatchObject({ team_label: 'ฝ่ายบัญชี' });
+  });
+
   it('the same import key again is replayed (nothing twice); with other rows it is a conflict', async () => {
     const importId = randomUUID();
     const first = await importPeople(rows, { importId });
@@ -288,6 +298,31 @@ describe('FU-11: a changed name reaches the requests still open; closed ones kee
     expect((await readCollection(harness.db, `requests/${open}/history`)).size).toBe(1);
   });
 
+  it('a request waiting on someone is still open: its names follow too', async () => {
+    const waiting = await onBehalf();
+    expect(await act(GM, 'accept_request', { request_id: waiting, expected_revision: 1 })).toMatchObject({ status: 200 });
+    expect(await act(GM, 'enter_waiting', { request_id: waiting, expected_revision: 2, waiting_on: { kind: 'person', person_id: ADMIN } })).toMatchObject({
+      status: 200,
+      body: { result: { status: 'waiting' } },
+    });
+    await importPeople([{ line: 2, email: EMPLOYEE, name: 'คุณพนักงาน ชื่อใหม่' }], { slackColumn: false });
+    const job = [...(await readCollection(harness.db, 'scheduled_work')).entries()].find(([, data]) => data.kind === 'display_refresh');
+    expect(await runJob(workerDeps(), job?.[0] ?? '')).toBe('done');
+    expect(await readDoc(harness.db, `requests/${waiting}`)).toMatchObject({ status: 'waiting', requester_display: { person_id: EMPLOYEE, display_name: 'คุณพนักงาน ชื่อใหม่' } });
+  });
+
+  it('a request closed after the worker listed it keeps its old name (checked again inside the transaction)', async () => {
+    const closed = await onBehalf();
+    expect(await act(GM, 'cancel_request', { request_id: closed, expected_revision: 1, reason: 'ซ้ำ' })).toMatchObject({ status: 200 });
+    await importPeople([{ line: 2, email: EMPLOYEE, name: 'คุณพนักงาน ชื่อใหม่' }], { slackColumn: false });
+    const store = adminCommandStore(harness.db, { maxAttempts: TEST_MAX_ATTEMPTS });
+    const wrote = await store.runTransaction(async (transaction) =>
+      refreshRequestNames(transaction, closed, { now: NOW, workCalendar: await transactionCompanyCalendar(transaction), peopleDirectory: directories.peopleDirectory, involves: () => true }),
+    );
+    expect(wrote).toBe(false);
+    expect(await readDoc(harness.db, `requests/${closed}`)).toMatchObject({ requester_display: { person_id: EMPLOYEE, display_name: 'คุณพนักงาน เดิม' } });
+  });
+
   it('no name or team changed → no job', async () => {
     await importPeople([{ line: 2, email: EMPLOYEE, name: 'คุณพนักงาน เดิม' }], { slackColumn: false });
     expect([...(await readCollection(harness.db, 'scheduled_work')).values()].filter((job) => job.kind === 'display_refresh')).toEqual([]);
@@ -340,6 +375,13 @@ describe('roles and accounts: set by the GM Admin; access changes at once (API a
     await admin('set_person_role', { person_id: GM, role: 'gm_admin' });
     expect(await admin('set_person_role', { person_id: ADMIN, role: 'gm_staff' })).toMatchObject({ status: 200 });
     expect(await admin('set_person_active', { person_id: GM, active: false }, GM)).toEqual({ status: 409, body: { error: 'LAST_GM_ADMIN' } });
+  });
+
+  it('a GM Admin whose account is switched off does not count as the other GM Admin', async () => {
+    await harness.db.doc(`people/${ADMIN2}`).set({ email: ADMIN2, name: 'คุณแอดมิน สอง', role: 'gm_admin', active: false });
+    expect(await admin('set_person_role', { person_id: ADMIN, role: 'gm_staff' })).toEqual({ status: 409, body: { error: 'LAST_GM_ADMIN' } });
+    expect(await admin('set_person_active', { person_id: ADMIN, active: false })).toEqual({ status: 409, body: { error: 'LAST_GM_ADMIN' } });
+    expect(await readDoc(harness.db, `people/${ADMIN}`)).toMatchObject({ role: 'gm_admin', active: true });
   });
 
   it('an unknown person or role is refused', async () => {
