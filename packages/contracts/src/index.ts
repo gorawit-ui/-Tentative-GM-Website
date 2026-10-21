@@ -111,4 +111,4 @@ export {
   type RequestDetailDocument,
   type RequestProjections,
 } from './projections';
-export { telHref, type PublicContact, type PublicContactResponse } from './public-contact';
+export { MAX_CONTACT_URL_CHARS, contactUrlHref, telHref, type PublicContact, type PublicContactResponse } from './public-contact';

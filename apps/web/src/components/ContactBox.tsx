@@ -1,8 +1,10 @@
 // A09 — “ไม่มีบัญชีบริษัท? แจ้งทีม GM” (Part 2 Addendum A1.3, UI-01): the contacts the Admin chose to
 // show before login, from the API (no sign-in needed; Part 6 §6.4 safe subset). No form and no anonymous
 // request: the GM team opens it for them (F03 on behalf). UI-01 Loading keeps the box usable.
+// D-A09-4: an entry with a link (LINE OA, a LINE group) has its label as the link — `https:` / `tel:` only,
+// checked here again with the API's own rule; a web link opens outside the app.
 import { useEffect, useState } from 'react';
-import { telHref, type PublicContact, type PublicContactResponse } from '@gm/contracts';
+import { contactUrlHref, telHref, type PublicContact, type PublicContactResponse } from '@gm/contracts';
 import { webConfig } from '../firebase';
 import { Icon } from './Icon';
 
@@ -13,6 +15,22 @@ async function fetchContacts(signal: AbortSignal): Promise<readonly PublicContac
   if (!response.ok) throw new Error(`contact ${response.status}`);
   const body = (await response.json()) as Partial<PublicContactResponse>;
   return Array.isArray(body.contacts) ? body.contacts : [];
+}
+
+function ContactLabel({ contact }: { readonly contact: PublicContact }) {
+  const href = contactUrlHref(contact.url);
+  if (href === undefined) return <span className="gm-contact-label">{contact.label}</span>;
+  const web = href.startsWith('https:');
+  return (
+    <a
+      className="gm-link gm-text-link gm-contact-label text-brand-fg"
+      href={href}
+      {...(web ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+    >
+      <Icon name={web ? 'link' : 'phone'} />
+      {contact.label}
+    </a>
+  );
 }
 
 export function ContactBox() {
@@ -63,7 +81,7 @@ export function ContactBox() {
         <ul className="gm-contact-list">
           {load.contacts.map((contact, index) => (
             <li key={`${index}-${contact.label}`}>
-              <span className="gm-contact-label">{contact.label}</span>
+              <ContactLabel contact={contact} />
               {contact.name !== undefined && <span>{contact.name}</span>}
               {contact.phone !== undefined && (
                 <a className="gm-link gm-text-link text-brand-fg font-semibold" href={telHref(contact.phone)}>
