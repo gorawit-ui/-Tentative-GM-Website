@@ -82,6 +82,10 @@ test.describe('QR ก่อนและหลังเข้าสู่ระ�
     // A new place: the area is chosen again (F01).
     await expect(page.getByText('ขั้น 2 จาก 4')).toBeVisible();
     await expect(page.getByTestId('repair-choices').getByRole('button', { pressed: true })).toHaveCount(0);
+    // The area of the old place does not carry over: the step asks again.
+    await next(page).click();
+    await expect(page.getByRole('alert')).toContainText('เลือกบริเวณ');
+    await expect(page.getByText('ขั้น 2 จาก 4')).toBeVisible();
   });
 
   test.describe('a code that cannot be used says what happened, and the place is picked by hand', () => {
