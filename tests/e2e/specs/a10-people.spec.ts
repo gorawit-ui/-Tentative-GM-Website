@@ -39,18 +39,20 @@ async function openUsers(page: Page): Promise<void> {
 const personRow = (page: Page, text: string) => page.getByTestId('people-list').locator('li, tbody tr').filter({ hasText: text });
 const ownPerson = (testInfo: TestInfo) => ({ email: `a10.p-${testInfo.project.name}@tdfb.co`, name: `คุณทดสอบสิทธิ์ ${testInfo.project.name}` });
 
-const CSV = [
-  'Primary Email,First Name [Required],Department,Slack ID,Mobile',
-  `a10.csv.one@tdfb.co,คุณนำเข้า หนึ่ง,ฝ่ายขาย,U0CSV0001,${UNMAPPED}`,
-  `A10.CSV.Two@TDFB.CO,คุณนำเข้า สอง,,,${UNMAPPED}`,
-  'outsider@gmail.com,คนนอกบริษัท,,,',
-  'a10.csv.dup@tdfb.co,ซ้ำ หนึ่ง,,,',
-  'A10.CSV.DUP@tdfb.co,ซ้ำ สอง,,,',
-  'a10.csv.noname@tdfb.co,,,,',
-].join('\r\n');
+/** The file of the import tests; `who` keeps each project's rows its own (only the save step keeps them). */
+const csvFor = (who: string) =>
+  [
+    'Primary Email,First Name [Required],Department,Slack ID,Mobile',
+    `a10.${who}.one@tdfb.co,คุณนำเข้า หนึ่ง,ฝ่ายขาย,U0CSV0001,${UNMAPPED}`,
+    `A10.${who.toUpperCase()}.Two@TDFB.CO,คุณนำเข้า สอง,,,${UNMAPPED}`,
+    'outsider@gmail.com,คนนอกบริษัท,,,',
+    'a10.csv.dup@tdfb.co,ซ้ำ หนึ่ง,,,',
+    'A10.CSV.DUP@tdfb.co,ซ้ำ สอง,,,',
+    'a10.csv.noname@tdfb.co,,,,',
+  ].join('\r\n');
 
-async function uploadAndMap(page: Page): Promise<void> {
-  await page.getByLabel('ไฟล์ CSV รายชื่อพนักงาน').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.from(`﻿${CSV}\r\n`, 'utf8') });
+async function uploadAndMap(page: Page, who: string): Promise<void> {
+  await page.getByLabel('ไฟล์ CSV รายชื่อพนักงาน').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.from(`﻿${csvFor(who)}\r\n`, 'utf8') });
   // The columns come from the file's own header (the real Workspace export has not been seen yet).
   await page.getByLabel('คอลัมน์อีเมล').selectOption({ label: 'Primary Email' });
   await page.getByLabel('คอลัมน์ชื่อที่แสดง').selectOption({ label: 'First Name [Required]' });
@@ -60,7 +62,7 @@ async function uploadAndMap(page: Page): Promise<void> {
 }
 
 test.describe('รายชื่อพนักงาน (§13.3)', () => {
-  test('the list: role, account, Slack mapped or not, signed in or not; search; mobile cards / desktop table', async ({ page }) => {
+  test('the list: role, account, Slack mapped or not, signed in or not; search; mobile cards / desktop table', async ({ page }, testInfo) => {
     await openUsers(page);
     const requester = personRow(page, 'a09.requester@tdfb.co');
     await expect(requester).toContainText('คุณผู้ขอ ทดสอบ');
@@ -72,7 +74,8 @@ test.describe('รายชื่อพนักงาน (§13.3)', () => {
     await expect(personRow(page, 'a09.viewer@tdfb.co')).toContainText('ยังไม่จับคู่ Slack (ส่งทางอีเมล)');
     await expect(personRow(page, 'a09.admin@tdfb.co')).toContainText('GM Admin');
     await expect(personRow(page, 'a09.disabled@tdfb.co')).toContainText('ปิดบัญชีแล้ว');
-    await expect(personRow(page, 'a10.first@tdfb.co')).toContainText('ยังไม่เคยเข้าสู่ระบบ');
+    // Never signed in: this project's own person (a10.first signs in during another test).
+    await expect(personRow(page, ownPerson(testInfo).email)).toContainText('ยังไม่เคยเข้าสู่ระบบ');
     if (isMobileWidth(page)) await expect(page.getByRole('table')).toHaveCount(0);
     else await expect(page.getByRole('table', { name: 'รายชื่อพนักงาน' })).toBeVisible();
     await expectLayout(page);
@@ -117,11 +120,15 @@ test.describe('รายชื่อพนักงาน (§13.3)', () => {
     await page.getByRole('alertdialog', { name: 'เปลี่ยนสิทธิ์?' }).getByRole('button', { name: 'เปลี่ยนสิทธิ์' }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'ต้องมี GM Admin ที่ใช้งานอยู่อย่างน้อย 1 คน' })).toBeVisible();
     await expect(row).toContainText('GM Admin');
+    // The browser logs the refused request itself; that 409 is the answer this step expects.
+    problems = problems.filter((line) => !line.includes('status of 409'));
   });
 });
 
 test.describe('นำเข้า CSV (P7-ADMIN-01, FU-10)', () => {
-  test('columns chosen from the header, a preview with every bad row before saving; unmapped columns never sent', async ({ page }) => {
+  test('columns chosen from the header, a preview with every bad row before saving; unmapped columns never sent', async ({ page }, testInfo) => {
+    // Rows nobody saves: the save step of the shared project cannot turn them into “เหมือนเดิม”.
+    const who = `prev-${testInfo.project.name}`;
     const sent: string[] = [];
     page.on('request', (request) => {
       const body = request.postData();
@@ -131,7 +138,7 @@ test.describe('นำเข้า CSV (P7-ADMIN-01, FU-10)', () => {
     await page.getByRole('link', { name: 'นำเข้ารายชื่อจาก CSV' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'นำเข้ารายชื่อจาก CSV' })).toBeVisible();
     await expectLayout(page);
-    await uploadAndMap(page);
+    await uploadAndMap(page, who);
     const result = page.getByTestId('import-preview');
     await expect(result).toContainText('ใหม่ 2');
     await expect(result).toContainText('ผิด 4');
@@ -140,7 +147,7 @@ test.describe('นำเข้า CSV (P7-ADMIN-01, FU-10)', () => {
     await expect(errors).toContainText('ไม่ใช่อีเมล @tdfb.co');
     await expect(errors).toContainText('อีเมลซ้ำในไฟล์');
     await expect(errors).toContainText('ไม่มีชื่อ');
-    await expect(result).toContainText('a10.csv.two@tdfb.co');
+    await expect(result).toContainText(`a10.${who}.two@tdfb.co`);
     await expect(page.getByRole('button', { name: 'บันทึก 2 รายการ' })).toBeVisible();
     await expectLayout(page);
     expect(sent.join('\n')).not.toContain(UNMAPPED);
@@ -151,7 +158,7 @@ test.describe('นำเข้า CSV (P7-ADMIN-01, FU-10)', () => {
     test.skip(testInfo.project.name !== SHARED_PROJECT, 'changes the shared people list: one project');
     await openUsers(page);
     await page.getByRole('link', { name: 'นำเข้ารายชื่อจาก CSV' }).click();
-    await uploadAndMap(page);
+    await uploadAndMap(page, 'csv');
     await page.getByRole('button', { name: 'บันทึก 2 รายการ' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'นำเข้าแล้ว' })).toContainText('เพิ่ม 2 คน');
     await page.getByRole('link', { name: 'กลับไปรายชื่อ' }).click();

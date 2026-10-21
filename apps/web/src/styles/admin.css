@@ -124,3 +124,18 @@
   main.gm-main { padding: 0; }
   .gm-qr-sheet { margin: 0; border: 0; }
 }
+
+/* A10 — people (§13.3) and the CSV import (P7-ADMIN-01). */
+.gm-person-facts { display: flex; flex-wrap: wrap; gap: var(--gm-space-1) var(--gm-space-3); margin: 0; padding: 0; list-style: none; font-size: var(--gm-font-size-caption); color: rgb(var(--gm-text-muted)); }
+.gm-person-facts > li:first-child { color: rgb(var(--gm-text)); font-weight: var(--gm-font-weight-medium); }
+.gm-person-flag { padding-inline: var(--gm-space-2); color: rgb(var(--gm-text)); background: rgb(var(--gm-surface-muted)); border: 1px dashed rgb(var(--gm-control-border)); border-radius: var(--gm-radius-control); }
+.gm-import-columns { display: grid; gap: var(--gm-space-3); }
+.gm-import-counts { display: flex; flex-wrap: wrap; gap: var(--gm-space-2) var(--gm-space-4); margin: 0; padding: 0; list-style: none; font-weight: var(--gm-font-weight-medium); }
+.gm-import-rows { display: grid; gap: var(--gm-space-2); margin: 0; padding: 0; list-style: none; }
+.gm-import-rows > li { display: grid; gap: var(--gm-space-1); min-width: 0; padding-block: var(--gm-space-2); border-bottom: 1px solid rgb(var(--gm-border)); overflow-wrap: anywhere; }
+.gm-import-email { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--gm-font-size-caption); }
+.gm-file-input { min-height: 44px; padding-block: var(--gm-space-2); }
+@media (min-width: 768px) {
+  .gm-import-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gm-import-rows > li { grid-template-columns: 5rem minmax(0, 1fr) minmax(0, 1.4fr); align-items: baseline; }
+}

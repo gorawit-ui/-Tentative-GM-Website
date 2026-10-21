@@ -8,7 +8,9 @@ import { AREA_LABELS } from './labels';
 import { CalendarPage } from './admin/CalendarPage';
 import { HealthPage } from './admin/HealthPage';
 import { LocationDetailPage, LocationsPage } from './admin/LocationsPage';
+import { PeopleImportPage } from './admin/PeopleImportPage';
 import { QrPage, QrPrintPage } from './admin/QrPages';
+import { UsersPage } from './admin/UsersPage';
 import { AccountStatePage } from './pages/AccountStatePage';
 import { AdminPage, FormPage, ForbiddenPage, HomePage, NotFoundPage, PlaceholderPage } from './pages/AppPages';
 import { LoginPage } from './pages/LoginPage';
@@ -62,7 +64,7 @@ function Page({ route, role, name }: { readonly route: AppRoute; readonly role: 
   }
 }
 
-/** A11: the Admin pages that exist; the rest stay “ยังไม่เปิดใช้งาน” (users A10, content A23). */
+/** A11 + A10: the Admin pages that exist; content (A23) stays “ยังไม่เปิดใช้งาน”. */
 function AdminSectionPage({ route }: { readonly route: Extract<AppRoute, { area: 'admin' }> }) {
   switch (route.section) {
     case 'locations':
@@ -73,6 +75,8 @@ function AdminSectionPage({ route }: { readonly route: Extract<AppRoute, { area:
       return <CalendarPage />;
     case 'health':
       return <HealthPage />;
+    case 'users':
+      return route.view === 'import' ? <PeopleImportPage /> : <UsersPage />;
     default:
       return <AdminPage section={route.section} />;
   }
