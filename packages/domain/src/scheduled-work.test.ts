@@ -29,7 +29,8 @@ describe('one Scheduler job, one tick', () => {
   it('every task of the §6.9 table enters through the same tick (no second Scheduler job)', () => {
     const tickWork = [...TICK_STEPS.filter((step) => step !== 'scheduled_work'), ...SCHEDULED_WORK_KINDS].sort();
     expect(tickWork).toEqual(
-      ['stale', 'auto_close', 'presence_reset', 'digest', 'renewal', 'outbox_recovery', 'aggregate_reconcile', 'backup', 'cleanup'].sort(),
+      // A10 (FU-11): renamed people's names refreshed in open requests, through the same tick.
+      ['stale', 'auto_close', 'presence_reset', 'display_refresh', 'digest', 'renewal', 'outbox_recovery', 'aggregate_reconcile', 'backup', 'cleanup'].sort(),
     );
   });
 
