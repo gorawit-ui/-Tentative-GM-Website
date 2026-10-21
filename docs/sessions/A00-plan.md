@@ -28,7 +28,7 @@
 | 8 | A08 Gmail outbound (disabled/local mode) | A01, A02 | ได้ (ทำแล้ว: adapter + test กับ Gmail ปลอม, เพดานของแอป, dev sandbox D-A07-8; runtime ยัง local/disabled) | P7-ADMIN-02 สำหรับ sandbox จริง | FU-17; ใหม่ FU-34 (ต่อ Gmail จริง), FU-35 (ช่องหมายเหตุตอนเข้ารอ), FU-36 (หน้าจอใช้ `formatThaiDateTime`) |
 | 9 | A09 Google login / 4 roles / route shell | S12, A01 | ได้ (ทำแล้ว: Auth emulator; เว็บรับเฉพาะ `demo-*` จนถึง P7-INFRA-01) | P7-INFRA-01 สำหรับ project จริง (FU-37) | FU-36 บางส่วน (หน้าแรก + test ห้ามจัดรูปแบบวันที่เอง); ใหม่ FU-37 (config จริง), FU-38 (ผูกบัญชี login แรก → A10), FU-39 (แก้ช่องทางติดต่อก่อน login → A23), FU-40 (bundle) |
 | 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ทำแล้ว: ข้อมูลสังเคราะห์, emulator) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR (FU-42) | ปิด FU-25 (หน้าสุขภาพระบบ), FU-30 (เวลาส่งการเตือน); ใหม่ FU-42 (โดเมน prod ก่อนพิมพ์ QR), FU-43 (`/q/:qr_id` + catalog → A12), FU-44 (ช่วงเวลา outbox) |
-| 11 | A10 Admin people CSV / roles | A09 | ได้ (CSV สังเคราะห์) | P7-ADMIN-01 CSV จริง | FU-10, FU-11 |
+| 11 | A10 Admin people CSV / roles | A09 | ได้ (ทำแล้ว: CSV สังเคราะห์, emulator) | P7-ADMIN-01 CSV จริง (encoding/คอลัมน์ Q-A10-3) | ปิด FU-10, FU-11, FU-38, FU-44 (D-A11-6); ใหม่ FU-45 (แถบแดงหน้าแรก GM → A23), FU-46 (role ↔ routing) |
 | 12 | A12 public QR landing + repair step 1–3 | A09, A11 | ได้ | — | FU-21 (503 ยังตั้งค่าไม่ครบ → ข้อความไทย + ติดต่อ GM) |
 | 13 | A13 duplicate watch backend + interstitial | A12, A01 | ได้ | — | FU-08, FU-15 (contribution) |
 | 14 | A14 repair step 4 + submission/retry/title | A12, A13 | ได้ | — | — |
