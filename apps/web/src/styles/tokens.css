@@ -1,0 +1,222 @@
+/* Generated from tokens.json. Do not edit generated values directly. */
+:root, [data-theme="light"] {
+  --gm-canvas: 250 248 243;
+  --gm-surface: 255 255 255;
+  --gm-surface-muted: 242 241 234;
+  --gm-text: 45 42 38;
+  --gm-text-muted: 107 103 96;
+  --gm-border: 218 219 210;
+  --gm-control-border: 135 135 127;
+  --gm-brand-base: 91 127 58;
+  --gm-brand-solid: 87 121 55;
+  --gm-brand-hover: 73 102 44;
+  --gm-brand-active: 62 87 37;
+  --gm-brand-fg: 73 102 44;
+  --gm-brand-soft: 238 243 230;
+  --gm-on-brand: 255 255 255;
+  --gm-info-fg: 49 95 132;
+  --gm-info-solid: 49 95 132;
+  --gm-info-soft: 234 242 250;
+  --gm-on-info: 255 255 255;
+  --gm-warning-fg: 128 87 25;
+  --gm-warning-soft: 255 244 222;
+  --gm-danger-fg: 137 80 71;
+  --gm-danger-solid: 137 80 71;
+  --gm-danger-hover: 120 67 59;
+  --gm-danger-active: 102 55 47;
+  --gm-danger-soft: 250 236 232;
+  --gm-on-danger: 255 255 255;
+  --gm-focus: 49 95 132;
+  --gm-disabled-bg: 236 235 230;
+  --gm-disabled-fg: 107 103 96;
+  --gm-progress-track: 229 231 222;
+  --gm-skeleton-base: 229 231 222;
+  --gm-skeleton-highlight: 242 243 239;
+  --gm-chart-outline: 45 42 38;
+  --gm-chart-separator: 255 255 255;
+  --gm-status-queued-base: 138 143 152;
+  --gm-status-queued-fg: 94 98 106;
+  --gm-status-queued-bg: 243 244 246;
+  --gm-status-in-progress-base: 227 160 58;
+  --gm-status-in-progress-fg: 128 87 25;
+  --gm-status-in-progress-bg: 255 244 222;
+  --gm-status-waiting-base: 139 127 209;
+  --gm-status-waiting-fg: 96 87 147;
+  --gm-status-waiting-bg: 241 237 252;
+  --gm-status-completed-base: 94 155 79;
+  --gm-status-completed-fg: 63 107 52;
+  --gm-status-completed-bg: 237 244 232;
+  --gm-status-cancelled-base: 201 123 112;
+  --gm-status-cancelled-fg: 137 80 71;
+  --gm-status-cancelled-bg: 250 236 232;
+}
+[data-theme="dark"] {
+  --gm-canvas: 24 28 23;
+  --gm-surface: 34 39 31;
+  --gm-surface-muted: 45 51 42;
+  --gm-text: 244 241 233;
+  --gm-text-muted: 190 191 175;
+  --gm-border: 69 75 64;
+  --gm-control-border: 135 145 126;
+  --gm-brand-base: 91 127 58;
+  --gm-brand-solid: 172 202 139;
+  --gm-brand-hover: 189 218 156;
+  --gm-brand-active: 203 228 176;
+  --gm-brand-fg: 193 220 165;
+  --gm-brand-soft: 43 59 34;
+  --gm-on-brand: 26 40 19;
+  --gm-info-fg: 168 211 245;
+  --gm-info-solid: 168 211 245;
+  --gm-info-soft: 34 54 73;
+  --gm-on-info: 20 37 52;
+  --gm-warning-fg: 255 211 140;
+  --gm-warning-soft: 59 45 25;
+  --gm-danger-fg: 242 186 176;
+  --gm-danger-solid: 242 186 176;
+  --gm-danger-hover: 248 205 197;
+  --gm-danger-active: 252 222 216;
+  --gm-danger-soft: 66 45 41;
+  --gm-on-danger: 54 33 29;
+  --gm-focus: 168 211 245;
+  --gm-disabled-bg: 52 58 48;
+  --gm-disabled-fg: 190 191 175;
+  --gm-progress-track: 66 74 61;
+  --gm-skeleton-base: 52 58 48;
+  --gm-skeleton-highlight: 69 77 63;
+  --gm-chart-outline: 24 28 23;
+  --gm-chart-separator: 24 28 23;
+  --gm-status-queued-base: 138 143 152;
+  --gm-status-queued-fg: 205 209 217;
+  --gm-status-queued-bg: 48 52 60;
+  --gm-status-in-progress-base: 227 160 58;
+  --gm-status-in-progress-fg: 255 211 140;
+  --gm-status-in-progress-bg: 59 45 25;
+  --gm-status-waiting-base: 139 127 209;
+  --gm-status-waiting-fg: 212 198 255;
+  --gm-status-waiting-bg: 52 45 72;
+  --gm-status-completed-base: 94 155 79;
+  --gm-status-completed-fg: 183 216 164;
+  --gm-status-completed-bg: 40 59 35;
+  --gm-status-cancelled-base: 201 123 112;
+  --gm-status-cancelled-fg: 242 186 176;
+  --gm-status-cancelled-bg: 66 45 41;
+}
+:root {
+  --gm-font-family: "IBM Plex Sans Thai Looped", "Noto Sans Thai", system-ui, sans-serif;
+  --gm-font-size-caption: 0.875rem;
+  --gm-font-size-body: 1rem;
+  --gm-font-size-lead: 1.125rem;
+  --gm-font-size-h3: 1.25rem;
+  --gm-font-size-h2: 1.5rem;
+  --gm-font-size-h1: 2rem;
+  --gm-font-size-metric: 2.5rem;
+  --gm-line-height-body: 1.6;
+  --gm-line-height-label: 1.4;
+  --gm-line-height-heading: 1.35;
+  --gm-line-height-metric: 1.15;
+  --gm-font-weight-regular: 400;
+  --gm-font-weight-medium: 500;
+  --gm-font-weight-semibold: 600;
+  --gm-space-1: 4px;
+  --gm-space-2: 8px;
+  --gm-space-3: 12px;
+  --gm-space-4: 16px;
+  --gm-space-5: 20px;
+  --gm-space-6: 24px;
+  --gm-space-8: 32px;
+  --gm-space-10: 40px;
+  --gm-space-12: 48px;
+  --gm-space-16: 64px;
+  --gm-radius-control: 12px;
+  --gm-radius-card: 16px;
+  --gm-radius-sheet: 16px;
+  --gm-radius-pill: 9999px;
+  --gm-border-width-default: 1px;
+  --gm-border-width-emphasis: 2px;
+  --gm-border-width-focus: 3px;
+  --gm-touch-min: 44px;
+  --gm-control-min: 48px;
+  --gm-action-center: 56px;
+  --gm-bottom-nav: 80px;
+  --gm-sidebar: 232px;
+  --gm-form-max: 720px;
+  --gm-content-max: 1536px;
+  --gm-board-column: 272px;
+  --gm-focus-offset: 2px;
+  --gm-shadow-card: 0 2px 8px rgb(45 42 38 / 0.06);
+  --gm-shadow-raised: 0 8px 24px rgb(45 42 38 / 0.12);
+  --gm-shadow-dialog: 0 20px 64px rgb(0 0 0 / 0.24);
+  --gm-z-base: 0;
+  --gm-z-sticky: 10;
+  --gm-z-dropdown: 20;
+  --gm-z-nav: 30;
+  --gm-z-backdrop: 40;
+  --gm-z-dialog: 50;
+  --gm-z-toast: 60;
+  --gm-z-skip-link: 70;
+  --gm-duration-fast: 150ms;
+  --gm-duration-base: 200ms;
+  --gm-duration-enter: 280ms;
+  --gm-duration-layout: 300ms;
+  --gm-duration-chart: 800ms;
+  --gm-duration-countup: 800ms;
+  --gm-duration-highlight: 1500ms;
+  --gm-duration-skeleton: 900ms;
+  --gm-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --gm-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Color values are RGB channels: always use rgb(var(--gm-...)). */
+* { box-sizing: border-box; }
+html { font-size: 100%; }
+body { margin: 0; color: rgb(var(--gm-text)); background: rgb(var(--gm-canvas)); font: var(--gm-font-size-body)/var(--gm-line-height-body) var(--gm-font-family); }
+button, input, textarea, select { font: inherit; }
+button, [role="button"], input, select { touch-action: manipulation; }
+:focus-visible { outline: var(--gm-border-width-focus) solid rgb(var(--gm-focus)); outline-offset: var(--gm-focus-offset); }
+a { color: rgb(var(--gm-info-fg)); text-underline-offset: 3px; }
+.gm-link { text-decoration: underline; }
+.gm-muted, .gm-neutral-update { color: rgb(var(--gm-text-muted)); }
+.gm-card { padding: var(--gm-space-4); background: rgb(var(--gm-surface)); color: rgb(var(--gm-text)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); box-shadow: var(--gm-shadow-card); }
+.gm-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--gm-space-2); min-width: var(--gm-touch-min); min-height: var(--gm-control-min); padding: var(--gm-space-2) var(--gm-space-4); border: 1px solid transparent; border-radius: var(--gm-radius-control); font-weight: var(--gm-font-weight-medium); line-height: var(--gm-line-height-label); cursor: pointer; transition: background-color var(--gm-duration-fast) var(--gm-ease-out), border-color var(--gm-duration-fast) var(--gm-ease-out); }
+.gm-btn--primary { background: rgb(var(--gm-brand-solid)); color: rgb(var(--gm-on-brand)); }
+.gm-btn--primary:hover { background: rgb(var(--gm-brand-hover)); }
+.gm-btn--primary:active { background: rgb(var(--gm-brand-active)); }
+.gm-btn--secondary { background: rgb(var(--gm-surface)); color: rgb(var(--gm-text)); border-color: rgb(var(--gm-control-border)); }
+.gm-btn--secondary:hover { background: rgb(var(--gm-surface-muted)); }
+.gm-btn--secondary:active { background: rgb(var(--gm-canvas)); }
+.gm-btn--danger { background: rgb(var(--gm-danger-solid)); color: rgb(var(--gm-on-danger)); }
+.gm-btn--danger:hover { background: rgb(var(--gm-danger-hover)); }
+.gm-btn--danger:active { background: rgb(var(--gm-danger-active)); }
+.gm-btn:disabled, .gm-btn[aria-disabled="true"] { background: rgb(var(--gm-disabled-bg)); color: rgb(var(--gm-disabled-fg)); border-color: rgb(var(--gm-control-border)); cursor: not-allowed; opacity: 1; }
+.gm-input { width: 100%; min-height: var(--gm-control-min); padding: var(--gm-space-3); background: rgb(var(--gm-surface)); color: rgb(var(--gm-text)); border: 1px solid rgb(var(--gm-control-border)); border-radius: var(--gm-radius-control); }
+.gm-input::placeholder { color: rgb(var(--gm-text-muted)); opacity: 1; }
+.gm-input[aria-invalid="true"] { border: 2px solid rgb(var(--gm-danger-fg)); }
+.gm-error { color: rgb(var(--gm-danger-fg)); }
+.gm-badge { display: inline-flex; align-items: center; gap: var(--gm-space-2); padding: var(--gm-space-1) var(--gm-space-3); border-radius: var(--gm-radius-pill); font-size: var(--gm-font-size-body); line-height: var(--gm-line-height-label); font-weight: var(--gm-font-weight-medium); color: var(--badge-fg); background: var(--badge-bg); }
+.gm-status-dot { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; background: var(--badge-base); border: 2px solid var(--badge-fg); }
+.gm-badge--info { --badge-fg: rgb(var(--gm-info-fg)); --badge-bg: rgb(var(--gm-info-soft)); }
+.gm-badge--warning { --badge-fg: rgb(var(--gm-warning-fg)); --badge-bg: rgb(var(--gm-warning-soft)); }
+.gm-badge--danger { --badge-fg: rgb(var(--gm-danger-fg)); --badge-bg: rgb(var(--gm-danger-soft)); }
+/* Mount stale treatment only for authorized GM views; CSS is not authorization. */
+.gm-stale { border: 2px solid rgb(var(--gm-warning-fg)); }
+.gm-stale-label { color: rgb(var(--gm-warning-fg)); }
+.gm-progress { height: 8px; overflow: hidden; border-radius: var(--gm-radius-pill); background: rgb(var(--gm-progress-track)); }
+.gm-progress__fill { height: 100%; background: rgb(var(--gm-info-solid)); transition: width var(--gm-duration-fast) var(--gm-ease-out); }
+.gm-chart-mark { stroke: rgb(var(--gm-chart-outline)); stroke-width: 2px; }
+.gm-skeleton { background: linear-gradient(90deg, rgb(var(--gm-skeleton-base)) 25%, rgb(var(--gm-skeleton-highlight)) 50%, rgb(var(--gm-skeleton-base)) 75%); background-size: 200% 100%; animation: gm-shimmer var(--gm-duration-skeleton) linear 2; }
+.gm-new-highlight { animation: gm-new-highlight var(--gm-duration-highlight) var(--gm-ease-out) 1; }
+.gm-bottom-nav { position: fixed; inset: auto 0 0; z-index: var(--gm-z-nav); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-height: calc(var(--gm-bottom-nav) + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); background: rgb(var(--gm-surface)); border-top: 1px solid rgb(var(--gm-border)); }
+.gm-bottom-nav a { min-height: var(--gm-touch-min); min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 2px; color: rgb(var(--gm-text-muted)); text-decoration: none; font-size: var(--gm-font-size-caption); line-height: var(--gm-line-height-label); }
+.gm-bottom-nav a[aria-current="page"] { color: rgb(var(--gm-brand-fg)); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; }
+.gm-bottom-nav a.gm-nav-repair, .gm-bottom-nav a.gm-nav-repair[aria-current="page"] { color: rgb(var(--gm-on-brand)); background: rgb(var(--gm-brand-solid)); border-radius: var(--gm-radius-control); margin: 8px 2px; }
+.gm-with-bottom-nav { padding-bottom: calc(var(--gm-bottom-nav) + env(safe-area-inset-bottom, 0px) + var(--gm-space-4)); }
+@keyframes gm-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes gm-new-highlight { from { box-shadow: 0 0 0 2px rgb(var(--gm-info-fg)); } to { box-shadow: 0 0 0 2px rgb(var(--gm-info-fg) / 0); } }
+@media (min-width: 1024px) { .gm-bottom-nav { display: none; } .gm-with-bottom-nav { padding-bottom: 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } .gm-skeleton { background: rgb(var(--gm-skeleton-base)); } }
+
+.gm-badge[data-status="queued"] { --badge-fg: rgb(var(--gm-status-queued-fg)); --badge-bg: rgb(var(--gm-status-queued-bg)); --badge-base: rgb(var(--gm-status-queued-base)); }
+.gm-badge[data-status="in_progress"] { --badge-fg: rgb(var(--gm-status-in-progress-fg)); --badge-bg: rgb(var(--gm-status-in-progress-bg)); --badge-base: rgb(var(--gm-status-in-progress-base)); }
+.gm-badge[data-status="waiting"] { --badge-fg: rgb(var(--gm-status-waiting-fg)); --badge-bg: rgb(var(--gm-status-waiting-bg)); --badge-base: rgb(var(--gm-status-waiting-base)); }
+.gm-badge[data-status="completed"] { --badge-fg: rgb(var(--gm-status-completed-fg)); --badge-bg: rgb(var(--gm-status-completed-bg)); --badge-base: rgb(var(--gm-status-completed-base)); }
+.gm-badge[data-status="cancelled"] { --badge-fg: rgb(var(--gm-status-cancelled-fg)); --badge-bg: rgb(var(--gm-status-cancelled-bg)); --badge-base: rgb(var(--gm-status-cancelled-base)); }

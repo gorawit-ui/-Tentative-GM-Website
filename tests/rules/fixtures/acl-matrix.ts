@@ -267,6 +267,7 @@ export function seedDocuments(): ReadonlyMap<string, object> {
     'imports/imp-1': { state: 'preview' },
     'integration_inbox/in-1': { provider: 'slack' },
     'integration_state/slack': { cursor: 'x' },
+    'integration_state/slack_app': { status: 'app_error', code: 'SLACK_INVALID_AUTH', since: T0 },
     'uploads/up-acl-1': { request_id: GENERAL_REQUEST_ID, purpose: 'attachment', state: 'pending' },
     'unknown_collection/doc-1': { anything: true },
   };
@@ -444,6 +445,11 @@ export const RESOURCES: readonly AclResource[] = [
     'system_counters.email_send',
     'system_counters/email_send',
     'ตัวนับอีเมลที่ส่ง (A08, Part 6 §6.10: เพดานของแอป 30 ฉบับ/นาที, 500 ฉบับ/วัน): worker เท่านั้น — client ทุก role ปฏิเสธ',
+  ),
+  deniedEverywhere(
+    'integration_state.slack_app',
+    'integration_state/slack_app',
+    'สถานะแอป Slack (D-A08-6: `app_error` + code + since เมื่อ token/บัญชี/สิทธิ์ของแอปใช้ไม่ได้, `ok` เมื่อส่งสำเร็จอีกครั้ง): worker เขียน; Admin ดูผ่าน API (FU-25) — client ทุก role ปฏิเสธ',
   ),
 ];
 

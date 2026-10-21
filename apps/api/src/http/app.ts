@@ -1,5 +1,6 @@
 // A01 — the API over HTTP (FU-16). Part 6 §6.2/§6.5: every request verifies the Firebase ID token and
-// re-reads access/{uid} (role, enabled) — custom claims never decide; CORS only for the app's origins;
+// re-reads access/{uid} (role, enabled) — custom claims never decide (A09: except the login page's
+// public contact box, which reads no token); CORS only for the app's origins;
 // commands run in one transaction and the new outbox IDs are handed to the queue only after commit
 // (a queue failure leaves the request and its pending outbox for recovery, A02). Responses are
 // no-store; errors carry a code (and a field path for contract errors), never request data. The log
@@ -31,6 +32,7 @@ import {
   markSeen,
   previewRelated,
   previewWaiting,
+  publicContactSource,
   type ApiDeps,
   type UploadPurpose,
 } from '../endpoints/index';
@@ -123,7 +125,15 @@ async function readJson(request: IncomingMessage, limit: number): Promise<Record
 
 function routes(deps: HttpDeps): readonly Route[] {
   const { api } = deps;
+  const publicContacts = publicContactSource(api);
   return [
+    {
+      // A09 / A1.3: the login page's contact box — no sign-in, no token read (the safe subset only).
+      name: 'public.contact',
+      method: 'GET',
+      pattern: /^\/api\/public\/contact$/,
+      handle: async () => ({ status: 200, body: { contacts: await publicContacts.get() } }),
+    },
     {
       name: 'commands.execute',
       method: 'POST',

@@ -62,6 +62,9 @@ export function claimDelivery(entry: DeliveryLeaseState, now: Instant): Delivery
  * which), so nothing was sent and the worker uses company e-mail instead (A1.2). D-A07-8:
  * `suppressed` — not sent on purpose (a dev recipient outside the sandbox list), never retried. A08:
  * `deferred` — the app's own sending cap is reached; try again at `retryAt` without using an attempt.
+ * D-A08-6: `unavailable` — the provider refused because of the app itself (Slack: its token, account
+ * or scopes), so nothing was sent and no message on that channel can go; the worker uses company
+ * e-mail instead and marks the app's state for the Admin health (`channelAppStateAfter`).
  */
 export type DeliveryOutcome =
   | { readonly kind: 'accepted'; readonly providerId: string }
@@ -69,6 +72,7 @@ export type DeliveryOutcome =
   | { readonly kind: 'permanent'; readonly code: string }
   | { readonly kind: 'unknown'; readonly code: string }
   | { readonly kind: 'unmapped'; readonly code?: string }
+  | { readonly kind: 'unavailable'; readonly code: string }
   | { readonly kind: 'suppressed'; readonly code: string }
   | { readonly kind: 'deferred'; readonly code: string; readonly retryAt: Instant };
 
@@ -100,6 +104,9 @@ export function settleDelivery(attempts: number, outcome: DeliveryOutcome, now: 
     case 'unmapped':
       // Reached only when there is nothing to fall back to: visible to the GM like “no channel”.
       return { state: 'failed', errorCode: outcome.code ?? 'SLACK_NOT_MAPPED' };
+    case 'unavailable':
+      // Reached only when there is nothing to fall back to.
+      return { state: 'failed', errorCode: outcome.code };
     case 'suppressed':
       return { state: 'suppressed', errorCode: outcome.code };
     case 'deferred':

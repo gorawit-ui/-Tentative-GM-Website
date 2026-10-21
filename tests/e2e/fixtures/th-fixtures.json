@@ -1,5 +1,5 @@
 {
-  "$comment": "ข้อมูลสมมติสำหรับ E2E เท่านั้น ไม่ใช่ข้อมูลพนักงานหรือสถานที่จริง ห้ามใส่ข้อมูลจริง; collection ขึ้นต้น fixture_ เพราะ schema จริงมาใน task ถัดไป",
+  "$comment": "ข้อมูลสมมติสำหรับ E2E เท่านั้น ไม่ใช่ข้อมูลพนักงานหรือสถานที่จริง ห้ามใส่ข้อมูลจริง; collection ขึ้นต้น fixture_ เป็นข้อมูลตัวอย่างเดิมของ S00; access / content_pages ใช้ schema จริง (A09)",
   "collections": {
     "fixture_places": {
       "place-test-1": { "name": "อาคารทดสอบ ก", "area": "ห้องประชุมชั้น 2", "order": 1 },
@@ -8,6 +8,38 @@
     "fixture_people": {
       "person-test-1": { "display_name": "สมมติ ใจดี", "role": "requester", "active": true },
       "person-test-2": { "display_name": "ทดสอบ รักงาน", "role": "gm_staff", "active": true }
+    },
+    "access": {
+      "uid-a09-requester": { "person_id": "a09.requester@tdfb.co", "role": "requester", "enabled": true },
+      "uid-a09-viewer": { "person_id": "a09.viewer@tdfb.co", "role": "viewer", "enabled": true },
+      "uid-a09-gm": { "person_id": "a09.gm@tdfb.co", "role": "gm_staff", "enabled": true },
+      "uid-a09-admin": { "person_id": "a09.admin@tdfb.co", "role": "gm_admin", "enabled": true },
+      "uid-a09-disabled": { "person_id": "a09.disabled@tdfb.co", "role": "gm_admin", "enabled": false },
+      "uid-a09-offboard": { "person_id": "a09.offboard@tdfb.co", "role": "requester", "enabled": true },
+      "uid-a09-logout": { "person_id": "a09.logout@tdfb.co", "role": "gm_staff", "enabled": true }
+    },
+    "content_pages": {
+      "contact": {
+        "title": "ติดต่อ GM",
+        "body": "ข้อมูลหลังเข้าสู่ระบบเท่านั้น — ห้ามแสดงก่อนเข้าสู่ระบบ",
+        "prelogin_contacts": [
+          { "label": "โทรหาทีม GM", "contact_name": "คุณสมมติ ใจดี (ทีม GM)", "phone": "02-000-0000", "email": "a09.private@tdfb.co" },
+          { "label": "แจ้งที่ห้องทีม GM", "detail": "อาคารทดสอบ ก ชั้น 1 (ตัวอย่าง)" }
+        ]
+      }
     }
+  },
+  "auth_users": {
+    "$comment": "บัญชี Google ใน Auth emulator เท่านั้น (uid ตรงกับ access ด้านบน); outsider/lookalike/new ไม่มี access",
+    "requester": { "uid": "uid-a09-requester", "email": "a09.requester@tdfb.co", "name": "คุณผู้ขอ ทดสอบ" },
+    "viewer": { "uid": "uid-a09-viewer", "email": "a09.viewer@tdfb.co", "name": "คุณผู้ดู ทดสอบ" },
+    "gm": { "uid": "uid-a09-gm", "email": "a09.gm@tdfb.co", "name": "คุณจีเอ็ม ทดสอบ" },
+    "admin": { "uid": "uid-a09-admin", "email": "a09.admin@tdfb.co", "name": "คุณแอดมิน ทดสอบ" },
+    "disabled": { "uid": "uid-a09-disabled", "email": "a09.disabled@tdfb.co", "name": "คุณปิดแล้ว ทดสอบ" },
+    "offboard": { "uid": "uid-a09-offboard", "email": "a09.offboard@tdfb.co", "name": "คุณออกระหว่างใช้ ทดสอบ" },
+    "logout": { "uid": "uid-a09-logout", "email": "a09.logout@tdfb.co", "name": "คุณออกจากระบบ ทดสอบ" },
+    "new": { "uid": "uid-a09-new", "email": "a09.new@tdfb.co", "name": "คุณยังไม่มีสิทธิ์ ทดสอบ" },
+    "outsider": { "uid": "uid-a09-outsider", "email": "a09.outsider@gmail.com", "name": "คนนอก ทดสอบ" },
+    "lookalike": { "uid": "uid-a09-lookalike", "email": "a09.lookalike@tdfb.co.th", "name": "โดเมนคล้าย ทดสอบ" }
   }
 }

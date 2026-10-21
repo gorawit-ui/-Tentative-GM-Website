@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { channelAppHealth } from '@gm/domain';
 import { MINUTE_MS, formatThaiDateTime } from '@gm/time';
 import { CommandRejected, type MaintenanceCatalog } from '../../apps/api/src/commands/index';
 import { lifecycleOutbox, newRequestOutbox, relatedAddedOutbox, respondedOutbox, waitingPartyOutbox, type OutboxEntry } from '../../apps/api/src/commands/outbox';
@@ -44,11 +45,13 @@ const NAMES: Readonly<Record<string, string>> = { [GM]: 'คุณจีเอ�
 const TEAMS: Readonly<Record<string, string>> = { [REQUESTER]: 'ทีมบัญชี' };
 const WAIT_NOTE = 'ขอใบเสนอราคา 2 ร้าน ภายในวันศุกร์';
 const REPLY_NOTE = 'ส่งใบเสนอราคาให้แล้วทางอีเมล';
-const ANSWER = "ทำเสร็จแล้ว กด 'ฝั่งฉันเรียบร้อยแล้ว' ในลิงก์";
-const NOT_RESOLVED = "ถ้ายังไม่เรียบร้อย กด 'ยังไม่เรียบร้อย' ในลิงก์";
+const ANSWER = 'ทำเสร็จแล้ว กด “ฝั่งฉันเรียบร้อยแล้ว” ในลิงก์';
+const NOT_RESOLVED = 'ถ้ายังไม่เรียบร้อย กด “ยังไม่เรียบร้อย” ในลิงก์';
 const TITLE = 'ไฟดับ — ทางเดิน · WH300';
 const TYPED = 'ผู้แจ้งพิมพ์ว่า ไฟดับตั้งแต่เมื่อคืน กุญแจอยู่ที่ป้อม';
 const SIGNED = 'https://storage.googleapis.com/gm-dev-bucket/requests/x/photo.jpg?X-Goog-Signature=abc';
+/** D-A08-6: the Slack app's state (server only), read by the Admin health (FU-25). */
+const SLACK_APP = 'integration_state/slack_app';
 
 let worker: EmulatorClient;
 let slack: FakeSlack;
@@ -207,8 +210,24 @@ describe('the Slack adapter against a fake Slack', () => {
   it.each([
     ['account_inactive', 'SLACK_ACCOUNT_INACTIVE'],
     ['invalid_auth', 'SLACK_INVALID_AUTH'],
+    ['not_authed', 'SLACK_NOT_AUTHED'],
+    ['token_revoked', 'SLACK_TOKEN_REVOKED'],
+    ['token_expired', 'SLACK_TOKEN_EXPIRED'],
     ['missing_scope', 'SLACK_MISSING_SCOPE'],
-  ])('a permanent error (%s) → permanent with its code', async (error, code) => {
+    ['no_permission', 'SLACK_NO_PERMISSION'],
+    ['not_allowed_token_type', 'SLACK_NOT_ALLOWED_TOKEN_TYPE'],
+    ['team_access_not_granted', 'SLACK_TEAM_ACCESS_NOT_GRANTED'],
+    ['org_login_required', 'SLACK_ORG_LOGIN_REQUIRED'],
+    ['ekm_access_denied', 'SLACK_EKM_ACCESS_DENIED'],
+  ])('D-A08-6: an error about the app itself (%s) → unavailable with its code (nothing posted; no Slack message can go)', async (error, code) => {
+    slack.answer({ kind: 'error', error });
+    await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'unavailable', code });
+  });
+
+  it.each([
+    ['msg_too_long', 'SLACK_MSG_TOO_LONG'],
+    ['invalid_arguments', 'SLACK_INVALID_ARGUMENTS'],
+  ])('an error about this one message (%s) → permanent with its code', async (error, code) => {
     slack.answer({ kind: 'error', error });
     await expect(adapterOf().send(message())).resolves.toEqual({ kind: 'permanent', code });
   });
@@ -286,14 +305,91 @@ describe('the worker sends through Slack (A02 retry, Part 6 §6.10)', () => {
     expect(await readDoc(worker.db, `gm_request_details/${id}`)).not.toHaveProperty('requester_not_notified');
   });
 
-  it('a permanent error (the bot token is refused) → failed with the cause; the GM badge shows it for a requester; no e-mail guess', async () => {
+  it('a permanent error about the message itself → failed with the cause; the GM badge shows it for a requester; no e-mail guess', async () => {
     const { id, number } = await seedRequest();
     const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: GM, gmRecipientIds: [], requesterId: REQUESTER, isConfidential: false, now }));
-    slack.answer({ kind: 'error', error: 'invalid_auth' });
+    slack.answer({ kind: 'error', error: 'msg_too_long' });
     await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('failed');
-    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'failed', last_error_code: 'SLACK_INVALID_AUTH', delivery_channel: 'slack' });
-    expect(await readDoc(worker.db, `gm_request_details/${id}`)).toMatchObject({ requester_not_notified: { code: 'SLACK_INVALID_AUTH' } });
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'failed', last_error_code: 'SLACK_MSG_TOO_LONG', delivery_channel: 'slack' });
+    expect(await readDoc(worker.db, `gm_request_details/${id}`)).toMatchObject({ requester_not_notified: { code: 'SLACK_MSG_TOO_LONG' } });
     expect(emails).toEqual([]);
+    expect(await readDoc(worker.db, SLACK_APP)).toBeUndefined();
+  });
+});
+
+describe('D-A08-6: the Slack app itself does not work (token, account, scopes) → e-mail, and the Admin health turns red', () => {
+  it.each(['invalid_auth', 'account_inactive', 'token_revoked'])('%s → company e-mail in the same attempt; the entry says why; the app state is app_error', async (error) => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: GM, gmRecipientIds: [], requesterId: REQUESTER, isConfidential: false, now }));
+    slack.answer({ kind: 'error', error });
+    const code = `SLACK_${error.toUpperCase()}`;
+    await expect(dispatchOutbox(deps(), outboxId ?? '')).resolves.toBe('sent');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'email', slack_fallback_code: code, provider_id: `mail-${outboxId}`, attempts: 1 });
+    expect(emails.map((sent) => [sent.channel, sent.address])).toEqual([['email', REQUESTER]]);
+    expect(await readDoc(worker.db, `gm_request_details/${id}`)).not.toHaveProperty('requester_not_notified');
+    expect(await readDoc(worker.db, SLACK_APP)).toEqual({ status: 'app_error', code, since: NOW });
+    expect(channelAppHealth(await readDoc(worker.db, SLACK_APP))).toEqual({ level: 'red', code, since: NOW });
+  });
+
+  it('every later message still reaches people by e-mail; the outage keeps its start time (no write while it is the same)', async () => {
+    const { id, number } = await seedRequest();
+    const ids = await queue([
+      ...newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }),
+      ...newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM2], isConfidential: false, now }),
+    ]);
+    slack.answer({ kind: 'error', error: 'invalid_auth' }, { kind: 'error', error: 'invalid_auth' });
+    await expect(dispatchOutbox(deps(), ids[0] ?? '')).resolves.toBe('sent');
+    now = NOW + 20 * MINUTE_MS;
+    await expect(dispatchOutbox(deps(), ids[1] ?? '')).resolves.toBe('sent');
+    expect(emails.map((sent) => sent.address)).toEqual([GM, GM2]);
+    expect(await readDoc(worker.db, SLACK_APP)).toEqual({ status: 'app_error', code: 'SLACK_INVALID_AUTH', since: NOW });
+  });
+
+  it('after the admin fixes the app, the next Slack send that goes through turns the health back to ok', async () => {
+    const { id, number } = await seedRequest();
+    const ids = await queue([
+      ...newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }),
+      ...newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM2], isConfidential: false, now }),
+    ]);
+    slack.answer({ kind: 'error', error: 'token_revoked' });
+    await dispatchOutbox(deps(), ids[0] ?? '');
+    now = NOW + 60 * MINUTE_MS;
+    await expect(dispatchOutbox(deps(), ids[1] ?? '')).resolves.toBe('sent');
+    expect(await entry(ids[1] ?? '')).toMatchObject({ state: 'provider_accepted', delivery_channel: 'slack' });
+    expect(await entry(ids[1] ?? '')).not.toHaveProperty('slack_fallback_code');
+    expect(await readDoc(worker.db, SLACK_APP)).toEqual({ status: 'ok', recovered_at: now, last_error_code: 'SLACK_TOKEN_REVOKED' });
+    expect(channelAppHealth(await readDoc(worker.db, SLACK_APP))).toEqual({ level: 'ok' });
+  });
+
+  it('the e-mail fails too → the e-mail’s result, the Slack reason kept; the health is red all the same', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: GM, gmRecipientIds: [], requesterId: REQUESTER, isConfidential: false, now }));
+    const refusingEmail: NotificationAdapter = { send: async () => ({ kind: 'permanent', code: 'GMAIL_INVALID_RECIPIENT' }) };
+    slack.answer({ kind: 'error', error: 'invalid_auth' });
+    await expect(dispatchOutbox(deps(channelRouter({ slack: adapterOf(), email: refusingEmail })), outboxId ?? '')).resolves.toBe('failed');
+    expect(await entry(outboxId ?? '')).toMatchObject({ state: 'failed', delivery_channel: 'email', last_error_code: 'GMAIL_INVALID_RECIPIENT', slack_fallback_code: 'SLACK_INVALID_AUTH' });
+    expect(await readDoc(worker.db, `gm_request_details/${id}`)).toMatchObject({ requester_not_notified: { code: 'GMAIL_INVALID_RECIPIENT' } });
+    expect(channelAppHealth(await readDoc(worker.db, SLACK_APP))).toMatchObject({ level: 'red', code: 'SLACK_INVALID_AUTH' });
+  });
+
+  it('a recipient Slack does not know is not an app problem: no app state is written', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    slack.answer({ kind: 'error', error: 'user_not_found' });
+    await dispatchOutbox(deps(), outboxId ?? '');
+    expect(await readDoc(worker.db, SLACK_APP)).toBeUndefined();
+  });
+
+  it('the log names the code, never the token, the Slack ID or the address', async () => {
+    const { id, number } = await seedRequest();
+    const [outboxId] = await queue(newRequestOutbox({ requestId: id, requestNumber: number, actorId: REQUESTER, gmRecipientIds: [GM], isConfidential: false, now }));
+    const before = logs.lines.length;
+    slack.answer({ kind: 'error', error: 'invalid_auth' });
+    await dispatchOutbox(deps(), outboxId ?? '');
+    const lines = logs.lines.slice(before).join('\n');
+    expect(lines).toContain('notification.slack_app_error');
+    expect(lines).toContain('SLACK_INVALID_AUTH');
+    for (const secret of [TOKEN, SLACK_IDS[GM] ?? '-', GM, number]) expect(lines).not.toContain(secret);
   });
 });
 

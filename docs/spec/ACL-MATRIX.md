@@ -10,7 +10,7 @@
 - **การเขียนจาก client** (create / update / delete) ปฏิเสธทุก collection ทุก role — ทุกการเปลี่ยนแปลงผ่าน API ซึ่งตรวจสิทธิ์ด้วยกติกา domain ชุดเดียวกัน (Admin SDK ข้าม Rules)
 - **อ่าน**: `get` = เปิด document หนึ่งรายการ, `list` = query ทั้ง collection โดยไม่กรอง (Rules ไม่กรองผลให้) และ**ต้องมี limit ไม่เกิน 200** ไม่มี limit หรือเกินถูกปฏิเสธทุก collection (D-S10-4) หน้า “ดูทั้งหมด” แบ่งหน้าละ 50
 - บัญชีต้อง login ด้วย Google อีเมล @tdfb.co ที่ verified (ตรวจหลังแปลงเป็นตัวพิมพ์เล็ก TDFB.CO จึงเป็นโดเมนเดียวกัน ส่วนโดเมนหน้าตาคล้ายถูกปฏิเสธ, D-S10-5) และ `access/{uid}.enabled` = true; role อ่านจาก `access/{uid}` ไม่ใช่ custom claim
-- ขนาด matrix: 16 role × 45 collection/path × 5 operation = 3600 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
+- ขนาด matrix: 16 role × 46 collection/path × 5 operation = 3680 ช่อง อนุญาต 279 ช่อง ที่เหลือปฏิเสธ
 
 ## สิทธิ์พื้นฐาน: ทุกบัญชีที่ใช้งานได้
 

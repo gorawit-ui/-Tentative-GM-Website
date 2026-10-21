@@ -1,12 +1,19 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router';
 import { App } from './App';
+import { SessionProvider } from './session-context';
+import './styles/app.css';
 
-const container = document.getElementById('root');
-if (container === null) throw new Error('Missing #root element');
+const root = document.getElementById('root');
+if (root === null) throw new Error('index.html must contain #root');
 
-createRoot(container).render(
+createRoot(root).render(
   <StrictMode>
-    <App />
+    <BrowserRouter>
+      <SessionProvider>
+        <App />
+      </SessionProvider>
+    </BrowserRouter>
   </StrictMode>,
 );

@@ -12,8 +12,15 @@ type FirestoreValue =
   | { mapValue: { fields: Record<string, FirestoreValue> } };
 
 export type FixtureData = Record<string, unknown>;
+/** A09: a Google account in the Auth emulator (uid fixed so `access/{uid}` can be seeded). */
+export interface FixtureAuthUser {
+  readonly uid: string;
+  readonly email: string;
+  readonly name: string;
+}
 export interface Fixtures {
   readonly collections: Record<string, Record<string, FixtureData>>;
+  readonly auth_users: Record<string, FixtureAuthUser | string>;
 }
 
 export interface EmulatorTarget {
@@ -87,4 +94,42 @@ export async function readDocument(target: EmulatorTarget, collection: string, i
   const response = await expectOk(await fetch(documentUrl(target, collection, id), { headers: OWNER }), `read ${collection}/${id}`);
   const document = (await response.json()) as { fields?: Record<string, FirestoreValue> };
   return fromValue({ mapValue: { fields: document.fields ?? {} } }) as FixtureData;
+}
+
+/** A09: the Auth emulator of the same demo project (`FIREBASE_AUTH_EMULATOR_HOST`). */
+function authHost(): string {
+  const host = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  if (!host) throw new Error('Run E2E with `npm run test:e2e` (the Auth emulator is part of the e2e profile).');
+  return host;
+}
+
+export function fixtureAuthUsers(): FixtureAuthUser[] {
+  return Object.values(loadFixtures().auth_users).filter((user): user is FixtureAuthUser => typeof user === 'object');
+}
+
+export async function clearAuthUsers({ project }: EmulatorTarget): Promise<void> {
+  await expectOk(await fetch(`http://${authHost()}/emulator/v1/projects/${project}/accounts`, { method: 'DELETE' }), 'clear Auth emulator');
+}
+
+/**
+ * Google accounts with fixed UIDs; the emulator's sign-in window lists them, and picking one signs in
+ * as that UID (the Google subject is the account's provider raw ID).
+ */
+export async function createAuthUsers({ project }: EmulatorTarget, users: readonly FixtureAuthUser[]): Promise<void> {
+  const response = await fetch(`http://${authHost()}/identitytoolkit.googleapis.com/v1/projects/${project}/accounts:batchCreate`, {
+    method: 'POST',
+    headers: { ...OWNER, 'content-type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({
+      users: users.map((user) => ({
+        localId: user.uid,
+        email: user.email,
+        emailVerified: true,
+        displayName: user.name,
+        providerUserInfo: [{ providerId: 'google.com', rawId: `google-${user.uid}`, email: user.email, displayName: user.name }],
+      })),
+    }),
+  });
+  await expectOk(response, 'create Auth emulator accounts');
+  const body = (await response.json()) as { error?: unknown[] };
+  if ((body.error ?? []).length > 0) throw new Error(`create Auth emulator accounts: ${JSON.stringify(body.error)}`);
 }

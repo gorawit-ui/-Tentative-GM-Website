@@ -10,6 +10,7 @@
     { "path": "./apps/worker" },
     { "path": "./apps/web/tsconfig.app.json" },
     { "path": "./apps/web/tsconfig.node.json" },
+    { "path": "./apps/web/tsconfig.test.json" },
     { "path": "./tests/rules" },
     { "path": "./tests/emulator" },
     { "path": "./tests/e2e" },

@@ -5,10 +5,12 @@
 //   ok                                   → accepted (`slack:{channel}:{ts}`)
 //   user/channel not found, no Slack ID  → unmapped: nothing was posted, the worker uses e-mail (A1.2)
 //   the user is disabled (D-A07-4)       → unmapped `SLACK_USER_DISABLED`: e-mail too
+//   the app itself (token, account, scopes; D-A08-6) → unavailable `SLACK_<ERROR>`: e-mail too, and
+//                                          the Admin health turns red (no Slack message can go)
 //   429 / `ratelimited`                  → retryable, with Retry-After when Slack gives one
 //   unreachable before sending, 503      → retryable
 //   no answer in time, 500, Slack's own internal error → unknown: it may have been posted
-//   anything else (bad token, the app's account inactive, missing scope…) → permanent `SLACK_<ERROR>`
+//   anything else (about this one message, e.g. too long) → permanent `SLACK_<ERROR>`
 // Tests point `apiBaseUrl` at a fake on 127.0.0.1; the real Slack is used only after P7-ADMIN-03.
 // Nothing here logs the token, the Slack ID, the number or the text.
 import type { DeliveryOutcome } from '@gm/domain';
@@ -34,6 +36,20 @@ export const DEFAULT_SLACK_TIMEOUT_MS = 10_000;
 /** Slack cannot reach the stored ID (unknown, or D-A07-4 the user is disabled): nothing was posted. */
 const UNMAPPED_ERRORS: ReadonlySet<string> = new Set(['user_not_found', 'channel_not_found']);
 const DISABLED_ERRORS: ReadonlySet<string> = new Set(['user_disabled']);
+/** D-A08-6: the app's token, account or scopes do not work — nothing was posted, for anyone. */
+const APP_ERRORS: ReadonlySet<string> = new Set([
+  'account_inactive',
+  'invalid_auth',
+  'not_authed',
+  'token_revoked',
+  'token_expired',
+  'missing_scope',
+  'no_permission',
+  'not_allowed_token_type',
+  'team_access_not_granted',
+  'org_login_required',
+  'ekm_access_denied',
+]);
 /** Slack failed on its side after receiving the request: it may have been posted. */
 const UNKNOWN_ERRORS: ReadonlySet<string> = new Set(['internal_error', 'fatal_error', 'request_timeout']);
 /** Slack refused before doing anything; worth another try later. */
@@ -44,7 +60,6 @@ function errorCode(error: unknown): string {
   const word = typeof error === 'string' ? error.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 48) : '';
   return word === '' ? 'SLACK_ERROR' : `SLACK_${word}`;
 }
-
 
 async function outcomeOf(response: Response): Promise<DeliveryOutcome> {
   if (response.status === 429) return { kind: 'retryable', code: 'SLACK_RATE_LIMITED', ...retryAfterMs(response.headers.get('retry-after')) };
@@ -62,6 +77,7 @@ async function outcomeOf(response: Response): Promise<DeliveryOutcome> {
   const error = typeof body.error === 'string' ? body.error : '';
   if (UNMAPPED_ERRORS.has(error)) return { kind: 'unmapped' };
   if (DISABLED_ERRORS.has(error)) return { kind: 'unmapped', code: errorCode(error) };
+  if (APP_ERRORS.has(error)) return { kind: 'unavailable', code: errorCode(error) };
   if (error === 'ratelimited') return { kind: 'retryable', code: 'SLACK_RATE_LIMITED', ...retryAfterMs(response.headers.get('retry-after')) };
   if (UNKNOWN_ERRORS.has(error)) return { kind: 'unknown', code: errorCode(error) };
   if (RETRYABLE_ERRORS.has(error)) return { kind: 'retryable', code: errorCode(error) };

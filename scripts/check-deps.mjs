@@ -20,6 +20,8 @@ const ALLOWED_LICENSES = new Set([
   'ISC',
   'MIT',
   'MPL-2.0',
+  // SIL Open Font License: free font files (A09: IBM Plex Sans Thai Looped, Part 3 §0.1 / Part 4 font).
+  'OFL-1.1',
   'Python-2.0',
   'public domain',
 ]);

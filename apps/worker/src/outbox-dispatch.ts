@@ -27,10 +27,15 @@
 // reaching the person (unknown ID, D-A07-4 disabled user) means nothing was posted, so the same
 // attempt goes by company e-mail (A1.2) and the entry records `delivery_channel: email` and why
 // (`slack_fallback_code`). D-A07-8: in dev the adapter may answer `suppressed` (not on the sandbox list).
+// D-A08-6: Slack refusing the app itself (token, account, scopes) goes by e-mail the same way, and the
+// settle transaction keeps the app's state (`integration_state/slack_app`) for the Admin health
+// (FU-25): `app_error` from the first such answer, `ok` again at the next Slack send that goes through
+// — read only when Slack answered one of these two, written only when it changes.
 import { OUTBOX_HEADS_COLLECTION, STATUS_NOTICE_KINDS, WAITING_PARTY_NOTICE_KINDS, intervalPath, latestStatusRevision } from '@gm/api/commands';
 import { requesterNoticeFields, requesterNoticeStateOf, type RequestRecord } from '@gm/contracts';
 import {
   DELIVERY_LEASE_MS,
+  channelAppStateAfter,
   chooseDeliveryChannel,
   claimDelivery,
   isDeliveryState,
@@ -47,6 +52,8 @@ import type { WorkerDeps } from './deps';
 import type { StoredData, WorkerTransaction } from './store';
 
 export const OUTBOX_COLLECTION = 'outbox';
+/** D-A08-6: the Slack app's state (server only; the Admin reads it through the API, FU-25). */
+export const SLACK_APP_STATE_PATH = 'integration_state/slack_app';
 
 export type DispatchResult = 'sent' | 'retry' | 'failed' | 'unknown' | 'suppressed' | 'skipped' | 'lease_lost';
 
@@ -378,11 +385,14 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
 
   let message = claimed.message;
   let outcome = await send(deps, message);
+  // D-A08-6: Slack's own answer decides the app's state, whatever the e-mail that follows does.
+  const slackOutcome = message.channel === 'slack' ? outcome : undefined;
   let fallbackCode: string | undefined;
-  if (outcome.kind === 'unmapped' && message.channel === 'slack') {
+  if ((outcome.kind === 'unmapped' || outcome.kind === 'unavailable') && message.channel === 'slack') {
     // A1.2 / D-A07-4: Slack cannot reach this person (nothing was posted) → company e-mail, same attempt.
+    // D-A08-6: nor anyone, the app itself is refused → e-mail too, or no one hears anything.
     fallbackCode = outcome.code ?? 'SLACK_NOT_MAPPED';
-    deps.log.warn('notification.slack_unmapped', { outbox_id: outboxId, code: fallbackCode });
+    deps.log.warn(outcome.kind === 'unavailable' ? 'notification.slack_app_error' : 'notification.slack_unmapped', { outbox_id: outboxId, code: fallbackCode });
     message = { ...message, channel: 'email', address: claimed.entry.recipientId };
     outcome = await send(deps, message);
   }
@@ -392,6 +402,11 @@ export async function dispatchOutbox(deps: WorkerDeps, outboxId: string): Promis
     if (stored === undefined || stored.state !== 'processing' || stored.lease_id !== leaseId) return 'lease_lost' as const;
     const observation = claimed.entry.audience === 'requester' ? observationOf(claimed.entry, settlement, deps.now()) : undefined;
     const badge = observation === undefined ? undefined : await readBadge(transaction, claimed.entry.requestId);
+    const appState =
+      slackOutcome?.kind === 'accepted' || slackOutcome?.kind === 'unavailable'
+        ? channelAppStateAfter(await transaction.get(SLACK_APP_STATE_PATH), slackOutcome, deps.now())
+        : undefined;
+    if (appState !== undefined) transaction.set(SLACK_APP_STATE_PATH, { ...appState });
     transaction.set(path, {
       ...settledEntry(stored, settlement, claimed.attemptedAt),
       // A08: deferred by the app's own e-mail cap — nothing was tried, the attempt is given back.

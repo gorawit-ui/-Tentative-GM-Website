@@ -57,8 +57,9 @@ const LINK_LABEL = 'เปิดงาน';
 const MAX_TITLE_CHARS = 100;
 /** D-A07-1: a note is shown up to 200 characters. */
 const MAX_NOTE_CHARS = 200;
-const ANSWER_LINE = "ทำเสร็จแล้ว กด 'ฝั่งฉันเรียบร้อยแล้ว' ในลิงก์";
-const NOT_RESOLVED_LINE = "ถ้ายังไม่เรียบร้อย กด 'ยังไม่เรียบร้อย' ในลิงก์";
+/** D-A08-5: the button's name quoted “ ” as on the screen, so people find it by its words. */
+const ANSWER_LINE = 'ทำเสร็จแล้ว กด “ฝั่งฉันเรียบร้อยแล้ว” ในลิงก์';
+const NOT_RESOLVED_LINE = 'ถ้ายังไม่เรียบร้อย กด “ยังไม่เรียบร้อย” ในลิงก์';
 
 /** Whitespace collapsed to one line, cut to `max` characters (the last one “…” when cut). */
 function oneLine(value: string | undefined, max: number): string | undefined {
