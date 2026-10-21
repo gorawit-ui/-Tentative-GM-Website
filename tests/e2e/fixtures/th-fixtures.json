@@ -80,10 +80,14 @@
       "area-wh300-office-2": { "location_id": "loc-wh300", "label": "ออฟฟิศชั้น 2", "active": true, "order": 3 },
       "area-wh300-store-3": { "location_id": "loc-wh300", "label": "คลังสินค้าชั้น 3", "active": true, "order": 4 },
       "area-wh300-store-4": { "location_id": "loc-wh300", "label": "คลังสินค้าชั้น 4", "active": true, "order": 5 },
-      "area-wh300-storage-5": { "location_id": "loc-wh300", "label": "ห้องเก็บของชั้น 5", "active": true, "order": 6 }
+      "area-wh300-storage-5": { "location_id": "loc-wh300", "label": "ห้องเก็บของชั้น 5", "active": true, "order": 6 },
+      "area-cafe222-bar": { "location_id": "loc-cafe222", "label": "เคาน์เตอร์บาร์", "active": true, "order": 1 },
+      "area-cafe222-old": { "location_id": "loc-cafe222", "label": "ห้องเก็บของเดิม (ปิดแล้ว)", "active": false, "order": 2, "qr_id": "A12FixtureQrCafeOld001" }
     },
     "qr_codes": {
-      "A11FixtureQrPackOne001": { "location_id": "loc-wh300", "area_id": "area-wh300-pack-1", "active": true }
+      "A11FixtureQrPackOne001": { "location_id": "loc-wh300", "area_id": "area-wh300-pack-1", "active": true },
+      "A12FixtureQrCafeOld001": { "location_id": "loc-cafe222", "area_id": "area-cafe222-old", "active": true },
+      "A12FixtureQrDisabled01": { "location_id": "loc-cafe222", "area_id": "area-cafe222-bar", "active": false }
     },
     "calendars": {
       "company": { "timezone": "Asia/Bangkok", "open_weekdays": [1, 2, 3, 4, 5], "holidays": ["2026-12-31", "2027-01-01"], "holiday_names": { "2026-12-31": "วันสิ้นปี (ตัวอย่าง)", "2027-01-01": "วันขึ้นปีใหม่ (ตัวอย่าง)" } }
@@ -101,6 +105,9 @@
       "req-a10-busy-0001": { "request_number": "DEV-9001", "status": "queued", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" },
       "req-a10-busy-0002": { "request_number": "DEV-9002", "status": "in_progress", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" },
       "req-a10-busy-0003": { "request_number": "DEV-9003", "status": "cancelled", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" }
+    },
+    "settings": {
+      "routing": { "default_owner_by_type": { "maintenance": "a09.gm@tdfb.co" } }
     }
   },
   "auth_users": {
