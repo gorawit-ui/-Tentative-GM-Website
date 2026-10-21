@@ -32,6 +32,8 @@ const ownRow = (page: Page, project: string) =>
 
 async function mapColumns(page: Page): Promise<void> {
   await page.getByLabel('ไฟล์ CSV รายชื่อพนักงาน').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.from(`${CSV}\r\n`, 'utf8') });
+  // D-A10-3: the first rows are confirmed readable before columns are chosen.
+  await page.getByRole('button', { name: 'อ่านออกถูกต้อง ไปเลือกคอลัมน์' }).click();
   await page.getByLabel('คอลัมน์อีเมล').selectOption({ label: 'Primary Email' });
   await page.getByLabel('คอลัมน์ชื่อที่แสดง').selectOption({ label: 'First Name [Required]' });
   await page.getByLabel('คอลัมน์ทีม (ไม่บังคับ)').selectOption({ label: 'Department' });

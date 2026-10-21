@@ -33,7 +33,8 @@ function ContactLabel({ contact }: { readonly contact: PublicContact }) {
   );
 }
 
-export function ContactBox() {
+/** A1.3 on the login page; A12 (FU-21) reuses it, titled for a signed-in person, when the form cannot take a request. */
+export function ContactBox({ title = 'ไม่มีบัญชีบริษัท? แจ้งทีม GM', intro = 'ทีม GM จะช่วยเปิดเรื่องให้ ติดต่อได้ตามช่องทางด้านล่าง ไม่ต้องเข้าสู่ระบบ' }: { readonly title?: string; readonly intro?: string } = {}) {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
 
@@ -58,8 +59,8 @@ export function ContactBox() {
 
   return (
     <section className="gm-contact-box" aria-labelledby="no-account-heading">
-      <h2 id="no-account-heading">ไม่มีบัญชีบริษัท? แจ้งทีม GM</h2>
-      <p>ทีม GM จะช่วยเปิดเรื่องให้ ติดต่อได้ตามช่องทางด้านล่าง ไม่ต้องเข้าสู่ระบบ</p>
+      <h2 id="no-account-heading">{title}</h2>
+      <p>{intro}</p>
       {load.kind === 'loading' && <p role="status">กำลังโหลดช่องทางติดต่อ…</p>}
       {load.kind === 'failed' && (
         <div className="gm-notice gm-notice--warning" role="status">

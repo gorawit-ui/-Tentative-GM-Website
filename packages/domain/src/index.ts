@@ -38,6 +38,7 @@ export {
   cancelRequest,
   completeRequest,
   confirmCompletion,
+  releaseAssignment,
   reopenRequest,
   reportNotResolved,
   type ActorCommand,
@@ -239,6 +240,7 @@ export {
   TICK_STALE_AFTER_MS,
   systemHealth,
   tickHealth,
+  type DefaultOwnerProblem,
   type FailedJob,
   type HealthFacts,
   type HealthLevel,
@@ -254,4 +256,5 @@ export {
   planRemoveHoliday,
   type CompanyCalendarContent,
 } from './company-calendar';
-export { accessFor, linkDecision, planPersonActive, planPersonRole, type PersonFacts } from './people-admin';
+export { accessFor, defaultOwnerIssue, isGmRole, linkDecision, planPersonActive, planPersonRole, type DefaultOwnerIssue, type PersonFacts } from './people-admin';
+export { MAINTENANCE_SYMPTOMS, OTHER_SYMPTOM_KEY, maintenanceSymptom, repairTitlePreview, type MaintenanceSymptom } from './maintenance-catalog';

@@ -3,37 +3,11 @@
 // own idempotency key (a retry of the same click never runs twice). Errors come back as codes.
 import type { AdminCalendarView, AdminHealthView, AdminPlacesView, PeopleImportRow } from '@gm/contracts';
 import type { Role } from '@gm/domain';
-import { auth, webConfig } from '../firebase';
+import { ApiCallError, apiCall } from '../api-client';
 
-export class AdminApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-  constructor(status: number, code: string) {
-    super(code);
-    this.name = 'AdminApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
+export { ApiCallError as AdminApiError } from '../api-client';
 
-async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
-  const user = auth.currentUser;
-  if (user === null) throw new AdminApiError(401, 'UNAUTHENTICATED');
-  let response: Response;
-  try {
-    response = await fetch(`${webConfig.apiBaseUrl}${path}`, {
-      method,
-      credentials: 'omit',
-      headers: { authorization: `Bearer ${await user.getIdToken()}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-  } catch {
-    throw new AdminApiError(0, 'NETWORK');
-  }
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) throw new AdminApiError(response.status, typeof payload.error === 'string' ? payload.error : 'INTERNAL');
-  return payload as T;
-}
+const call = apiCall;
 
 export const getPlaces = () => call<AdminPlacesView>('GET', '/api/admin/places');
 export const getCalendar = () => call<AdminCalendarView>('GET', '/api/admin/calendar');
@@ -50,6 +24,8 @@ export interface PersonView {
   readonly linked: boolean;
   readonly slack_mapped: boolean;
   readonly in_latest_import: boolean;
+  /** D-A10-2: open requests this person is the assignee of. */
+  readonly open_assigned: number;
 }
 
 export interface PeoplePage {
@@ -105,7 +81,7 @@ export function adminCommand(type: string, payload: Record<string, unknown>, com
 /** Thai words for the codes an Admin page can meet (Part 3 §13 states: say why, keep the form). */
 const MESSAGES: Readonly<Record<string, string>> = {
   AREA_LABEL_TAKEN: 'มีบริเวณชื่อนี้ในสถานที่นี้แล้ว',
-  LABEL_INVALID: 'ชื่อต้องมี 1–60 ตัวอักษร',
+  LABEL_INVALID: 'ชื่อต้องมี 1–60 ตัวอักษร (ชื่อคนไม่เกิน 100)',
   LOCATION_INACTIVE: 'สถานที่นี้ถูกปิดใช้งาน เปิดใช้งานก่อนเพิ่มบริเวณ',
   LOCATION_NOT_FOUND: 'ไม่พบสถานที่นี้ ลองโหลดหน้าใหม่',
   AREA_NOT_FOUND: 'ไม่พบบริเวณนี้ ลองโหลดหน้าใหม่',
@@ -121,6 +97,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   LOCATION_LABEL_TAKEN: 'มีสถานที่ชื่อนี้แล้ว',
   LAST_GM_ADMIN: 'ต้องมี GM Admin ที่ใช้งานอยู่อย่างน้อย 1 คน จึงเปลี่ยนสิทธิ์หรือปิดบัญชีคนนี้ไม่ได้',
   PERSON_EXISTS: 'คนนี้อยู่ในรายชื่อแล้ว',
+  OPEN_REQUESTS_ASSIGNED: 'จำนวนงานที่คนนี้รับผิดชอบเปลี่ยนไปแล้ว ตรวจจำนวนใหม่แล้วยืนยันอีกครั้ง',
   PERSON_NOT_FOUND: 'ไม่พบคนนี้ในรายชื่อ ลองโหลดหน้าใหม่',
   FIELD_INVALID: 'ข้อมูลไม่ถูกต้อง ตรวจแล้วลองใหม่',
   GM_ADMIN_ONLY: 'บัญชีนี้ไม่มีสิทธิ์ GM Admin',
@@ -128,6 +105,6 @@ const MESSAGES: Readonly<Record<string, string>> = {
 };
 
 export function adminErrorText(error: unknown): string {
-  const code = error instanceof AdminApiError ? error.code : 'INTERNAL';
+  const code = error instanceof ApiCallError ? error.code : 'INTERNAL';
   return MESSAGES[code] ?? `บันทึกไม่สำเร็จ (${code}) ลองใหม่อีกครั้ง`;
 }

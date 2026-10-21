@@ -19,6 +19,8 @@ import {
   completeRequest,
   confirmCompletion,
   isGm,
+  allGmNoticeRecipients,
+  releaseAssignment,
   reopenRequest,
   reportNotResolved,
   type Actor,
@@ -29,7 +31,7 @@ import {
 import type { Instant } from '@gm/time';
 import { fromCalendarSnapshotDocument, toCalendarSnapshotDocument } from '../calendar-snapshot';
 import { CommandRejected, type PeopleDirectory, type RoutingFacts } from './execute-command';
-import { lifecycleOutbox, type LifecycleNoticeKind } from './outbox';
+import { lifecycleOutbox, unassignedOutbox, type LifecycleNoticeKind, type OutboxEntry } from './outbox';
 import {
   advanced,
   currentState,
@@ -103,6 +105,8 @@ const NOTICE_KIND: Readonly<Record<LifecycleEvent['kind'], LifecycleNoticeKind |
   reopened: 'request_reopened',
   // Closing does not change the status; the requester or the tick did it (no notice, Q-A03-3).
   closed: undefined,
+  // D-A10-2: the GMs hear it (unassignedOutbox), the requester's request just waits again.
+  unassigned: undefined,
 };
 
 function historyDocument(event: LifecycleEvent, revision: number, autoCloseDueAt: Instant | undefined): Record<string, unknown> {
@@ -134,7 +138,15 @@ function persist(
   transaction: RecordTransaction,
   loaded: Loaded,
   outcome: { readonly state: LifecycleState; readonly event: LifecycleEvent },
-  context: { readonly actorId: string; readonly now: Instant; readonly routing: RoutingFacts; readonly peopleDirectory: PeopleDirectory; readonly interval?: StoredData | undefined },
+  context: {
+    readonly actorId: string;
+    readonly now: Instant;
+    readonly routing: RoutingFacts;
+    readonly peopleDirectory: PeopleDirectory;
+    readonly interval?: StoredData | undefined;
+    /** Notices built from the request after the change (D-A10-2: every GM on release). */
+    readonly extraNotices?: (next: RequestRecord) => readonly OutboxEntry[];
+  },
 ): Promise<Persisted> {
   const { requestId, record } = loaded;
   const { state, event } = outcome;
@@ -162,6 +174,7 @@ function persist(
           ...(noticeKind === 'request_completed' && next.auto_close_due_at !== undefined ? { autoCloseDueAt: next.auto_close_due_at } : {}),
           now,
         });
+  const allNotices = [...notices, ...(context.extraNotices?.(next) ?? [])];
   const extraWrites: { path: string; data: object }[] = [];
   if (event.kind === 'completed' && next.closed_at === undefined && next.auto_close_due_at !== undefined) {
     // Part 6 §6.9 auto-close: one job per request + completion cycle, run by the worker's tick.
@@ -181,7 +194,7 @@ function persist(
   if (event.endedWaitingInterval !== undefined) {
     extraWrites.push({ path: intervalPath(requestId, event.endedWaitingInterval.intervalId), data: exitedInterval(context.interval, event.endedWaitingInterval, 'cancelled') });
   }
-  return persistChange(transaction, loaded, { next, history: historyDocument(event, next.revision, next.auto_close_due_at), notices, extraWrites }, context);
+  return persistChange(transaction, loaded, { next, history: historyDocument(event, next.revision, next.auto_close_due_at), notices: allNotices, extraWrites }, context);
 }
 
 function conflict(loaded: Loaded, command: LifecycleCommandEnvelope, actor: Actor): never {
@@ -272,4 +285,41 @@ export async function autoCloseInTransaction(
   const routing = await directories.routingDirectory.load(transaction);
   await persist(transaction, loaded, result, { actorId: 'system', now: input.now, routing, peopleDirectory: directories.peopleDirectory });
   return { kind: 'closed' };
+}
+
+/**
+ * D-A10-2: the Admin switched off `personId`, a GM: if this request is still theirs and open, it becomes
+ * “ยังไม่มอบหมาย” (actor `system`) and every available GM hears it. Rechecks the latest request, so a
+ * request already released or taken by someone else is left alone (returns false) — safe to repeat.
+ */
+export async function releaseAssignmentOf(
+  transaction: RecordTransaction,
+  input: { readonly requestId: string; readonly personId: string; readonly now: Instant },
+  directories: LifecycleDirectories,
+): Promise<boolean> {
+  const loaded = await loadRequest(transaction, input.requestId);
+  if (loaded === undefined) return false;
+  const { record } = loaded;
+  const interval = record.current_waiting_interval_id === undefined ? undefined : await transaction.get(intervalPath(loaded.requestId, record.current_waiting_interval_id));
+  const outcome = releaseAssignment(toLifecycleState(record, interval), { personId: input.personId, now: input.now });
+  if (outcome === undefined) return false;
+  const routing = await directories.routingDirectory.load(transaction);
+  await persist(transaction, loaded, outcome, {
+    actorId: 'system',
+    now: input.now,
+    routing,
+    peopleDirectory: directories.peopleDirectory,
+    interval,
+    extraNotices: (next) =>
+      unassignedOutbox({
+        requestId: loaded.requestId,
+        requestNumber: next.request_number,
+        revision: next.revision,
+        activitySeq: next.activity_seq ?? next.revision,
+        gmRecipientIds: allGmNoticeRecipients(routing.members, input.now, input.personId),
+        isConfidential: next.is_confidential,
+        now: input.now,
+      }),
+  });
+  return true;
 }

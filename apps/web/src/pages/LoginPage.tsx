@@ -1,6 +1,7 @@
 // A09 — UI-01 login. Mobile order: service name → short text → “เข้าสู่ระบบด้วย Google” → “ใช้บัญชี
 // @tdfb.co” → the no-account contact box; desktop: the same in a box about 440px wide in the middle. The
 // three errors are told apart (cancelled / failed / not a company account), each with a way on.
+import { useSearchParams } from 'react-router';
 import { ContactBox } from '../components/ContactBox';
 import { useSession, type LoginNotice } from '../session-context';
 
@@ -30,6 +31,9 @@ function Notice({ notice }: { readonly notice: LoginNotice }) {
 
 export function LoginPage({ busy }: { readonly busy: boolean }) {
   const { notice, signInWithGoogle } = useSession();
+  // UI-01: opened from a QR code — the code is kept in the return address and the form opens after login.
+  const [params] = useSearchParams();
+  const fromQr = params.get('next')?.startsWith('/q/') === true;
   return (
     <main className="gm-login" id="main">
       <div className="gm-login-card gm-page" data-testid="login-card">
@@ -40,6 +44,7 @@ export function LoginPage({ busy }: { readonly busy: boolean }) {
           <h1>GM One Stop Service</h1>
         </div>
         <p>แจ้งซ่อม ติดตามงาน และติดต่อทีม GM ในที่เดียว</p>
+        {fromQr && <p className="gm-notice gm-notice--info">เข้าสู่ระบบเพื่อแจ้งซ่อมจากจุดที่สแกน — เข้าแล้วจะกลับมาที่ฟอร์มของจุดนั้นทันที</p>}
         {notice !== undefined && !busy && <Notice notice={notice} />}
         <button type="button" className="gm-btn gm-btn--primary w-full px-8" disabled={busy} onClick={() => void signInWithGoogle()}>
           เข้าสู่ระบบด้วย Google

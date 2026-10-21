@@ -10,7 +10,7 @@ import { ContractRejected, parseAdminCommand, parseCommand, parsePeopleImportBod
 import { LifecycleRejected, RequestRejected, requireGmAdmin, type DeploymentEnvironment } from '@gm/domain';
 import { executeAdminCommand } from '../admin/commands';
 import { randomAreaId, randomQrId } from '../admin/ids';
-import { importPeople, linkAccount, previewPeople, readPeople, readUnlisted } from '../admin/people';
+import { importPeople, linkAccount, previewPeople, readPeople, readUnlisted, runReleaseJob } from '../admin/people';
 import { readCalendar, readHealth, readPlaces } from '../admin/reads';
 import {
   CommandRejected,
@@ -23,6 +23,8 @@ import {
 import {
   ApiError,
   authenticate,
+  readQrState,
+  readRepairOptions,
   countAwaitingConfirmation,
   createUploadUrl,
   createViewUrl,
@@ -110,6 +112,8 @@ const CONFLICT_CODES = new Set([
   'NOT_WAITING',
   'STALE_WAITING_INTERVAL',
   'ALREADY_RESPONDED',
+  // D-A10-2: the Admin must confirm the latest count of open requests a GM holds.
+  'OPEN_REQUESTS_ASSIGNED',
   // A11: the Admin's change clashes with what is there (Part 3 §13 states: keep the form, say why).
   'AREA_LABEL_TAKEN',
   'LOCATION_LABEL_TAKEN',
@@ -120,7 +124,7 @@ const CONFLICT_CODES = new Set([
   'PERSON_EXISTS',
 ]);
 const NOT_FOUND_CODES = new Set(['REQUEST_NOT_FOUND', 'LOCATION_NOT_FOUND', 'AREA_NOT_FOUND', 'QR_NOT_FOUND', 'HOLIDAY_NOT_FOUND', 'PERSON_NOT_FOUND']);
-const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY']);
+const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY', 'PLACES_NOT_SET_UP']);
 
 function statusOfDomainCode(code: string): number {
   if (FORBIDDEN_CODES.has(code)) return 403;
@@ -266,6 +270,12 @@ function routes(deps: HttpDeps): readonly Route[] {
           newAreaId: deps.newAreaId ?? randomAreaId,
           newQrId: deps.newQrId ?? randomQrId,
         });
+        // D-A10-2: the open requests of a GM just switched off are released now (the worker finishes
+        // the job if this stops half way).
+        const releaseJob = outcome.result.release_job;
+        if (typeof releaseJob === 'string') {
+          await runReleaseJob(deps.commandStore, releaseJob, { now: api.now(), directories: { peopleDirectory: deps.peopleDirectory, routingDirectory: deps.routingDirectory } });
+        }
         return { status: 200, body: { replayed: outcome.replayed, result: outcome.result } };
       },
     },
@@ -295,6 +305,19 @@ function routes(deps: HttpDeps): readonly Route[] {
         }
         return { status: 200, body: { replayed: outcome.replayed, result: outcome.result } };
       },
+    },
+    {
+      // A12: the repair form (every signed-in active account, D-S04-6); nothing before login.
+      name: 'repair.options',
+      method: 'GET',
+      pattern: /^\/api\/repair\/options$/,
+      handle: async ({ token }) => ({ status: 200, body: await readRepairOptions(api, token) }),
+    },
+    {
+      name: 'repair.qr',
+      method: 'GET',
+      pattern: new RegExp(`^/api/repair/qr/${SEGMENT}$`),
+      handle: async ({ token, params }) => ({ status: 200, body: await readQrState(api, token, params[0] ?? '') }),
     },
     {
       name: 'requests.detail',

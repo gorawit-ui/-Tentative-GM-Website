@@ -2,7 +2,18 @@
 // once per page open (no listeners): the places with their QR codes, the company calendar with the
 // reminder time, and the system health as counts and codes — never who a notice was for (FU-25).
 import type { AdminCalendarView, AdminHealthView, AdminPlacesView } from '@gm/contracts';
-import { DEFAULT_WORKING_MORNING_TIME, SLACK_FALLBACK_CODES, companyCalendarContentOf, systemHealth, type FailedJob } from '@gm/domain';
+import {
+  DEFAULT_WORKING_MORNING_TIME,
+  REQUEST_TYPES,
+  ROLES,
+  SLACK_FALLBACK_CODES,
+  companyCalendarContentOf,
+  defaultOwnerIssue,
+  systemHealth,
+  type DefaultOwnerProblem,
+  type FailedJob,
+  type Role,
+} from '@gm/domain';
 import { isLocalTimeOfDay } from '@gm/time';
 import { Timestamp, type Query } from 'firebase-admin/firestore';
 import type { ApiDeps } from '../endpoints/deps';
@@ -82,6 +93,21 @@ export async function readCalendar(api: Pick<ApiDeps, 'db'>): Promise<AdminCalen
 
 const countOf = async (query: Query) => (await query.count().get()).data().count;
 
+/** D-A10-1: each configured default owner that is not an active GM (by the role in people). */
+async function defaultOwnerProblems(db: ApiDeps['db']): Promise<DefaultOwnerProblem[]> {
+  const owners = ((await db.doc('settings/routing').get()).data()?.default_owner_by_type ?? {}) as Record<string, unknown>;
+  const problems: DefaultOwnerProblem[] = [];
+  for (const type of REQUEST_TYPES) {
+    const ownerId = owners[type];
+    if (type === 'gm_task' || typeof ownerId !== 'string' || ownerId === '') continue;
+    const person = (await db.doc(`people/${ownerId}`).get()).data();
+    const role = (ROLES as readonly string[]).includes(String(person?.role)) ? (person?.role as Role) : 'requester';
+    const code = defaultOwnerIssue(person === undefined ? undefined : { personId: ownerId, role, active: person.active === true });
+    if (code !== undefined) problems.push({ type, code });
+  }
+  return problems;
+}
+
 export async function readHealth(api: Pick<ApiDeps, 'db' | 'now'>): Promise<AdminHealthView> {
   const { db } = api;
   const now = api.now();
@@ -91,7 +117,7 @@ export async function readHealth(api: Pick<ApiDeps, 'db' | 'now'>): Promise<Admi
   // e-mail cap queue is what waits now, so it is counted whole.
   const since = now - HEALTH_WINDOW_MS;
   const recent = (query: Query) => query.where('next_attempt_at', '>=', Timestamp.fromMillis(since));
-  const [tick, slackApp, failed, deliveryUnknown, emailCapPending, fallbackCounts, failedJobs, failedJobCount] = await Promise.all([
+  const [tick, slackApp, failed, deliveryUnknown, emailCapPending, fallbackCounts, failedJobs, failedJobCount, defaultOwnerIssues] = await Promise.all([
     db.doc('scheduled_work/tick').get(),
     db.doc('integration_state/slack_app').get(),
     countOf(recent(outbox.where('state', '==', 'failed'))),
@@ -100,6 +126,7 @@ export async function readHealth(api: Pick<ApiDeps, 'db' | 'now'>): Promise<Admi
     Promise.all(SLACK_FALLBACK_CODES.map(async (code) => [code, await countOf(recent(outbox.where('slack_fallback_code', '==', code)))] as const)),
     failedJobsQuery.limit(MAX_FAILED_JOBS_SHOWN).get(),
     countOf(failedJobsQuery),
+    defaultOwnerProblems(db),
   ]);
   const slackFallback: Record<string, number> = {};
   for (const [code, count] of fallbackCounts) if (count > 0) slackFallback[code] = count;
@@ -116,6 +143,7 @@ export async function readHealth(api: Pick<ApiDeps, 'db' | 'now'>): Promise<Admi
     slackFallback,
     failedJobs: jobs,
     failedJobCount,
+    defaultOwnerIssues,
   });
   const tickBody: AdminHealthView['tick'] =
     health.tick.level === 'ok'
@@ -135,5 +163,6 @@ export async function readHealth(api: Pick<ApiDeps, 'db' | 'now'>): Promise<Admi
     slack_fallback: health.slackFallback,
     failed_jobs: health.failedJobs,
     failed_job_count: health.failedJobCount,
+    default_owner_issues: health.defaultOwnerIssues,
   };
 }

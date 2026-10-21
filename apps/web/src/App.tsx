@@ -12,6 +12,7 @@ import { PeopleImportPage } from './admin/PeopleImportPage';
 import { QrPage, QrPrintPage } from './admin/QrPages';
 import { UsersPage } from './admin/UsersPage';
 import { AccountStatePage } from './pages/AccountStatePage';
+import { RepairPage } from './repair/RepairPage';
 import { AdminPage, FormPage, ForbiddenPage, HomePage, NotFoundPage, PlaceholderPage } from './pages/AppPages';
 import { LoginPage } from './pages/LoginPage';
 import { routeOf, type AppRoute } from './routes';
@@ -48,7 +49,8 @@ function Page({ route, role, name }: { readonly route: AppRoute; readonly role: 
     case 'my_requests':
       return <PlaceholderPage title="คำขอของฉัน" what="งานที่ฉันขอ และงานที่เกี่ยวข้องกับฉัน พร้อมจุด “มีอัปเดตใหม่”" />;
     case 'repair':
-      return <FormPage title={AREA_LABELS.repair} what="แบบฟอร์มแจ้งซ่อม 4 ขั้น: สถานที่และบริเวณ อาการ รายละเอียดและรูป ตรวจและส่ง" />;
+      // A12: steps 1–3 and the QR landing (`/q/:qr_id`); step 4 with A14.
+      return <RepairPage qrId={'qrId' in route ? route.qrId : undefined} />;
     case 'gm_create':
       return <FormPage title={AREA_LABELS.gm_create} what="ฟอร์มสร้างงาน GM หน้าเดียว และเปิดงานแทนผู้ขอ" />;
     case 'gm_on_behalf':

@@ -34,7 +34,7 @@ import type { Instant } from '@gm/time';
 import { COMMANDS_COLLECTION, COMMAND_EXPIRY_FIELD, COMMAND_RETENTION_MS, CommandRejected } from '../commands/execute-command';
 import { commandFingerprint } from '../commands/fingerprint';
 import type { CommandStore, CommandTransaction, StoredData } from '../commands/transaction-port';
-import { addPerson, setPersonActive, setPersonRole } from './people';
+import { addPerson, setPersonActive, setPersonRole, updatePerson } from './people';
 
 export const COMPANY_CALENDAR_PATH = 'calendars/company';
 export const NOTIFICATION_SETTINGS_PATH = 'settings/notifications';
@@ -213,9 +213,15 @@ async function run(transaction: CommandTransaction, command: AdminCommand, conte
     case 'set_person_role':
       return setPersonRole(transaction, command.payload.person_id, command.payload.role, now);
     case 'set_person_active':
-      return setPersonActive(transaction, command.payload.person_id, command.payload.active, now);
+      return setPersonActive(
+        transaction,
+        { personId: command.payload.person_id, active: command.payload.active, confirmedOpenAssigned: command.payload.release_open_requests, jobId: `release_assignments-${command.command_id}` },
+        now,
+      );
     case 'add_person':
       return addPerson(transaction, command.payload, now);
+    case 'update_person':
+      return updatePerson(transaction, { personId: command.payload.person_id, name: command.payload.name, team: command.payload.team, jobId: `display_refresh-${command.command_id}` }, now);
     case 'set_reminder_time': {
       const stored = await transaction.get(NOTIFICATION_SETTINGS_PATH);
       transaction.set(NOTIFICATION_SETTINGS_PATH, { ...stored, working_morning_time: command.payload.working_morning_time, updated_at: now });

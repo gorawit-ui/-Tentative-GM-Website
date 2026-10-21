@@ -145,11 +145,12 @@ beforeEach(async () => {
       name: NAMES[personId],
       email: personId,
       active: true,
+      // D-A10-1: who is a GM is the role in people.
+      role: personId === GM || personId === GM2 ? 'gm_staff' : 'requester',
       ...(SLACK_IDS[personId] === undefined ? {} : { slack_user_id: SLACK_IDS[personId] }),
       ...(TEAMS[personId] === undefined ? {} : { team_label: TEAMS[personId] }),
     });
   }
-  batch.set(worker.db.doc('settings/routing'), { gm_person_ids: [GM, GM2] });
   await batch.commit();
 });
 
@@ -650,8 +651,8 @@ describe('“ยังไม่มอบหมาย”: every GM hears it when 
     const ON_LEAVE = 'a07.gm.leave@tdfb.co';
     try {
       const batch = harness.db.batch();
-      batch.set(harness.db.doc(`people/${ON_LEAVE}`), { name: 'คุณจีเอ็ม ลา', email: ON_LEAVE, active: true, slack_user_id: 'U0A07LEAVE' });
-      batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: ON_LEAVE }, gm_person_ids: [ON_LEAVE, GM] });
+      batch.set(harness.db.doc(`people/${ON_LEAVE}`), { name: 'คุณจีเอ็ม ลา', email: ON_LEAVE, active: true, role: 'gm_staff', slack_user_id: 'U0A07LEAVE' });
+      batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: ON_LEAVE } });
       batch.set(harness.db.doc(`gm_profiles/${ON_LEAVE}`), { presence_status: { kind: 'on_leave' }, presence_updated_at: NOW - MINUTE_MS });
       batch.set(harness.db.doc(`gm_profiles/${GM}`), { presence_status: { kind: 'unspecified' } });
       batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: [] });
@@ -687,7 +688,8 @@ describe('“ยังไม่มอบหมาย”: every GM hears it when 
         expect(response.status).toBe(200);
         const { result } = (await response.json()) as { result: { request_id: string; request_number: string } };
         await runTick(deps());
-        expect(slack.calls.map((call) => call.body.channel)).toEqual([SLACK_IDS[GM]]);
+        // D-A10-1: every active GM by role (GM and GM2; the owner on leave is skipped).
+        expect(slack.calls.map((call) => call.body.channel).sort()).toEqual([SLACK_IDS[GM], SLACK_IDS[GM2]].sort());
         expect(texts()[0]?.split('\n')[0]).toBe(`*${result.request_number}* ยังไม่มอบหมาย รอทีม GM รับเรื่อง`);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));

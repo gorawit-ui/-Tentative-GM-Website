@@ -1,0 +1,43 @@
+/* A12 — UI-03 แจ้งซ่อม steps 1–3 and the QR landing (Part 3 §4, Part 5 Patch F6, prototype `.choice-grid`,
+   `.stepper`, `.action-bar`): two columns of choices, a stepper, the place and area on every step, and an
+   action bar of 64 px above the safe area on mobile (no bottom navigation during the form). Desktop: the
+   form about 720 px wide, the bar in the flow. app.css imports this file into the `components` layer;
+   colours are token RGB channels; nothing moves, so reduced motion needs no extra rule. */
+
+.gm-repair { display: grid; gap: var(--gm-space-3); max-width: 720px; padding-bottom: calc(64px + var(--gm-space-4) + env(safe-area-inset-bottom)); }
+.gm-repair-step { color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); font-weight: var(--gm-font-weight-medium); }
+
+.gm-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gm-space-2); margin: 0; padding: 0; list-style: none; }
+.gm-stepper li { min-width: 0; padding-top: var(--gm-space-1); border-top: 3px solid rgb(var(--gm-border)); color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); overflow-wrap: anywhere; }
+.gm-stepper .gm-stepper-done { border-color: rgb(var(--gm-brand-fg)); color: rgb(var(--gm-brand-fg)); font-weight: var(--gm-font-weight-semibold); }
+
+.gm-repair-context { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--gm-space-2); padding: var(--gm-space-2) var(--gm-space-3); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); }
+.gm-repair-context--qr { background: rgb(var(--gm-brand-soft)); }
+.gm-repair-context-text { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.gm-repair-context .gm-btn { min-height: var(--gm-touch-min); font-size: var(--gm-font-size-caption); }
+
+.gm-repair-step-panel { display: grid; gap: var(--gm-space-3); }
+.gm-repair-step-panel h2 { font-size: var(--gm-font-size-body); font-weight: var(--gm-font-weight-semibold); }
+
+.gm-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gm-space-2); }
+.gm-choice { display: flex; align-items: center; gap: var(--gm-space-2); min-width: 0; min-height: 56px; padding: var(--gm-space-2) var(--gm-space-3); color: rgb(var(--gm-text)); text-align: left; line-height: var(--gm-line-height-label); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-control-border)); border-radius: var(--gm-radius-control); cursor: pointer; }
+.gm-choice-label { min-width: 0; overflow-wrap: anywhere; }
+.gm-choice svg { flex-shrink: 0; margin-left: auto; color: rgb(var(--gm-brand-fg)); }
+.gm-choice[aria-pressed="true"] { border: 2px solid rgb(var(--gm-brand-fg)); background: rgb(var(--gm-brand-soft)); font-weight: var(--gm-font-weight-semibold); padding: calc(var(--gm-space-2) - 1px) calc(var(--gm-space-3) - 1px); }
+
+.gm-repair-title { display: grid; gap: var(--gm-space-1); padding: var(--gm-space-3); background: rgb(var(--gm-surface)); border: 1px dashed rgb(var(--gm-control-border)); border-radius: var(--gm-radius-card); overflow-wrap: anywhere; }
+
+/* F6: 64 px + safe area, above everything but dialogs; content scrolls clear of it (padding above), and a
+   control brought into view (focus, scrollIntoView) stops above it, not under it. */
+.gm-repair :is(button, a) { scroll-margin-bottom: calc(64px + var(--gm-space-4) + env(safe-area-inset-bottom)); }
+.gm-repair-bar { position: fixed; inset: auto 0 0 0; z-index: var(--gm-z-sticky); display: flex; gap: var(--gm-space-2); height: calc(64px + env(safe-area-inset-bottom)); padding: var(--gm-space-2) var(--gm-space-4) calc(var(--gm-space-2) + env(safe-area-inset-bottom)); background: rgb(var(--gm-canvas)); border-top: 1px solid rgb(var(--gm-border)); }
+.gm-repair-bar > * { flex: 1 1 0; min-width: 0; }
+
+.gm-repair-not-ready { display: grid; gap: var(--gm-space-4); max-width: 720px; }
+
+@media (min-width: 1024px) {
+  .gm-repair { padding-bottom: 0; }
+  .gm-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gm-repair-bar { position: static; height: auto; padding: var(--gm-space-3) 0 0; background: transparent; justify-content: space-between; }
+  .gm-repair-bar > * { flex: 0 0 auto; min-width: 9rem; }
+}

@@ -20,7 +20,6 @@ import type { ApiDeps } from './deps';
 import { ApiError } from './errors';
 import { readableRequest } from './requests';
 
-const strings = (value: unknown): readonly string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
 
 async function gmRequest(deps: ApiDeps, viewer: AccessViewer, requestId: string) {
   const stored = await readableRequest(deps, viewer, requestId);
@@ -56,8 +55,9 @@ export function previewWaiting(deps: ApiDeps, idToken: string | undefined, reque
     const state = await gmRequest(deps, viewer, requestId);
     return refusals(async () => {
       const input = parseWaitingPreview(body);
-      // D-S06-4: GM Staff / Admin are told but never added or granted.
-      const gmPersonIds = strings((await deps.db.doc('settings/routing').get()).data()?.gm_person_ids);
+      // D-S06-4: GM Staff / Admin are told but never added or granted; D-A10-1: who is a GM is the role in people.
+      const gms = await deps.db.collection('people').where('role', 'in', ['gm_staff', 'gm_admin']).select().limit(200).get();
+      const gmPersonIds = gms.docs.map((doc) => doc.id);
       const plan = planWaiting(state, { waitingOn: waitingOnInput(input.waiting_on), notify: input.notify, gmPersonIds });
       return {
         waiting_on: waitingOnDocument(plan.waitingOn),

@@ -26,6 +26,7 @@ export {
   SCHEDULED_WORK_COLLECTION,
   autoCloseInTransaction,
   autoCloseJobId,
+  releaseAssignmentOf,
   runLifecycleCommand,
   type AutoCloseOutcome,
   type LifecycleDirectories,
