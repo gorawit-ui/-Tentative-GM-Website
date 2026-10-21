@@ -1,5 +1,5 @@
 {
-  "$comment": "ข้อมูลสมมติสำหรับ E2E เท่านั้น ไม่ใช่ข้อมูลพนักงานหรือสถานที่จริง ห้ามใส่ข้อมูลจริง; collection ขึ้นต้น fixture_ เป็นข้อมูลตัวอย่างเดิมของ S00; access / content_pages ใช้ schema จริง (A09)",
+  "$comment": "ข้อมูลสมมติสำหรับ E2E เท่านั้น ไม่ใช่ข้อมูลพนักงานหรือสถานที่จริง ห้ามใส่ข้อมูลจริง; collection ขึ้นต้น fixture_ เป็นข้อมูลตัวอย่างเดิมของ S00; access / content_pages ใช้ schema จริง (A09); locations / areas / qr_codes / calendars / integration_state / scheduled_work / outbox ใช้ schema จริง (A11) ชื่อสถานที่ตาม brief แต่ข้อมูลอื่นสมมติ",
   "collections": {
     "fixture_places": {
       "place-test-1": { "name": "อาคารทดสอบ ก", "area": "ห้องประชุมชั้น 2", "order": 1 },
@@ -29,6 +29,36 @@
           { "label": "ลิงก์ที่ระบบไม่รับ (ตัวอย่าง)", "url": "javascript:alert(1)" }
         ]
       }
+    },
+    "locations": {
+      "loc-wh300": { "label": "WH300", "active": true, "order": 1 },
+      "loc-fac16": { "label": "FAC16", "active": true, "order": 2 },
+      "loc-fac17": { "label": "FAC17", "active": true, "order": 3 },
+      "loc-office195": { "label": "Office 195", "active": true, "order": 4 },
+      "loc-cafe222": { "label": "Cafe 222", "active": true, "order": 5 }
+    },
+    "areas": {
+      "area-wh300-pack-1": { "location_id": "loc-wh300", "label": "ห้องแพ็คชั้น 1", "active": true, "order": 1, "qr_id": "A11FixtureQrPackOne001" },
+      "area-wh300-qa-1": { "location_id": "loc-wh300", "label": "ห้อง QA ชั้น 1", "active": true, "order": 2 },
+      "area-wh300-office-2": { "location_id": "loc-wh300", "label": "ออฟฟิศชั้น 2", "active": true, "order": 3 },
+      "area-wh300-store-3": { "location_id": "loc-wh300", "label": "คลังสินค้าชั้น 3", "active": true, "order": 4 },
+      "area-wh300-store-4": { "location_id": "loc-wh300", "label": "คลังสินค้าชั้น 4", "active": true, "order": 5 },
+      "area-wh300-storage-5": { "location_id": "loc-wh300", "label": "ห้องเก็บของชั้น 5", "active": true, "order": 6 }
+    },
+    "qr_codes": {
+      "A11FixtureQrPackOne001": { "location_id": "loc-wh300", "area_id": "area-wh300-pack-1", "active": true }
+    },
+    "calendars": {
+      "company": { "timezone": "Asia/Bangkok", "open_weekdays": [1, 2, 3, 4, 5], "holidays": ["2026-12-31", "2027-01-01"], "holiday_names": { "2026-12-31": "วันสิ้นปี (ตัวอย่าง)", "2027-01-01": "วันขึ้นปีใหม่ (ตัวอย่าง)" } }
+    },
+    "integration_state": {
+      "slack_app": { "status": "app_error", "code": "SLACK_INVALID_AUTH", "since": 1792458000000 }
+    },
+    "scheduled_work": {
+      "presence_reset-2026-10-19": { "kind": "presence_reset", "state": "failed", "last_error_code": "INTERNAL", "attempts": 5, "last_attempt_at": 1792350000000, "next_run_at": 1792350000000 }
+    },
+    "outbox": {
+      "a11-outbox-failed": { "request_id": "req-a11-fixture", "recipient_id": "a11.fixture.private@tdfb.co", "event_kind": "request_created", "state": "failed", "last_error_code": "NO_CHANNEL", "next_attempt_at": 1792350000000 }
     }
   },
   "auth_users": {

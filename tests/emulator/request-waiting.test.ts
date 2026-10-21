@@ -346,6 +346,20 @@ describe('every S06 command is saved through the API', () => {
     expect(await noticesOf(id, 'waiting_reminder')).toHaveLength(2);
   });
 
+  it('FU-30: the Admin’s reminder time (settings/notifications) replaces the default 09:00', async () => {
+    await harness.db.doc('settings/notifications').set({ working_morning_time: '08:30' });
+    setNow(at('2026-12-30T10:00:00+07:00'));
+    const { id } = await inProgressRepair();
+    await waitingOnParty(id);
+    setNow(at('2026-12-31T11:00:00+07:00')); // holiday
+    const sendAt = at('2027-01-04T08:30:00+07:00');
+    expect(await act(GM1, 'follow_up', { request_id: id, expected_revision: await revisionOf(id), remind: true })).toMatchObject({
+      status: 200,
+      body: { result: { reminder: { status: 'next_business_day', business_date: '2027-01-04', send_at: sendAt } } },
+    });
+    expect(await noticesOf(id, 'waiting_reminder')).toEqual([expect.objectContaining({ recipient_id: PARTY, next_attempt_at: sendAt, state: 'pending' })]);
+  });
+
   it('reminder on a holiday: goes out at 09:00 of the next business day and uses that day’s quota', async () => {
     setNow(at('2026-12-30T10:00:00+07:00'));
     const { id } = await inProgressRepair();

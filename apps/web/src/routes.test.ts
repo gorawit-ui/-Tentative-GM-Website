@@ -19,6 +19,10 @@ describe('routeOf', () => {
     ['/admin/users', '', { area: 'admin', section: 'users' }],
     ['/admin/calendars', '', { area: 'admin', section: 'calendars' }],
     ['/admin/content', '', { area: 'admin', section: 'content' }],
+    // A11: the system health page (FU-25), one location's areas, and the print page of one QR code.
+    ['/admin/health', '', { area: 'admin', section: 'health' }],
+    ['/admin/locations/loc-wh300', '', { area: 'admin', section: 'locations', itemId: 'loc-wh300' }],
+    ['/admin/qr/Qr1234567890abcdefghij/print', '', { area: 'admin', section: 'qr', itemId: 'Qr1234567890abcdefghij', view: 'print' }],
   ] as const)('%s%s → %o', (pathname, search, expected) => {
     expect(routeOf(pathname, search)).toEqual(expected);
   });
@@ -30,6 +34,11 @@ describe('routeOf', () => {
     ['/admin', ''],
     ['/admin/sla', ''],
     ['/admin/users/extra', ''],
+    ['/admin/calendars/2027', ''],
+    ['/admin/locations/loc-wh300/extra', ''],
+    ['/admin/qr/Qr1234567890abcdefghij', ''],
+    ['/admin/qr/not-a-qr-id/print', ''],
+    ['/admin/health/now', ''],
     ['/dashboard', ''],
     ['/q/qr-1', ''],
     ['/requests/', ''],

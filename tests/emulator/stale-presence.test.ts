@@ -34,6 +34,7 @@ const HOLIDAYS = ['2026-12-31', '2027-01-01'];
 const GM1 = 'a05.gm.one@tdfb.co';
 const GM2 = 'a05.gm.two@tdfb.co';
 const EMPLOYEE = 'a05.employee@tdfb.co';
+const ADMIN = 'a05.gm.admin@tdfb.co';
 const PARTY = 'a05.party@tdfb.co';
 const NAMES: Readonly<Record<string, string>> = {
   [GM1]: 'คุณจีเอ็ม หนึ่ง เอ็ม',
@@ -41,7 +42,7 @@ const NAMES: Readonly<Record<string, string>> = {
   [EMPLOYEE]: 'คุณผู้แจ้ง โอ',
   [PARTY]: 'คุณผู้ถูกรอ พี',
 };
-const ROLES: Readonly<Record<string, string>> = { [GM1]: 'gm_staff', [GM2]: 'gm_staff', [EMPLOYEE]: 'requester', [PARTY]: 'requester' };
+const ROLES: Readonly<Record<string, string>> = { [GM1]: 'gm_staff', [GM2]: 'gm_staff', [EMPLOYEE]: 'requester', [PARTY]: 'requester', [ADMIN]: 'gm_admin' };
 
 const CATALOG: MaintenanceCatalog = {
   async resolve(_tx, selection) {
@@ -247,6 +248,22 @@ describe('the company calendar as it is now (FU-27 decision): a holiday added la
     setNow(bkk('2027-01-15T09:15:00'));
     await tick();
     expect(await gmSummary(id)).toMatchObject({ stale: true });
+  });
+
+  it('A11: a holiday added on the Admin page (put_holiday) counts at the next tick — within 15 minutes (D-A05-3)', async () => {
+    const id = await newRepair(); // Mon 11 Jan 09:00, due Thu 14 Jan 09:00 + 1 ms
+    setNow(bkk('2027-01-11T12:00:00'));
+    await tick();
+    const reply = await fetch(`${baseUrl}/api/admin/commands`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${tokens.get(ADMIN) ?? ''}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ command_id: randomUUID(), type: 'put_holiday', payload: { date: '2027-01-13', name: 'วันหยุดพิเศษ' } }),
+    });
+    expect(reply.status).toBe(200);
+    setNow(bkk('2027-01-11T12:15:00'));
+    await tick();
+    expect(await gmSummary(id)).toMatchObject({ stale: false, stale_threshold_at: bkk('2027-01-15T09:00:00') });
+    expect(await staleJob(id)).toMatchObject({ state: 'scheduled', next_run_at: bkk('2027-01-15T09:00:00') + 1 });
   });
 
   it('a holiday added for days already past takes the flag off a request no longer over 3 business days', async () => {

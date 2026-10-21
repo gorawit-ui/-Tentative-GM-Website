@@ -20,9 +20,9 @@ describe('navigationFor: the menu of each role', () => {
     expect(navigationFor(viewer('gm_staff'))).toEqual({ primary: PRIMARY, gm: ['gm_create'], admin: [] });
   });
 
-  it('GM Admin: as GM Staff plus the five Admin pages of phase A', () => {
-    expect(navigationFor(viewer('gm_admin'))).toEqual({ primary: PRIMARY, gm: ['gm_create'], admin: ['locations', 'qr', 'users', 'calendars', 'content'] });
-    expect(ADMIN_SECTIONS).toEqual(['locations', 'qr', 'users', 'calendars', 'content']);
+  it('GM Admin: as GM Staff plus the five Admin pages of phase A and the system health page (A11, FU-25)', () => {
+    expect(navigationFor(viewer('gm_admin'))).toEqual({ primary: PRIMARY, gm: ['gm_create'], admin: ['locations', 'qr', 'users', 'calendars', 'content', 'health'] });
+    expect(ADMIN_SECTIONS).toEqual(['locations', 'qr', 'users', 'calendars', 'content', 'health']);
   });
 
   it.each([undefined, viewer('gm_admin', false), viewer('requester', false)])('no account or a disabled one → no menu at all (%o)', (who) => {
