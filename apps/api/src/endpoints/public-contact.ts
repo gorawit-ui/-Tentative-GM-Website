@@ -1,9 +1,10 @@
 // A09 — `GET /api/public/contact`: the contact box of the login page (Part 2 Addendum A1.3, UI-01) for
 // people without a company account, so no sign-in is asked and no token is looked at. Part 6 §6.4: the
 // pre-login contact is a safe subset of `content_pages/contact` — only the entries the Admin put in
-// `prelogin_contacts`, only their four display fields, each one short line. Read at most once a minute
+// `prelogin_contacts`, only their display fields, each one short line, and a link only when it is
+// `https:` or `tel:` (D-A09-4). Read at most once a minute
 // per instance, however many people open the login page (Part 6 §6.9 cost).
-import type { PublicContact } from '@gm/contracts';
+import { contactUrlHref, type PublicContact } from '@gm/contracts';
 import type { Instant } from '@gm/time';
 import type { ApiDeps } from './deps';
 
@@ -38,7 +39,14 @@ export function publicContactsOf(stored: unknown): PublicContact[] {
     const name = line(entry.contact_name, MAX_NAME_CHARS);
     const phone = typeof entry.phone === 'string' && PHONE.test(entry.phone.trim()) ? entry.phone.trim() : undefined;
     const detail = line(entry.detail, MAX_DETAIL_CHARS);
-    contacts.push({ label, ...(name === undefined ? {} : { name }), ...(phone === undefined ? {} : { phone }), ...(detail === undefined ? {} : { detail }) });
+    const url = contactUrlHref(entry.url);
+    contacts.push({
+      label,
+      ...(name === undefined ? {} : { name }),
+      ...(phone === undefined ? {} : { phone }),
+      ...(detail === undefined ? {} : { detail }),
+      ...(url === undefined ? {} : { url }),
+    });
   }
   return contacts;
 }

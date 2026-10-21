@@ -27,6 +27,8 @@ const contactDoc = (label: string) => ({
   prelogin_contacts: [
     { label, contact_name: 'คุณตัวอย่าง (ทีม GM)', phone: '02-000-0000', email: 'gm.private@tdfb.co' },
     { label: 'แจ้งที่ห้องทีม GM', detail: 'อาคาร WH300 ชั้น 1 (ตัวอย่าง)' },
+    { label: 'แชท LINE OA ทีม GM', url: 'https://line.me/R/ti/p/@gm-example' },
+    { label: 'ลิงก์ที่ไม่รับ', url: 'javascript:alert(1)' },
   ],
 });
 
@@ -77,8 +79,12 @@ describe('GET /api/public/contact', () => {
       contacts: [
         { label: 'โทรหาทีม GM', name: 'คุณตัวอย่าง (ทีม GM)', phone: '02-000-0000' },
         { label: 'แจ้งที่ห้องทีม GM', detail: 'อาคาร WH300 ชั้น 1 (ตัวอย่าง)' },
+        // D-A09-4: https: and tel: links only.
+        { label: 'แชท LINE OA ทีม GM', url: 'https://line.me/R/ti/p/@gm-example' },
+        { label: 'ลิงก์ที่ไม่รับ' },
       ],
     });
+    expect(JSON.stringify(body)).not.toContain('javascript:');
     expect(JSON.stringify(body)).not.toContain(PRIVATE);
     expect(JSON.stringify(body)).not.toContain('gm.private@tdfb.co');
   });

@@ -43,6 +43,31 @@ describe('publicContactsOf', () => {
     expect([...(contact?.detail ?? '')]).toHaveLength(160);
   });
 
+  it('D-A09-4: a link (LINE OA, a LINE group, a phone) — https: and tel: only', () => {
+    expect(
+      publicContactsOf({
+        prelogin_contacts: [
+          { label: 'แชท LINE OA ทีม GM', url: 'https://line.me/R/ti/p/@gm-example', detail: 'ตอบในเวลาทำการ' },
+          { label: 'โทรหา GM', url: 'tel:02-000-0000' },
+          { label: 'กลุ่ม LINE', url: 'javascript:alert(1)', detail: 'ถามในกลุ่ม' },
+          { label: 'เว็บเก่า', url: 'http://example.com/gm' },
+        ],
+      }),
+    ).toEqual([
+      { label: 'แชท LINE OA ทีม GM', url: 'https://line.me/R/ti/p/@gm-example', detail: 'ตอบในเวลาทำการ' },
+      { label: 'โทรหา GM', url: 'tel:020000000' },
+      { label: 'กลุ่ม LINE', detail: 'ถามในกลุ่ม' },
+      { label: 'เว็บเก่า' },
+    ]);
+  });
+
+  it(`at most ${MAX_PUBLIC_CONTACTS} entries, with links too`, () => {
+    const many = Array.from({ length: 9 }, (_unused, index) => ({ label: `ช่องทาง ${index + 1}`, url: `https://example.com/${index + 1}` }));
+    const contacts = publicContactsOf({ prelogin_contacts: many });
+    expect(contacts).toHaveLength(MAX_PUBLIC_CONTACTS);
+    expect(contacts.at(-1)).toEqual({ label: 'ช่องทาง 5', url: 'https://example.com/5' });
+  });
+
   it(`at most ${MAX_PUBLIC_CONTACTS} entries`, () => {
     const many = Array.from({ length: 9 }, (_unused, index) => ({ label: `ช่องทาง ${index + 1}` }));
     expect(publicContactsOf({ prelogin_contacts: many })).toHaveLength(MAX_PUBLIC_CONTACTS);

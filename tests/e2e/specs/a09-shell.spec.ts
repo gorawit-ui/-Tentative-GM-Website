@@ -7,7 +7,7 @@ import { isMobileWidth, keepLocal, signInToShell, storedAuthUsers, watchErrors, 
 
 const PRIMARY_MOBILE = ['หน้าแรก', 'คำขอของฉัน', 'แจ้งซ่อม', 'บอร์ด', 'ติดต่อ GM'];
 const PRIMARY_DESKTOP = ['หน้าแรก', 'คำขอของฉัน', 'แจ้งซ่อม', 'บอร์ดทีม', 'ติดต่อ GM'];
-const ADMIN_LINKS = ['สถานที่และบริเวณ', 'QR ของบริเวณ', 'รายชื่อพนักงานและสิทธิ์', 'ปฏิทินบริษัท', 'เนื้อหาติดต่อทีม GM / FAQ'];
+const ADMIN_LINKS = ['สถานที่และบริเวณ', 'QR ของบริเวณ', 'รายชื่อพนักงานและสิทธิ์', 'ปฏิทินบริษัท', 'เนื้อหาติดต่อทีม GM / FAQ', 'สุขภาพระบบ'];
 const GM_BUTTON = 'สร้างงาน GM / เปิดแทน';
 const REPAIR_URL = /\/requests\/new\?type=maintenance&origin=requester$/;
 
@@ -109,6 +109,10 @@ const FORBIDDEN: readonly [AccountKey, string][] = [
   ['viewer', '/requests/new?type=gm_task&origin=gm_initiated'],
   ['gm', '/admin/qr'],
   ['gm', '/admin/content'],
+  // A11
+  ['gm', '/admin/health'],
+  ['requester', '/admin/locations/loc-wh300'],
+  ['viewer', '/admin/qr/A11FixtureQrPackOne001/print'],
 ];
 
 for (const [key, path] of FORBIDDEN) {
@@ -116,7 +120,7 @@ for (const [key, path] of FORBIDDEN) {
     await signInToShell(page, key);
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1, name: 'ไม่มีสิทธิ์เข้าหน้านี้' })).toBeVisible();
-    for (const heading of ['รายชื่อพนักงานและสิทธิ์', 'ปฏิทินบริษัท', 'QR ของบริเวณ', 'เนื้อหาติดต่อทีม GM / FAQ', 'สร้างงาน GM / เปิดแทน', 'เปิดแทนผู้ขอ']) {
+    for (const heading of ['รายชื่อพนักงานและสิทธิ์', 'ปฏิทินบริษัท', 'QR ของบริเวณ', 'เนื้อหาติดต่อทีม GM / FAQ', 'สร้างงาน GM / เปิดแทน', 'เปิดแทนผู้ขอ', 'สุขภาพระบบ', 'WH300', 'พิมพ์ QR']) {
       await expect(page.getByRole('heading', { name: heading })).toHaveCount(0);
     }
     await expect(page.getByRole('link', { name: 'กลับหน้าแรก' })).toBeVisible();

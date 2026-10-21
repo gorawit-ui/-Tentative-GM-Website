@@ -40,6 +40,15 @@ test('login page in UI-01 order: service, short text, Google button, “ใช�
   await expect(contact.getByText('คุณสมมติ ใจดี (ทีม GM)')).toBeVisible();
   await expect(contact.getByRole('link', { name: /02-000-0000/ })).toHaveAttribute('href', 'tel:020000000');
   await expect(contact.getByText('อาคารทดสอบ ก ชั้น 1 (ตัวอย่าง)')).toBeVisible();
+  // D-A09-4: a link the Admin set (https: / tel: only) can be tapped; it opens outside the app.
+  const line = contact.getByRole('link', { name: 'แชท LINE OA ทีม GM (ตัวอย่าง)' });
+  await expect(line).toHaveAttribute('href', 'https://example.com/gm-line-oa');
+  await expect(line).toHaveAttribute('target', '_blank');
+  await expect(line).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(contact.getByText('ลิงก์ที่ระบบไม่รับ (ตัวอย่าง)')).toBeVisible();
+  await expect(contact.getByRole('link', { name: 'ลิงก์ที่ระบบไม่รับ (ตัวอย่าง)' })).toHaveCount(0);
+  await expect(contact.locator('a[href^="javascript:"]')).toHaveCount(0);
+  await expect(contact.getByRole('link')).toHaveCount(2);
   // A1.3: no anonymous form, no board, no names beyond what the Admin chose to show.
   await expect(page.getByText('ข้อมูลหลังเข้าสู่ระบบเท่านั้น')).toHaveCount(0);
   await expect(page.getByText('a09.private@tdfb.co')).toHaveCount(0);

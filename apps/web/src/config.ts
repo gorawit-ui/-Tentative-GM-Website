@@ -9,6 +9,11 @@ export interface WebConfig {
   readonly authEmulatorUrl: string;
   readonly firestoreEmulator: { readonly host: string; readonly port: number };
   readonly apiBaseUrl: string;
+  /**
+   * A11: the origin printed in QR codes (`{base}/q/{qr_id}`, Part 6 §6.2) — printed, never called, so
+   * any https origin is accepted. Unset → the page's own origin, and the print page is a sample.
+   */
+  readonly publicBaseUrl?: string;
 }
 
 export type WebEnv = Readonly<Record<string, string | undefined>>;
@@ -44,6 +49,13 @@ function localHost(raw: string, name: string): { host: string; port: number } {
   return { host: match[1] ?? '127.0.0.1', port };
 }
 
+/** An https origin (or this machine for local runs), without a trailing slash. */
+function publicOrigin(raw: string, name: string): string {
+  const match = /^(https:\/\/[a-z0-9.-]+(?::\d{1,5})?|http:\/\/(?:127\.0\.0\.1|localhost)(?::\d{1,5})?)\/?$/i.exec(raw);
+  if (match?.[1] === undefined) throw new Error(`${name} must be an https origin such as https://gm.tdfb.co (no path)`);
+  return match[1].toLowerCase();
+}
+
 export function resolveWebConfig(env: WebEnv): WebConfig {
   const projectId = env.VITE_GM_FIREBASE_PROJECT_ID ?? 'demo-gm-local';
   if (!DEMO_PROJECT.test(projectId)) {
@@ -55,5 +67,6 @@ export function resolveWebConfig(env: WebEnv): WebConfig {
     authEmulatorUrl: localUrl(value(env, 'VITE_GM_AUTH_EMULATOR_URL', 'http://127.0.0.1:9099'), 'VITE_GM_AUTH_EMULATOR_URL'),
     firestoreEmulator: localHost(value(env, 'VITE_GM_FIRESTORE_EMULATOR_HOST', '127.0.0.1:8080'), 'VITE_GM_FIRESTORE_EMULATOR_HOST'),
     apiBaseUrl: localUrl(value(env, 'VITE_GM_API_BASE_URL', 'http://127.0.0.1:8787'), 'VITE_GM_API_BASE_URL'),
+    ...(value(env, 'VITE_GM_PUBLIC_BASE_URL', '') === '' ? {} : { publicBaseUrl: publicOrigin(value(env, 'VITE_GM_PUBLIC_BASE_URL', ''), 'VITE_GM_PUBLIC_BASE_URL') }),
   };
 }

@@ -11,6 +11,11 @@ export interface CommandTransaction {
   update(path: string, data: object): void;
   /** A04: removes a document (a request flagged confidential has no public summary, §6.4.1). */
   delete(path: string): void;
+  /**
+   * A11: the documents of a collection whose `field` equals `value`, at most `limit` (e.g. the areas of
+   * one location, to keep area names unique). A read: call it before the first write.
+   */
+  list?(collection: string, field: string, value: string, limit: number): Promise<readonly { readonly id: string; readonly data: StoredData }[]>;
 }
 
 export interface CommandStore {

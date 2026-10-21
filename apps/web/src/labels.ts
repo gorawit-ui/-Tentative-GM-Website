@@ -22,6 +22,7 @@ export const ADMIN_LABELS: Readonly<Record<AdminSection, string>> = {
   users: 'รายชื่อพนักงานและสิทธิ์',
   calendars: 'ปฏิทินบริษัท',
   content: 'เนื้อหาติดต่อทีม GM / FAQ',
+  health: 'สุขภาพระบบ',
 };
 
 export const ROLE_LABELS: Readonly<Record<Role, string>> = {

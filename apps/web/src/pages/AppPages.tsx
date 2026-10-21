@@ -99,6 +99,7 @@ export const ADMIN_PAGE_TEXT: Readonly<Record<AdminSection, string>> = {
   users: 'รายชื่อพนักงาน role และสถานะการจับคู่ Slack',
   calendars: 'ปฏิทินบริษัท จันทร์–ศุกร์ และวันหยุด',
   content: 'เนื้อหาติดต่อทีม GM / FAQ และช่องทางติดต่อก่อนเข้าสู่ระบบ',
+  health: 'เวลา tick ล่าสุด สถานะแอป Slack งานที่ล้มเหลว และการแจ้งเตือนที่ส่งไม่ได้',
 };
 
 export function AdminPage({ section }: { readonly section: AdminSection }) {

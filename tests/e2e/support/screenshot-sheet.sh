@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# A09 docs only — puts the PNGs of specs/a09-screenshots.spec.ts into one sheet (rows: pages; columns:
-# 360x640 | 390x844 | 1366x768 | 1440x900) for docs/screenshots/A09.webp. Needs ImageMagick 6 (`convert`) with
-# WebP and the DejaVu Sans font; not part of any test run.
+# Docs only — puts the PNGs of a screenshot spec into one sheet (rows: pages; columns:
+# 360x640 | 390x844 | 1366x768 | 1440x900), e.g. docs/screenshots/A09.webp. Needs ImageMagick 6 (`convert`)
+# with WebP and the DejaVu Sans font; not part of any test run. Row labels: `<dir>/labels.txt`
+# (`row=label` lines, written by the A11 spec) or the A09 list below; the title from SHEET_TITLE.
 #   A09_SCREENSHOTS_DIR=/tmp/a09 npm run test:e2e -- a09-screenshots
 #   tests/e2e/support/screenshot-sheet.sh /tmp/a09 docs/screenshots/A09.webp 360 78
+#   A11_SCREENSHOTS_DIR=/tmp/a11 npm run test:e2e -- a11-screenshots
+#   SHEET_TITLE=A11 tests/e2e/support/screenshot-sheet.sh /tmp/a11 docs/screenshots/A11.webp 360 78
 set -euo pipefail
 SHOTS="$1"; OUT="$2"; H="${3:-220}"; Q="${4:-60}"
 TMP=$(mktemp -d)
@@ -14,11 +17,16 @@ declare -A LABEL=(
   [09-not-found]="not found" [10-gm-home]="home (GM Admin)" [11-gm-create]="GM create" [12-on-behalf]="on behalf"
   [13-admin-users]="admin: users" [14-more-menu]="more menu (mobile)" [15-disabled]="account disabled"
   [16-not-set-up]="not set up" [17-outsider]="outside @tdfb.co")
+if [[ -f "$SHOTS/labels.txt" ]]; then
+  LABEL=()
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do [[ -n "$key" ]] && LABEL[$key]="$value"; done < "$SHOTS/labels.txt"
+fi
+FIRST=$(ls "$SHOTS/${COLS[0]}" | sort | head -1)
 rows=()
 header=("$TMP/h-label.png")
-convert -size 170x28 xc:'#FAF8F3' -font DejaVu-Sans -pointsize 13 -fill '#2D2A26' -gravity west -annotate +8+0 "A09 · page \\ size" "$TMP/h-label.png"
+convert -size 170x28 xc:'#FAF8F3' -font DejaVu-Sans -pointsize 13 -fill '#2D2A26' -gravity west -annotate +8+0 "${SHEET_TITLE:-A09} · page \\ size" "$TMP/h-label.png"
 for col in "${COLS[@]}"; do
-  w=$(convert "$SHOTS/$col/01-login.png" -resize x"$H" -format '%w' info:)
+  w=$(convert "$SHOTS/$col/$FIRST" -resize x"$H" -format '%w' info:)
   convert -size "${w}x28" xc:'#FAF8F3' -font DejaVu-Sans -pointsize 13 -fill '#2D2A26' -gravity center -annotate +0+0 "${col#*-}" "$TMP/h-$col.png"
   header+=("$TMP/h-$col.png")
 done

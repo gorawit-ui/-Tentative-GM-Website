@@ -76,8 +76,8 @@ describe('CSS cascade layers (P1)', () => {
   /** Files the entry imports into a layer as a whole (`@import "./x.css" layer(name)`): their own text is flat. */
   const layeredImports = [...readFileSync(join(srcDir, 'styles/app.css'), 'utf8').matchAll(/@import\s+"\.\/([^"]+)"\s+layer\((\w+)\)\s*;/g)].map((match) => join(srcDir, 'styles', match[1] ?? ''));
 
-  it('tokens.css and the shell styles are imported into the components layer', () => {
-    expect(layeredImports.map((path) => relative(srcDir, path))).toEqual(['styles/tokens.css', 'styles/shell.css']);
+  it('tokens.css, the shell styles and the Admin styles (A11) are imported into the components layer', () => {
+    expect(layeredImports.map((path) => relative(srcDir, path))).toEqual(['styles/tokens.css', 'styles/shell.css', 'styles/admin.css']);
   });
 
   it.each(styles.map((path) => [relative(webRoot, path), path]))('%s has no rule outside a layer', (_name, path) => {

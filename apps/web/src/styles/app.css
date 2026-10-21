@@ -4,7 +4,8 @@
 
 /* A09 — the P1 entry above (Part 4 Patch, Part 6 §6.3), then the app's own CSS, every rule in a layer:
    the self-hosted IBM Plex Sans Thai Looped (OFL; the token weights 400/500/600) in `base`, the shell and
-   page styles in `components` after the tokens, so Tailwind utilities override both. The per-weight
+   page styles in `components` after the tokens (A11: admin.css after shell.css), so Tailwind utilities
+   override both. The per-weight
    files give each subset its unicode-range, so Thai text is drawn from the Thai face by matching (not by
    falling back from a Latin face that claims every character) and only the subsets a page shows load.
    tokens.css, tokens.json and tailwind.config.cjs are reference/gm-design-tokens unchanged. */
@@ -12,3 +13,4 @@
 @import "@fontsource/ibm-plex-sans-thai-looped/500.css" layer(base);
 @import "@fontsource/ibm-plex-sans-thai-looped/600.css" layer(base);
 @import "./shell.css" layer(components);
+@import "./admin.css" layer(components);

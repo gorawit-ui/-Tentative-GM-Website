@@ -1,0 +1,120 @@
+/* A11 — the Admin pages (UI-12 §13.1–13.4, FU-25): lists and cards on mobile, tables and a month view on
+   desktop (≥ 1024px, the shell's line), forms that keep their values, the QR preview and print sheet.
+   app.css imports this file into the `components` layer after shell.css: no layer here, Tailwind
+   utilities override it (D-A09-7: `text-h2` on an input wins over the input size set here). Colours are
+   token RGB channels; nothing moves, so reduced motion needs no extra rule. */
+
+.gm-admin-sections { display: grid; gap: var(--gm-space-5); }
+.gm-admin-stack { display: grid; gap: var(--gm-space-3); align-content: start; }
+.gm-admin-panel { min-width: 0; padding: var(--gm-space-4); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); }
+.gm-admin-muted { color: rgb(var(--gm-text-muted)); }
+.gm-admin-back { margin-bottom: var(--gm-space-4); }
+.gm-admin-loading { display: grid; gap: var(--gm-space-2); color: rgb(var(--gm-text-muted)); }
+.gm-admin-skeleton { display: block; height: 56px; border-radius: var(--gm-radius-card); }
+.gm-admin-empty { display: grid; gap: var(--gm-space-2); padding: var(--gm-space-6) var(--gm-space-4); background: rgb(var(--gm-surface)); border: 1px dashed rgb(var(--gm-control-border)); border-radius: var(--gm-radius-card); }
+.gm-admin-empty strong { font-weight: var(--gm-font-weight-semibold); }
+.gm-admin-empty p { color: rgb(var(--gm-text-muted)); }
+
+/* Badges with words (never colour alone): open / closed, and the health levels. */
+.gm-badge--ok { --badge-fg: rgb(var(--gm-brand-fg)); --badge-bg: rgb(var(--gm-brand-soft)); }
+.gm-badge--muted { --badge-fg: rgb(var(--gm-text-muted)); --badge-bg: rgb(var(--gm-surface-muted)); }
+.gm-badge { font-size: var(--gm-font-size-caption); white-space: nowrap; }
+
+/* Form fields: label above, the control full width; the input text is body size here (utilities win). */
+.gm-field { display: grid; gap: var(--gm-space-2); min-width: 0; }
+.gm-field > span, .gm-field > label { font-weight: var(--gm-font-weight-medium); }
+.gm-field .gm-input { font-size: var(--gm-font-size-body); line-height: var(--gm-line-height-body); }
+.gm-field--narrow { max-width: 16rem; }
+.gm-admin-add-form { display: grid; gap: var(--gm-space-3); align-items: end; }
+.gm-admin-inline-form { display: grid; gap: var(--gm-space-3); }
+.gm-admin-row-buttons { display: flex; flex-wrap: wrap; gap: var(--gm-space-2); }
+.gm-admin-choose { display: grid; gap: var(--gm-space-3); margin-bottom: var(--gm-space-4); }
+
+/* Mobile: one card per row with its buttons. */
+.gm-admin-cards { display: grid; gap: var(--gm-space-3); margin: 0; padding: 0; list-style: none; }
+.gm-admin-card { display: grid; gap: var(--gm-space-2); min-width: 0; padding: var(--gm-space-4); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); }
+.gm-admin-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--gm-space-2); min-width: 0; }
+.gm-admin-card-head > * { min-width: 0; overflow-wrap: anywhere; }
+
+/* Desktop: tables (§13.1). */
+.gm-admin-table { width: 100%; border-collapse: collapse; }
+.gm-admin-table th, .gm-admin-table td { padding: var(--gm-space-3); text-align: left; vertical-align: middle; border-bottom: 1px solid rgb(var(--gm-border)); overflow-wrap: anywhere; }
+.gm-admin-table th { color: rgb(var(--gm-text-muted)); font-weight: var(--gm-font-weight-medium); font-size: var(--gm-font-size-caption); }
+.gm-admin-table tbody tr:last-child td { border-bottom: 0; }
+.gm-admin-panel:has(> .gm-admin-table) { padding: var(--gm-space-2) var(--gm-space-4); }
+
+/* QR preview and the print sheet. */
+.gm-qr-detail { display: grid; gap: var(--gm-space-4); }
+.gm-qr-image { display: block; width: min(100%, 240px); height: auto; aspect-ratio: 1; border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-control); }
+.gm-qr-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--gm-font-size-caption); overflow-wrap: anywhere; }
+.gm-qr-sheet { position: relative; display: grid; justify-items: center; gap: var(--gm-space-3); margin-block: var(--gm-space-4); padding: var(--gm-space-6) var(--gm-space-4); overflow: hidden; text-align: center; background: #fff; color: #000; border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); }
+.gm-qr-sheet-title { font-size: var(--gm-font-size-h3); font-weight: var(--gm-font-weight-semibold); }
+.gm-qr-sheet-place { font-size: var(--gm-font-size-h2); font-weight: var(--gm-font-weight-semibold); overflow-wrap: anywhere; }
+.gm-qr-image--print { width: min(100%, 320px); border: 0; }
+.gm-qr-sheet .gm-qr-url { color: #333; }
+.gm-qr-watermark { position: absolute; inset: 50% auto auto 50%; z-index: 1; width: max-content; max-width: 140%; padding: var(--gm-space-2) var(--gm-space-4); transform: translate(-50%, -50%) rotate(-24deg); color: #b42318; background: rgb(255 255 255 / 0.82); border: 3px solid #b42318; border-radius: var(--gm-radius-control); font-size: clamp(1.25rem, 6vw, 2.25rem); font-weight: var(--gm-font-weight-semibold); line-height: 1.3; pointer-events: none; }
+
+/* Calendar: weekday checks as large tap targets (the real checkbox covers the whole row). */
+.gm-checks { display: flex; flex-wrap: wrap; gap: var(--gm-space-2); margin: 0; padding: 0; border: 0; }
+.gm-check { position: relative; display: inline-flex; align-items: center; gap: var(--gm-space-2); min-height: var(--gm-touch-min); padding: 0 var(--gm-space-3); border: 1px solid rgb(var(--gm-control-border)); border-radius: var(--gm-radius-control); background: rgb(var(--gm-surface)); cursor: pointer; }
+.gm-check input { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); margin: 0; opacity: 0; cursor: pointer; }
+.gm-check-box { width: 20px; height: 20px; flex-shrink: 0; border: 2px solid rgb(var(--gm-control-border)); border-radius: 6px; background: rgb(var(--gm-surface)); }
+.gm-check input:checked + .gm-check-box { background: rgb(var(--gm-brand-solid)); border-color: rgb(var(--gm-brand-solid)); box-shadow: inset 0 0 0 3px rgb(var(--gm-surface)); }
+.gm-check:has(input:checked) { border-color: rgb(var(--gm-brand-solid)); background: rgb(var(--gm-brand-soft)); }
+.gm-check input:focus-visible + .gm-check-box { outline: 3px solid rgb(var(--gm-focus)); outline-offset: 2px; }
+
+.gm-year-nav { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: var(--gm-space-2); max-width: 32rem; }
+.gm-year-field .gm-input { text-align: center; }
+.gm-holiday-date { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--gm-space-2); }
+.gm-holiday-preview { color: rgb(var(--gm-text-muted)); }
+.gm-holiday-preview.gm-error { color: rgb(var(--gm-danger-fg)); }
+.gm-holiday-layout { display: grid; gap: var(--gm-space-4); }
+.gm-holiday-month { margin-bottom: var(--gm-space-2); font-size: var(--gm-font-size-body); font-weight: var(--gm-font-weight-semibold); }
+.gm-holiday-list { display: grid; gap: var(--gm-space-2); margin: 0; padding: 0; list-style: none; }
+.gm-holiday-row { display: grid; gap: var(--gm-space-2); min-width: 0; padding-block: var(--gm-space-2); border-bottom: 1px solid rgb(var(--gm-border)); overflow-wrap: anywhere; }
+.gm-holiday-row:last-child { border-bottom: 0; }
+
+/* Desktop month view of the year (read only). */
+.gm-year-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--gm-space-4); }
+.gm-month-title { margin-bottom: var(--gm-space-1); font-weight: var(--gm-font-weight-semibold); }
+.gm-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; font-size: 0.75rem; text-align: center; }
+.gm-month-weekday { color: rgb(var(--gm-text-muted)); }
+.gm-day { display: inline-block; min-width: 1.5em; padding: 2px; border-radius: 4px; }
+.gm-day--closed { color: rgb(var(--gm-text-muted)); background: rgb(var(--gm-surface-muted)); }
+.gm-day--holiday { color: rgb(var(--gm-danger-fg)); background: rgb(var(--gm-danger-soft)); font-weight: var(--gm-font-weight-semibold); }
+.gm-year-legend { grid-column: 1 / -1; font-size: var(--gm-font-size-caption); }
+.gm-year-legend .gm-day { padding-inline: var(--gm-space-2); }
+
+/* Health. */
+.gm-health-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gm-space-3); padding: var(--gm-space-4); border: 1px solid; border-radius: var(--gm-radius-card); }
+.gm-health-summary--ok { color: rgb(var(--gm-brand-fg)); background: rgb(var(--gm-brand-soft)); border-color: rgb(var(--gm-brand-fg)); }
+.gm-health-summary--warning { color: rgb(var(--gm-warning-fg)); background: rgb(var(--gm-warning-soft)); border-color: rgb(var(--gm-warning-fg)); }
+.gm-health-summary--red { color: rgb(var(--gm-danger-fg)); background: rgb(var(--gm-danger-soft)); border-color: rgb(var(--gm-danger-fg)); }
+.gm-health-summary strong { font-weight: var(--gm-font-weight-semibold); }
+.gm-health-grid { display: grid; gap: var(--gm-space-4); }
+.gm-health-card { display: grid; gap: var(--gm-space-2); align-content: start; border-left-width: 6px; }
+.gm-health-card--ok { border-left-color: rgb(var(--gm-brand-solid)); }
+.gm-health-card--warning { border-left-color: rgb(var(--gm-warning-fg)); }
+.gm-health-card--red { border-left-color: rgb(var(--gm-danger-solid)); }
+.gm-health-list { display: grid; gap: var(--gm-space-1); margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+.gm-health-list li { display: grid; }
+
+@media (min-width: 768px) {
+  .gm-admin-add-form { grid-template-columns: minmax(0, 1fr) auto; }
+  .gm-admin-choose { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gm-qr-detail { grid-template-columns: 240px minmax(0, 1fr); align-items: start; }
+  .gm-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gm-holiday-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .gm-holiday-row > form { grid-column: 1 / -1; }
+}
+
+@media (min-width: 1024px) {
+  .gm-holiday-layout--wide { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+}
+
+/* Print: only the QR sheet (the watermark prints too while it is a sample). */
+@media print {
+  .gm-topbar, .gm-sidebar, .gm-bottom-nav, .gm-skip-link, .gm-print-hide, .gm-page-head { display: none !important; }
+  main.gm-main { padding: 0; }
+  .gm-qr-sheet { margin: 0; border: 0; }
+}

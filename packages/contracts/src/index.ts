@@ -111,4 +111,14 @@ export {
   type RequestDetailDocument,
   type RequestProjections,
 } from './projections';
-export { telHref, type PublicContact, type PublicContactResponse } from './public-contact';
+export { MAX_CONTACT_URL_CHARS, contactUrlHref, telHref, type PublicContact, type PublicContactResponse } from './public-contact';
+export { ADMIN_COMMAND_TYPES, parseAdminCommand, type AdminCommand, type AdminCommandType } from './admin-commands';
+export type {
+  AdminAreaView,
+  AdminCalendarView,
+  AdminHealthView,
+  AdminLocationView,
+  AdminPlacesView,
+  AdminQrView,
+  AdminTickView,
+} from './admin-views';
