@@ -418,6 +418,8 @@ describe('overlapping ticks and workers do the work once (A02 lease)', () => {
     await tick();
     setNow(bkk('2027-01-14T09:15:00'));
     // Hold the working tick inside its jobs until the other tick has answered, so both really overlap.
+    // The other tick's answer releases it at once; the long fallback only keeps a broken lease from
+    // hanging the test (3 s was too short when the emulator is busy late in the full run).
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => (release = resolve));
     const handlers = workerJobHandlers(directories);
@@ -425,7 +427,7 @@ describe('overlapping ticks and workers do the work once (A02 lease)', () => {
       Object.entries(handlers).map(([kind, handler]) => [
         kind,
         async (context: Parameters<NonNullable<typeof handler>>[0]) => {
-          await Promise.race([gate, new Promise((resolve) => setTimeout(resolve, 3_000))]);
+          await Promise.race([gate, new Promise((resolve) => setTimeout(resolve, 20_000))]);
           return handler(context);
         },
       ]),
