@@ -47,3 +47,21 @@ describe('resolveWebConfig', () => {
     expect(() => resolveWebConfig({ [name]: value })).toThrow();
   });
 });
+
+describe('A11: the base URL printed in QR codes (Part 6 §6.2: `{base}/q/{qr_id}` on the custom domain)', () => {
+  it('not set → none (the page uses its own origin and prints only a watermarked sample)', () => {
+    expect(resolveWebConfig({}).publicBaseUrl).toBeUndefined();
+  });
+
+  it.each([
+    ['https://gm.tdfb.co', 'https://gm.tdfb.co'],
+    ['https://gm-dev.tdfb.co/', 'https://gm-dev.tdfb.co'],
+    ['http://127.0.0.1:4173', 'http://127.0.0.1:4173'],
+  ])('%j → %j (an origin only; it is printed, not called)', (raw, origin) => {
+    expect(resolveWebConfig({ VITE_GM_PUBLIC_BASE_URL: raw }).publicBaseUrl).toBe(origin);
+  });
+
+  it.each(['http://gm.tdfb.co', 'https://gm.tdfb.co/app', 'gm.tdfb.co', 'https://gm.tdfb.co?x=1', 'ftp://gm.tdfb.co'])('refuses %j', (raw) => {
+    expect(() => resolveWebConfig({ VITE_GM_PUBLIC_BASE_URL: raw })).toThrow(/VITE_GM_PUBLIC_BASE_URL/);
+  });
+});
