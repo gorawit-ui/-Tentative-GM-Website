@@ -57,6 +57,28 @@ test.describe('สถานที่และบริเวณ (§13.1)', () =>
     await expectLayout(page);
   });
 
+  test('D-A11-4: add a location and rename it — the address (its ID) stays the same', async ({ page }, testInfo) => {
+    const name = own(testInfo, 'สถานที่ทดสอบ');
+    await openAdmin(page, '/admin/locations', 'สถานที่และบริเวณ');
+    await page.getByLabel('ชื่อสถานที่ใหม่').fill(name);
+    await page.getByRole('button', { name: 'เพิ่มสถานที่' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'เพิ่มสถานที่แล้ว' })).toBeVisible();
+    const link = page.getByTestId('location-list').getByRole('link', { name, exact: true });
+    await expect(link).toBeVisible();
+    await expectLayout(page);
+    await link.click();
+    await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+    const address = page.url();
+    expect(address).toMatch(/\/admin\/locations\/loc-[0-9a-f]{12}$/);
+    const renamed = `${name} (ใหม่)`;
+    await page.getByRole('button', { name: 'แก้ชื่อสถานที่' }).click();
+    await page.getByLabel('ชื่อสถานที่', { exact: true }).fill(renamed);
+    await page.getByRole('button', { name: 'บันทึกชื่อสถานที่' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: renamed })).toBeVisible();
+    expect(page.url()).toBe(address);
+    await expectLayout(page);
+  });
+
   test('WH300: its six areas from the brief', async ({ page }) => {
     await openAdmin(page, '/admin/locations/loc-wh300', 'WH300');
     for (const label of ['ห้องแพ็คชั้น 1', 'ห้อง QA ชั้น 1', 'ออฟฟิศชั้น 2', 'คลังสินค้าชั้น 3', 'คลังสินค้าชั้น 4', 'ห้องเก็บของชั้น 5']) {
@@ -172,8 +194,17 @@ test.describe('ปฏิทินบริษัท (§13.4)', () => {
   test('open weekdays, holidays shown in พ.ศ., the 24-hour business day, the pre-pilot check and the reminder time', async ({ page }) => {
     await openAdmin(page, '/admin/calendars', 'ปฏิทินบริษัท');
     await expect(page.getByText('1 วันทำการ = สะสม 24 ชั่วโมงบนวันที่เปิดทำการ')).toBeVisible();
-    for (const day of ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์']) await expect(page.getByRole('checkbox', { name: day })).toBeChecked();
-    for (const day of ['เสาร์', 'อาทิตย์']) await expect(page.getByRole('checkbox', { name: day })).not.toBeChecked();
+    // D-A11-1: locked Monday–Friday in phase A — shown, not changeable; weekends per site come in B02.
+    for (const day of ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์']) {
+      await expect(page.getByRole('checkbox', { name: day })).toBeChecked();
+      await expect(page.getByRole('checkbox', { name: day })).toBeDisabled();
+    }
+    for (const day of ['เสาร์', 'อาทิตย์']) {
+      await expect(page.getByRole('checkbox', { name: day })).not.toBeChecked();
+      await expect(page.getByRole('checkbox', { name: day })).toBeDisabled();
+    }
+    await expect(page.getByText('ตั้งวันเปิดทำการเสาร์–อาทิตย์รายสถานที่ได้ในรุ่นถัดไป (B02)')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'บันทึกวันทำงาน' })).toHaveCount(0);
     const check = page.getByTestId('pilot-check');
     await expect(check.getByRole('heading', { name: 'ตรวจก่อน pilot: ธ.ค. 2569 – ม.ค. 2570' })).toBeVisible();
     await expect(check.getByText('พฤหัสบดี 31 ธ.ค. 2569')).toBeVisible();
@@ -210,8 +241,20 @@ test.describe('ปฏิทินบริษัท (§13.4)', () => {
     await expect(row).toContainText(`${day} มี.ค. 2570`);
     await expect(page.getByLabel('ปีที่แสดง (พ.ศ.)')).toHaveValue('2570');
     await expectLayout(page);
-    await row.getByRole('button', { name: 'ลบ' }).click();
+    // D-A11-5: deleting asks first, naming the day; “ยกเลิก” keeps it.
+    await row.getByRole('button', { name: 'ลบ', exact: true }).click();
+    const confirm = page.getByRole('alertdialog', { name: 'ลบวันหยุดนี้?' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText(`${day} มี.ค. 2570`);
+    await expect(confirm).toContainText(name);
+    await expectLayout(page);
+    await confirm.getByRole('button', { name: 'ยกเลิก' }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: 'ลบ', exact: true }).click();
+    await page.getByRole('alertdialog', { name: 'ลบวันหยุดนี้?' }).getByRole('button', { name: 'ลบวันหยุด' }).click();
     await expect(list.getByRole('listitem').filter({ hasText: name })).toHaveCount(0);
+    await expect(page.getByRole('status').filter({ hasText: 'ลบวันหยุดแล้ว มีผลภายใน 15 นาที' })).toBeVisible();
   });
 
   test('D-S01-6: a ค.ศ.-looking year is refused with a reason, nothing saved, the form keeps its values', async ({ page }, testInfo) => {

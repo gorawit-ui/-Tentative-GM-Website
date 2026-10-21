@@ -170,6 +170,25 @@ describe('places: the seed of the brief, areas closed instead of deleted (§13.1
     expect(await admin('set_area_active', { area_id: 'area-none', active: false })).toEqual({ status: 404, body: { error: 'AREA_NOT_FOUND' } });
   });
 
+  it('D-A11-4: the Admin adds a location (unique name) and renames one; the ID stays, so its QR codes still work', async () => {
+    await admin('seed_places');
+    const added = await admin('add_location', { label: '  คลังสินค้า  บางนา ' });
+    expect(added.status).toBe(200);
+    const locationId = (added.body.result as { location_id: string }).location_id;
+    expect(locationId).toMatch(/^loc-[0-9a-f]{12}$/);
+    expect(await readDoc(harness.db, `locations/${locationId}`)).toMatchObject({ label: 'คลังสินค้า บางนา', active: true, order: 6, created_at: NOW });
+    expect((await places()).locations.map((location) => location.label)).toEqual(['WH300', 'FAC16', 'FAC17', 'Office 195', 'Cafe 222', 'คลังสินค้า บางนา']);
+    expect(await admin('add_location', { label: 'wh300' })).toEqual({ status: 409, body: { error: 'LOCATION_LABEL_TAKEN' } });
+
+    const qrId = ((await admin('create_qr', { area_id: 'area-wh300-pack-1' })).body.result as { qr_id: string }).qr_id;
+    expect(await admin('rename_location', { location_id: 'loc-wh300', label: 'WH300 (คลังหลัก)' })).toMatchObject({ status: 200 });
+    expect(await readDoc(harness.db, 'locations/loc-wh300')).toMatchObject({ label: 'WH300 (คลังหลัก)', updated_at: NOW });
+    expect(await readDoc(harness.db, `qr_codes/${qrId}`)).toMatchObject({ location_id: 'loc-wh300', area_id: 'area-wh300-pack-1', active: true });
+    expect((await places()).locations[0]).toMatchObject({ id: 'loc-wh300', label: 'WH300 (คลังหลัก)', area_count: 6 });
+    expect(await admin('rename_location', { location_id: 'loc-wh300', label: 'FAC16' })).toEqual({ status: 409, body: { error: 'LOCATION_LABEL_TAKEN' } });
+    expect(await admin('rename_location', { location_id: 'loc-none', label: 'x' })).toEqual({ status: 404, body: { error: 'LOCATION_NOT_FOUND' } });
+  });
+
   it('a closed location takes no new area (D-S08-3), and opens again', async () => {
     await admin('seed_places');
     await admin('set_location_active', { location_id: 'loc-fac16', active: false });
@@ -292,10 +311,12 @@ describe('company calendar: open weekdays and holidays, stored as ค.ศ. (§13
     expect(await admin('remove_holiday', { date: '2027-04-14' })).toEqual({ status: 404, body: { error: 'HOLIDAY_NOT_FOUND' } });
   });
 
-  it('open weekdays: any distinct set of at least one day; the stored calendar stays usable', async () => {
-    expect(await admin('set_open_weekdays', { open_weekdays: [6, 1, 2, 3, 4, 5] })).toMatchObject({ status: 200 });
-    expect(await readDoc(harness.db, 'calendars/company')).toMatchObject({ open_weekdays: [1, 2, 3, 4, 5, 6], holidays: [] });
-    expect((await calendar()).open_weekdays).toEqual([1, 2, 3, 4, 5, 6]);
+  it('D-A11-1: open weekdays are locked Monday–Friday in phase A; a Saturday is refused, nothing written', async () => {
+    expect(await admin('set_open_weekdays', { open_weekdays: [6, 1, 2, 3, 4, 5] })).toEqual({ status: 422, body: { error: 'WEEKDAYS_LOCKED' } });
+    expect(await admin('set_open_weekdays', { open_weekdays: [1, 2, 3, 4] })).toEqual({ status: 422, body: { error: 'WEEKDAYS_LOCKED' } });
+    expect(await readDoc(harness.db, 'calendars/company')).toBeUndefined();
+    expect(await admin('set_open_weekdays', { open_weekdays: [1, 2, 3, 4, 5] })).toMatchObject({ status: 200 });
+    expect((await calendar()).open_weekdays).toEqual([1, 2, 3, 4, 5]);
   });
 
   it('FU-30: the reminder time for a closed day is a setting (settings/notifications)', async () => {
@@ -320,6 +341,11 @@ describe('system health (FU-25)', () => {
     outbox('o6', { state: 'provider_accepted', delivery_channel: 'email', slack_fallback_code: 'SLACK_NOT_MAPPED' });
     outbox('o7', { state: 'provider_accepted', delivery_channel: 'email', slack_fallback_code: 'SLACK_INVALID_AUTH' });
     outbox('o8', { state: 'provider_accepted' });
+    // D-A11-6: older than 7 days — no longer counted.
+    outbox('old1', { state: 'failed', last_error_code: 'NO_CHANNEL', next_attempt_at: NOW - 8 * 24 * 60 * MIN });
+    outbox('old2', { state: 'delivery_unknown', last_error_code: 'LEASE_EXPIRED', next_attempt_at: NOW - 8 * 24 * 60 * MIN });
+    outbox('old3', { state: 'provider_accepted', delivery_channel: 'email', slack_fallback_code: 'SLACK_NOT_MAPPED', next_attempt_at: NOW - 7 * 24 * 60 * MIN - 1 });
+    outbox('edge', { state: 'failed', last_error_code: 'NO_CHANNEL', next_attempt_at: NOW - 7 * 24 * 60 * MIN });
     batch.set(harness.db.doc('scheduled_work/presence_reset-2027-01-10'), { kind: 'presence_reset', state: 'failed', last_error_code: 'INTERNAL', attempts: 5, last_attempt_at: NOW - 600 * MIN, next_run_at: NOW - 600 * MIN });
     batch.set(harness.db.doc('scheduled_work/presence_reset-2027-01-11'), { kind: 'presence_reset', state: 'done', next_run_at: NOW - 60 * MIN });
     await batch.commit();
@@ -334,7 +360,7 @@ describe('system health (FU-25)', () => {
       checked_at: NOW,
       tick: { level: 'red', reason: 'TICK_LATE', last_started_at: NOW - 45 * MIN - 2_000, last_completed_at: NOW - 45 * MIN },
       slack_app: { level: 'red', code: 'SLACK_INVALID_AUTH', since: NOW - 90 * MIN },
-      outbox: { failed: 2, delivery_unknown: 1, email_cap_pending: 1 },
+      outbox: { failed: 3, delivery_unknown: 1, email_cap_pending: 1 },
       slack_fallback: { SLACK_NOT_MAPPED: 2, SLACK_INVALID_AUTH: 1 },
       failed_jobs: [{ id: 'presence_reset-2027-01-10', kind: 'presence_reset', code: 'INTERNAL', at: NOW - 600 * MIN }],
       failed_job_count: 1,

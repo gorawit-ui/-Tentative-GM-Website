@@ -21,6 +21,8 @@ describe('parseAdminCommand', () => {
   it('knows the Admin commands of A11', () => {
     expect(ADMIN_COMMAND_TYPES).toEqual([
       'seed_places',
+      'add_location',
+      'rename_location',
       'add_area',
       'rename_area',
       'set_area_active',
@@ -37,6 +39,8 @@ describe('parseAdminCommand', () => {
 
   it.each([
     [{ type: 'seed_places', payload: {} }],
+    [{ type: 'add_location', payload: { label: 'คลังสินค้า บางนา' } }],
+    [{ type: 'rename_location', payload: { location_id: 'loc-fac16', label: 'FAC16 (โรงงานใหม่)' } }],
     [{ type: 'add_area', payload: { location_id: 'loc-fac16', label: 'ห้องประชุม' } }],
     [{ type: 'rename_area', payload: { area_id: 'area-wh300-qa-1', label: 'ห้อง QA' } }],
     [{ type: 'set_area_active', payload: { area_id: 'area-wh300-qa-1', active: false } }],
