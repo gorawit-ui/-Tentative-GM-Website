@@ -16,8 +16,8 @@ describe('randomQrId', () => {
     expect(new Set(samples.map((id) => id.slice(0, 4))).size).toBeGreaterThan(190);
   });
 
-  it('every position varies (spread over the 64 characters)', () => {
-    for (let position = 0; position < 22; position += 1) {
+  it('every position varies (spread over the 64 characters; the 22nd holds the last 2 bits only)', () => {
+    for (let position = 0; position < 21; position += 1) {
       expect(new Set(samples.map((id) => id[position])).size).toBeGreaterThan(30);
     }
   });

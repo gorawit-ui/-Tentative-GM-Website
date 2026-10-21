@@ -5,11 +5,11 @@
 // (a queue failure leaves the request and its pending outbox for recovery, A02). Responses are
 // no-store; errors carry a code (and a field path for contract errors), never request data. The log
 // line per request has the route name, status and code only.
-import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ContractRejected, parseAdminCommand, parseCommand } from '@gm/contracts';
 import { LifecycleRejected, RequestRejected, requireGmAdmin, type DeploymentEnvironment } from '@gm/domain';
 import { executeAdminCommand } from '../admin/commands';
+import { randomAreaId, randomQrId } from '../admin/ids';
 import { readCalendar, readHealth, readPlaces } from '../admin/reads';
 import {
   CommandRejected,
@@ -66,8 +66,6 @@ export interface HttpDeps {
   readonly newQrId?: () => string;
 }
 
-const randomAreaId = () => randomBytes(6).toString('hex');
-const randomQrId = () => randomBytes(16).toString('base64url');
 
 const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
 const ALLOWED_METHODS = 'GET, POST';
