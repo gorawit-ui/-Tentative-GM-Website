@@ -145,11 +145,12 @@ beforeEach(async () => {
       name: NAMES[personId],
       email: personId,
       active: true,
+      // D-A10-1: who is a GM is the role in people.
+      role: personId === GM || personId === GM2 ? 'gm_staff' : 'requester',
       ...(SLACK_IDS[personId] === undefined ? {} : { slack_user_id: SLACK_IDS[personId] }),
       ...(TEAMS[personId] === undefined ? {} : { team_label: TEAMS[personId] }),
     });
   }
-  batch.set(worker.db.doc('settings/routing'), { gm_person_ids: [GM, GM2] });
   await batch.commit();
 });
 
@@ -650,8 +651,8 @@ describe('“ยังไม่มอบหมาย”: every GM hears it when 
     const ON_LEAVE = 'a07.gm.leave@tdfb.co';
     try {
       const batch = harness.db.batch();
-      batch.set(harness.db.doc(`people/${ON_LEAVE}`), { name: 'คุณจีเอ็ม ลา', email: ON_LEAVE, active: true, slack_user_id: 'U0A07LEAVE' });
-      batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: ON_LEAVE }, gm_person_ids: [ON_LEAVE, GM] });
+      batch.set(harness.db.doc(`people/${ON_LEAVE}`), { name: 'คุณจีเอ็ม ลา', email: ON_LEAVE, active: true, role: 'gm_staff', slack_user_id: 'U0A07LEAVE' });
+      batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: ON_LEAVE } });
       batch.set(harness.db.doc(`gm_profiles/${ON_LEAVE}`), { presence_status: { kind: 'on_leave' }, presence_updated_at: NOW - MINUTE_MS });
       batch.set(harness.db.doc(`gm_profiles/${GM}`), { presence_status: { kind: 'unspecified' } });
       batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: [] });

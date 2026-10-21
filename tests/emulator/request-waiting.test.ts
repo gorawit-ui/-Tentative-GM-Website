@@ -189,9 +189,10 @@ beforeAll(async () => {
   await clearAuth();
   const batch = harness.db.batch();
   for (const [personId, name] of Object.entries(NAMES)) {
-    batch.set(harness.db.doc(`people/${personId}`), { name, email: personId, active: true, ...(TEAMS[personId] === undefined ? {} : { team_label: TEAMS[personId] }) });
+    batch.set(harness.db.doc(`people/${personId}`), { name, email: personId, active: true, role: ROLES[personId] ?? 'requester', ...(TEAMS[personId] === undefined ? {} : { team_label: TEAMS[personId] }) });
   }
-  batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: GM1, document_request: GM2 }, gm_person_ids: [GM1, GM2, ADMIN] });
+  // D-A10-1: GM by the role in people; routing names the default owners only.
+  batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: GM1, document_request: GM2 } });
   for (const gm of [GM1, GM2, ADMIN]) batch.set(harness.db.doc(`gm_profiles/${gm}`), { presence_status: { kind: 'unspecified' } });
   batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: HOLIDAYS });
   await batch.commit();

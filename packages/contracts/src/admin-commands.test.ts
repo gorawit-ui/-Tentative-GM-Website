@@ -37,6 +37,7 @@ describe('parseAdminCommand', () => {
       'set_person_role',
       'set_person_active',
       'add_person',
+      'update_person',
     ]);
   });
 
@@ -59,6 +60,11 @@ describe('parseAdminCommand', () => {
     [{ type: 'set_person_role', payload: { person_id: 'somchai@tdfb.co', role: 'gm_staff' } }],
     [{ type: 'set_person_active', payload: { person_id: 'somchai@tdfb.co', active: false } }],
     [{ type: 'add_person', payload: { email: 'new.person@tdfb.co', name: 'คุณใหม่', team: 'ฝ่ายขาย' } }],
+    // D-A10-2: switching off a GM with open requests carries the count the Admin confirmed.
+    [{ type: 'set_person_active', payload: { person_id: 'somchai@tdfb.co', active: false, release_open_requests: 3 } }],
+    // D-A10-6: name and team by hand; no team = the team is cleared.
+    [{ type: 'update_person', payload: { person_id: 'somchai@tdfb.co', name: 'คุณสมชาย ใจดี', team: 'ฝ่ายผลิต' } }],
+    [{ type: 'update_person', payload: { person_id: 'somchai@tdfb.co', name: 'คุณสมชาย ใจดี' } }],
   ])('%o', (command) => {
     expect(parseAdminCommand({ command_id: ID, ...command })).toEqual({ command_id: ID, ...command });
   });
@@ -84,6 +90,12 @@ describe('parseAdminCommand', () => {
     [{ command_id: ID, type: 'put_holiday', payload: { date: '2027-01-01', name: 'x', replaces: 'เมื่อวาน' } }, 'FIELD_INVALID', 'payload.replaces'],
     [{ command_id: ID, type: 'remove_holiday', payload: {} }, 'FIELD_REQUIRED', 'payload.date'],
     [{ command_id: ID, type: 'set_reminder_time', payload: { working_morning_time: '9 โมง' } }, 'FIELD_INVALID', 'payload.working_morning_time'],
+    [{ command_id: ID, type: 'set_person_active', payload: { person_id: 'a@tdfb.co', active: false, release_open_requests: -1 } }, 'FIELD_INVALID', 'payload.release_open_requests'],
+    [{ command_id: ID, type: 'set_person_active', payload: { person_id: 'a@tdfb.co', active: false, release_open_requests: 1.5 } }, 'FIELD_INVALID', 'payload.release_open_requests'],
+    // D-A10-5: the hand-added e-mail is checked like an imported one.
+    [{ command_id: ID, type: 'add_person', payload: { email: 'new.person@gmail.com', name: 'คนนอก' } }, 'FIELD_INVALID', 'payload.email'],
+    [{ command_id: ID, type: 'update_person', payload: { person_id: 'A@TDFB.CO', name: 'x' } }, 'FIELD_INVALID', 'payload.person_id'],
+    [{ command_id: ID, type: 'update_person', payload: { person_id: 'a@tdfb.co' } }, 'FIELD_REQUIRED', 'payload.name'],
   ])('%o → %s at %s', (body, code, path) => {
     expect(rejection(body)).toEqual({ code, path });
   });

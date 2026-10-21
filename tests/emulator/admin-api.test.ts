@@ -365,6 +365,32 @@ describe('system health (FU-25)', () => {
       slack_fallback: { SLACK_NOT_MAPPED: 2, SLACK_INVALID_AUTH: 1 },
       failed_jobs: [{ id: 'presence_reset-2027-01-10', kind: 'presence_reset', code: 'INTERNAL', at: NOW - 600 * MIN }],
       failed_job_count: 1,
+      default_owner_issues: [],
+    });
+    expect(JSON.stringify(reply.body)).not.toContain('private@tdfb.co');
+  });
+
+  it('D-A10-1: a default owner who is no longer an active GM → “ควรตรวจ” naming the request type, never the person', async () => {
+    await harness.db.doc('scheduled_work/tick').set({ last_started_at: NOW - 10 * MIN, last_completed_at: NOW - 10 * MIN + 1_000 });
+    const batch = harness.db.batch();
+    batch.set(harness.db.doc('people/a11.was.gm.private@tdfb.co'), { email: 'a11.was.gm.private@tdfb.co', name: 'คุณเคยเป็น จีเอ็ม', role: 'requester', active: true });
+    batch.set(harness.db.doc('people/a11.gm.off.private@tdfb.co'), { email: 'a11.gm.off.private@tdfb.co', name: 'คุณจีเอ็ม ปิดบัญชี', role: 'gm_staff', active: false });
+    batch.set(harness.db.doc('settings/routing'), {
+      default_owner_by_type: {
+        maintenance: 'a11.was.gm.private@tdfb.co',
+        document_request: 'a11.gm.off.private@tdfb.co',
+        document_intake: 'a11.not.listed.private@tdfb.co',
+      },
+    });
+    await batch.commit();
+    const reply = await call(ADMIN, 'GET', '/api/admin/health');
+    expect(reply.body).toMatchObject({
+      level: 'warning',
+      default_owner_issues: [
+        { type: 'maintenance', code: 'DEFAULT_OWNER_NOT_GM' },
+        { type: 'document_request', code: 'DEFAULT_OWNER_INACTIVE' },
+        { type: 'document_intake', code: 'DEFAULT_OWNER_NOT_LISTED' },
+      ],
     });
     expect(JSON.stringify(reply.body)).not.toContain('private@tdfb.co');
   });
@@ -379,6 +405,7 @@ describe('system health (FU-25)', () => {
       slack_fallback: {},
       failed_jobs: [],
       failed_job_count: 0,
+      default_owner_issues: [],
     });
   });
 

@@ -42,7 +42,12 @@
       "a10.p-mobile-360x640@tdfb.co": { "email": "a10.p-mobile-360x640@tdfb.co", "name": "คุณทดสอบสิทธิ์ mobile-360x640", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
       "a10.p-mobile-390x844@tdfb.co": { "email": "a10.p-mobile-390x844@tdfb.co", "name": "คุณทดสอบสิทธิ์ mobile-390x844", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
       "a10.p-laptop-1366x768@tdfb.co": { "email": "a10.p-laptop-1366x768@tdfb.co", "name": "คุณทดสอบสิทธิ์ laptop-1366x768", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
-      "a10.p-desktop-1440x900@tdfb.co": { "email": "a10.p-desktop-1440x900@tdfb.co", "name": "คุณทดสอบสิทธิ์ desktop-1440x900", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" }
+      "a10.p-desktop-1440x900@tdfb.co": { "email": "a10.p-desktop-1440x900@tdfb.co", "name": "คุณทดสอบสิทธิ์ desktop-1440x900", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-mobile-360x640@tdfb.co": { "email": "a10.e-mobile-360x640@tdfb.co", "name": "คุณแก้ชื่อ mobile-360x640", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-mobile-390x844@tdfb.co": { "email": "a10.e-mobile-390x844@tdfb.co", "name": "คุณแก้ชื่อ mobile-390x844", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-laptop-1366x768@tdfb.co": { "email": "a10.e-laptop-1366x768@tdfb.co", "name": "คุณแก้ชื่อ laptop-1366x768", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-desktop-1440x900@tdfb.co": { "email": "a10.e-desktop-1440x900@tdfb.co", "name": "คุณแก้ชื่อ desktop-1440x900", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.gm.busy@tdfb.co": { "email": "a10.gm.busy@tdfb.co", "name": "คุณจีเอ็ม งานค้าง", "role": "gm_staff", "active": true, "team_label": "ทีม GM" }
     },
     "people_picker": {
       "a09.requester@tdfb.co": { "name": "คุณผู้ขอ ทดสอบ", "team_label": "ฝ่ายผลิต" },
@@ -55,7 +60,12 @@
       "a10.p-mobile-360x640@tdfb.co": { "name": "คุณทดสอบสิทธิ์ mobile-360x640", "team_label": "ฝ่ายทดสอบ" },
       "a10.p-mobile-390x844@tdfb.co": { "name": "คุณทดสอบสิทธิ์ mobile-390x844", "team_label": "ฝ่ายทดสอบ" },
       "a10.p-laptop-1366x768@tdfb.co": { "name": "คุณทดสอบสิทธิ์ laptop-1366x768", "team_label": "ฝ่ายทดสอบ" },
-      "a10.p-desktop-1440x900@tdfb.co": { "name": "คุณทดสอบสิทธิ์ desktop-1440x900", "team_label": "ฝ่ายทดสอบ" }
+      "a10.p-desktop-1440x900@tdfb.co": { "name": "คุณทดสอบสิทธิ์ desktop-1440x900", "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-mobile-360x640@tdfb.co": { "name": "คุณแก้ชื่อ mobile-360x640", "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-mobile-390x844@tdfb.co": { "name": "คุณแก้ชื่อ mobile-390x844", "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-laptop-1366x768@tdfb.co": { "name": "คุณแก้ชื่อ laptop-1366x768", "team_label": "ฝ่ายทดสอบ" },
+      "a10.e-desktop-1440x900@tdfb.co": { "name": "คุณแก้ชื่อ desktop-1440x900", "team_label": "ฝ่ายทดสอบ" },
+      "a10.gm.busy@tdfb.co": { "name": "คุณจีเอ็ม งานค้าง", "team_label": "ทีม GM" }
     },
     "locations": {
       "loc-wh300": { "label": "WH300", "active": true, "order": 1 },
@@ -86,6 +96,11 @@
     },
     "outbox": {
       "a11-outbox-failed": { "request_id": "req-a11-fixture", "recipient_id": "a11.fixture.private@tdfb.co", "event_kind": "request_created", "state": "failed", "last_error_code": "NO_CHANNEL", "next_attempt_at": 1792350000000 }
+    },
+    "requests": {
+      "req-a10-busy-0001": { "request_number": "DEV-9001", "status": "queued", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" },
+      "req-a10-busy-0002": { "request_number": "DEV-9002", "status": "in_progress", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" },
+      "req-a10-busy-0003": { "request_number": "DEV-9003", "status": "cancelled", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" }
     }
   },
   "auth_users": {

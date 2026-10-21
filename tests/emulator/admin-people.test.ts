@@ -101,7 +101,7 @@ async function seed(): Promise<void> {
     [EMPLOYEE, 'คุณพนักงาน เดิม', 'requester'],
   ];
   for (const [personId, name, role] of people) batch.set(harness.db.doc(`people/${personId}`), { email: personId, name, role, active: true, uid: uids.get(personId) });
-  batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { document_request: GM }, gm_person_ids: [GM, ADMIN] });
+  batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { document_request: GM } });
   batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: [] });
   for (const gm of [GM, ADMIN]) batch.set(harness.db.doc(`gm_profiles/${gm}`), { presence_status: { kind: 'unspecified' } });
   for (const [personId, , role] of people) batch.set(harness.db.doc(`access/${uids.get(personId)}`), { person_id: personId, role, enabled: true });
@@ -457,6 +457,106 @@ describe('logins not on the list (D-A09-1): e-mail and time, GM Admin only, adde
     expect((await call(STRANGER, 'GET', '/api/me/awaiting-confirmation')).status).toBe(200);
     expect(await admin('add_person', { email: STRANGER, name: 'ซ้ำ' })).toEqual({ status: 409, body: { error: 'PERSON_EXISTS' } });
     expect((await admin('add_person', { email: 'someone@gmail.com', name: 'นอก' })).status).toBe(400);
+  });
+});
+
+describe('D-A10-2: switching off a GM who still has open requests', () => {
+  async function onBehalfFor(requester: string): Promise<string> {
+    const reply = await act(GM, 'create_on_behalf', {
+      requester: { person_id: requester },
+      details: { type: 'document_request', summary_title: 'ขอหนังสือรับรอง', sensitivity_subject: 'general' },
+    });
+    expect(reply.status).toBe(200);
+    return (reply.body.result as { request_id: string }).request_id;
+  }
+
+  it('the list shows how many open requests the GM holds; switching off needs that count; then they are unassigned, unpinned and every other GM is told', async () => {
+    const queued = await onBehalfFor(EMPLOYEE);
+    const working = await onBehalfFor(EMPLOYEE);
+    const cancelled = await onBehalfFor(EMPLOYEE);
+    expect(await act(GM, 'accept_request', { request_id: working, expected_revision: 1 })).toMatchObject({ status: 200 });
+    expect(await act(GM, 'cancel_request', { request_id: cancelled, expected_revision: 1, reason: 'ซ้ำ' })).toMatchObject({ status: 200 });
+    await harness.db.doc(`gm_profiles/${GM}`).set({ presence_status: { kind: 'unspecified' }, focus_request_id: working });
+    expect(await personView(GM)).toMatchObject({ open_assigned: 2 });
+    expect(await personView(EMPLOYEE)).toMatchObject({ open_assigned: 0 });
+
+    expect(await admin('set_person_active', { person_id: GM, active: false })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', open_assigned: 2 } });
+    expect(await admin('set_person_active', { person_id: GM, active: false, release_open_requests: 1 })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', open_assigned: 2 } });
+    expect(await readDoc(harness.db, `access/${uids.get(GM)}`)).toMatchObject({ enabled: true });
+
+    const outboxBefore = (await readCollection(harness.db, 'outbox')).size;
+    expect(await admin('set_person_active', { person_id: GM, active: false, release_open_requests: 2 })).toMatchObject({ status: 200, body: { result: { person_id: GM, active: false, released: 2 } } });
+    expect(await readDoc(harness.db, `access/${uids.get(GM)}`)).toMatchObject({ enabled: false });
+    for (const id of [queued, working]) {
+      const request = await readDoc(harness.db, `requests/${id}`);
+      expect(request).toMatchObject({ status: 'queued' });
+      expect(request).not.toHaveProperty('assignee_id');
+      expect(await readDoc(harness.db, `gm_request_summaries/${id}`)).not.toHaveProperty('assignee_id');
+      const history = [...(await readCollection(harness.db, `requests/${id}/history`)).values()];
+      expect(history).toContainEqual(expect.objectContaining({ kind: 'unassigned', actor_id: 'system', previous_assignee_id: GM, reason: 'ASSIGNEE_INACTIVE' }));
+    }
+    // A GM progress clock is not reset by an Admin's change.
+    expect(await readDoc(harness.db, `requests/${queued}`)).toMatchObject({ last_updated_at: NOW });
+    expect(await readDoc(harness.db, `gm_profiles/${GM}`)).not.toHaveProperty('focus_request_id');
+    expect(await readDoc(harness.db, `requests/${cancelled}`)).toMatchObject({ status: 'cancelled', assignee_id: GM });
+    const notices = [...(await readCollection(harness.db, 'outbox')).values()].slice(outboxBefore).filter((entry) => entry.event_kind === 'request_unassigned');
+    // “แจ้ง GM ที่เหลือ”: the active GMs by role (D-A10-1) — here the GM Admin — once per request.
+    expect(notices.map((entry) => [entry.request_id, entry.recipient_id, entry.audience]).sort()).toEqual(
+      [
+        [queued, ADMIN, 'gm'],
+        [working, ADMIN, 'gm'],
+      ].sort(),
+    );
+    expect(await personView(GM)).toMatchObject({ active: false, open_assigned: 0 });
+  });
+
+  it('the release is safe to run twice: a request already unassigned or taken by someone else is left alone', async () => {
+    const id = await onBehalfFor(EMPLOYEE);
+    expect(await admin('set_person_active', { person_id: GM, active: false, release_open_requests: 1 })).toMatchObject({ status: 200 });
+    const after = await readDoc(harness.db, `requests/${id}`);
+    // Switching on and off again: nothing is left to release, and the request is not written again.
+    expect(await admin('set_person_active', { person_id: GM, active: true })).toMatchObject({ status: 200 });
+    expect(await admin('set_person_active', { person_id: GM, active: false })).toMatchObject({ status: 200, body: { result: { released: 0 } } });
+    expect(await readDoc(harness.db, `requests/${id}`)).toEqual(after);
+  });
+
+  it('an employee with open requests is switched off as before: their requests do not change', async () => {
+    const id = await onBehalfFor(EMPLOYEE);
+    expect(await admin('set_person_active', { person_id: EMPLOYEE, active: false })).toMatchObject({ status: 200, body: { result: { released: 0 } } });
+    expect(await readDoc(harness.db, `requests/${id}`)).toMatchObject({ status: 'queued', assignee_id: GM, requester_id: EMPLOYEE });
+  });
+});
+
+describe('D-A10-5 / D-A10-6: add a person by hand; edit a name and team', () => {
+  it('a new employee not in the CSV yet: the e-mail is checked like an import (lower case, @tdfb.co only); an ordinary user', async () => {
+    expect(await admin('add_person', { email: '  New.Hire@TDFB.co ', name: 'คุณพนักงาน ใหม่', team: 'ฝ่ายขาย' })).toMatchObject({ status: 200, body: { result: { person_id: 'new.hire@tdfb.co' } } });
+    expect(await readDoc(harness.db, 'people/new.hire@tdfb.co')).toMatchObject({ email: 'new.hire@tdfb.co', name: 'คุณพนักงาน ใหม่', team_label: 'ฝ่ายขาย', role: 'requester', active: true });
+    expect(await admin('add_person', { email: 'new.hire@gmail.com', name: 'คนนอก' })).toMatchObject({ status: 400, body: { error: 'FIELD_INVALID' } });
+    expect(await admin('add_person', { email: 'new.hire@tdfb.co', name: 'ซ้ำ' })).toEqual({ status: 409, body: { error: 'PERSON_EXISTS' } });
+  });
+
+  it('a name and team edited by hand: people and the picker change; open requests follow (FU-11); a blank team clears it', async () => {
+    const reply = await act(GM, 'create_on_behalf', {
+      requester: { person_id: EMPLOYEE },
+      details: { type: 'document_request', summary_title: 'ขอหนังสือรับรอง', sensitivity_subject: 'general' },
+    });
+    const id = (reply.body.result as { request_id: string }).request_id;
+    expect(await admin('update_person', { person_id: EMPLOYEE, name: '  คุณพนักงาน   แก้ด้วยมือ ', team: 'ฝ่ายบัญชี' })).toMatchObject({ status: 200 });
+    expect(await readDoc(harness.db, `people/${EMPLOYEE}`)).toMatchObject({ name: 'คุณพนักงาน แก้ด้วยมือ', team_label: 'ฝ่ายบัญชี', role: 'requester', active: true });
+    expect(await readDoc(harness.db, `people_picker/${EMPLOYEE}`)).toEqual({ name: 'คุณพนักงาน แก้ด้วยมือ', team_label: 'ฝ่ายบัญชี' });
+    const job = [...(await readCollection(harness.db, 'scheduled_work')).entries()].find(([, data]) => data.kind === 'display_refresh');
+    expect(job?.[1]).toMatchObject({ state: 'scheduled', person_ids: [EMPLOYEE] });
+    expect(await runJob(workerDeps(), job?.[0] ?? '')).toBe('done');
+    expect(await readDoc(harness.db, `requests/${id}`)).toMatchObject({ requester_display: { person_id: EMPLOYEE, display_name: 'คุณพนักงาน แก้ด้วยมือ' } });
+    expect(await admin('update_person', { person_id: EMPLOYEE, name: 'คุณพนักงาน แก้ด้วยมือ' })).toMatchObject({ status: 200 });
+    expect(await readDoc(harness.db, `people/${EMPLOYEE}`)).not.toHaveProperty('team_label');
+  });
+
+  it('a name that is blank or too long, or a person not on the list, is refused; nothing changes', async () => {
+    expect(await admin('update_person', { person_id: EMPLOYEE, name: '   ' })).toEqual({ status: 422, body: { error: 'LABEL_INVALID' } });
+    expect(await admin('update_person', { person_id: EMPLOYEE, name: 'ก'.repeat(101) })).toEqual({ status: 422, body: { error: 'LABEL_INVALID' } });
+    expect(await admin('update_person', { person_id: 'nobody@tdfb.co', name: 'ใคร' })).toEqual({ status: 404, body: { error: 'PERSON_NOT_FOUND' } });
+    expect(await readDoc(harness.db, `people/${EMPLOYEE}`)).toMatchObject({ name: 'คุณพนักงาน เดิม' });
   });
 });
 

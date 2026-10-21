@@ -127,12 +127,15 @@ async function outboxFor(requestId: string): Promise<Record<string, unknown>[]> 
   return (await outboxEntries()).filter((entry) => entry.request_id === requestId);
 }
 
+/** D-A10-1: who is a GM is the role in people; settings/routing only names the default owners. */
+const ROLES: Readonly<Record<string, string>> = { [GM1]: 'gm_staff', [GM2]: 'gm_staff', [GM_ADMIN]: 'gm_admin' };
+const personDoc = (personId: string, name: string) => ({ name, email: personId, active: true, role: ROLES[personId] ?? 'requester' });
+
 async function seedDirectory(): Promise<void> {
   const batch = harness.db.batch();
-  for (const [personId, name] of Object.entries(NAMES)) batch.set(harness.db.doc(`people/${personId}`), { name, email: personId, active: true });
+  for (const [personId, name] of Object.entries(NAMES)) batch.set(harness.db.doc(`people/${personId}`), personDoc(personId, name));
   batch.set(harness.db.doc('settings/routing'), {
     default_owner_by_type: { maintenance: GM1, document_request: GM2, document_intake: GM2 },
-    gm_person_ids: [GM1, GM2, GM_ADMIN],
   });
   for (const gm of [GM1, GM2, GM_ADMIN]) batch.set(harness.db.doc(`gm_profiles/${gm}`), { presence_status: { kind: 'unspecified' } });
   batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: ['2026-12-31', '2027-01-01'] });
@@ -329,6 +332,43 @@ describe('outbox: who to tell, never the person who acted (D-S08-2); nothing is 
       );
     } finally {
       await harness.db.doc(`gm_profiles/${GM1}`).set({ presence_status: { kind: 'unspecified' } });
+    }
+  });
+
+  it('D-A10-1: “every GM” are the active people with a GM role — an old gm_person_ids list in settings is ignored', async () => {
+    await harness.db.doc(`gm_profiles/${GM1}`).set({ presence_status: { kind: 'on_leave' }, leave_ends_on: '2027-01-05', presence_updated_at: NOW - 3_600_000 });
+    await harness.db.doc('settings/routing').set({ default_owner_by_type: { maintenance: GM1, document_request: GM2 }, gm_person_ids: [GM1, COLLEAGUE] });
+    try {
+      const reply = await call('POST', '/api/commands', { token: tokens.get(EMPLOYEE), body: maintenance() });
+      const id = (reply.body.result as { request_id: string }).request_id;
+      expect((await outboxFor(id)).map((entry) => entry.recipient_id).sort()).toEqual([GM2, GM_ADMIN].sort());
+    } finally {
+      await harness.db.doc(`gm_profiles/${GM1}`).set({ presence_status: { kind: 'unspecified' } });
+      await harness.db.doc('settings/routing').set({ default_owner_by_type: { maintenance: GM1, document_request: GM2, document_intake: GM2 } });
+    }
+  });
+
+  it('D-A10-1: a default owner who is no longer a GM is not set up (D-S07-5): unassigned, every GM told', async () => {
+    await harness.db.doc(`people/${GM1}`).set({ ...personDoc(GM1, NAMES[GM1] ?? ''), role: 'requester' });
+    try {
+      const reply = await call('POST', '/api/commands', { token: tokens.get(EMPLOYEE), body: maintenance() });
+      const id = (reply.body.result as { request_id: string }).request_id;
+      expect(await readDoc(harness.db, `requests/${id}`)).not.toHaveProperty('assignee_id');
+      expect((await outboxFor(id)).map((entry) => entry.recipient_id).sort()).toEqual([GM2, GM_ADMIN].sort());
+    } finally {
+      await harness.db.doc(`people/${GM1}`).set(personDoc(GM1, NAMES[GM1] ?? ''));
+    }
+  });
+
+  it('D-A10-1: a default owner whose account is switched off is not set up either', async () => {
+    await harness.db.doc(`people/${GM1}`).set({ ...personDoc(GM1, NAMES[GM1] ?? ''), active: false });
+    try {
+      const reply = await call('POST', '/api/commands', { token: tokens.get(EMPLOYEE), body: maintenance() });
+      const id = (reply.body.result as { request_id: string }).request_id;
+      expect(await readDoc(harness.db, `requests/${id}`)).not.toHaveProperty('assignee_id');
+      expect((await outboxFor(id)).map((entry) => entry.recipient_id).sort()).toEqual([GM2, GM_ADMIN].sort());
+    } finally {
+      await harness.db.doc(`people/${GM1}`).set(personDoc(GM1, NAMES[GM1] ?? ''));
     }
   });
 
