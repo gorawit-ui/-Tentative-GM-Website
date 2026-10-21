@@ -135,18 +135,31 @@ test('reduced motion: nothing animates or transitions (CSS); without it the page
 
 test('Part 4: IBM Plex Sans Thai Looped (self-hosted) and the token colours, sizes and focus ring', async ({ page }) => {
   await page.goto('/login');
-  await page.evaluate(() => document.fonts.ready);
+  const button = page.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' });
+  // Measure the settled page: the button is disabled while the account is checked (UI-01 Loading) and
+  // eases to its colour over 150ms, and the browser loads the Thai face only once Thai text needs it —
+  // so wait for those, never for a fixed time.
+  await expect(button).toBeEnabled();
+  await expect.poll(() => button.evaluate((element) => element.getAnimations().length)).toBe(0);
+  // The body text (400) has a loaded IBM Plex Sans Thai Looped face for the Thai block (U+0E01…):
+  // fonts.check() alone is true when no face needs loading, so it cannot tell a missing Thai face.
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        [...document.fonts].some(
+          (face) => face.family.replaceAll('"', '') === 'IBM Plex Sans Thai Looped' && face.weight === '400' && /U\+0?E01/i.test(face.unicodeRange) && face.status === 'loaded',
+        ),
+      ),
+    )
+    .toBe(true);
   const font = await page.evaluate(() => ({
     family: getComputedStyle(document.body).fontFamily,
     size: getComputedStyle(document.body).fontSize,
     loaded: [...document.fonts].some((face) => face.family.replaceAll('"', '') === 'IBM Plex Sans Thai Looped' && face.status === 'loaded'),
-    thai: document.fonts.check('16px "IBM Plex Sans Thai Looped"', 'เข้าสู่ระบบ'),
   }));
   expect(font.family.startsWith('"IBM Plex Sans Thai Looped"')).toBe(true);
   expect(font.size).toBe('16px');
   expect(font.loaded).toBe(true);
-  expect(font.thai).toBe(true);
-  const button = page.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' });
   const look = await button.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
