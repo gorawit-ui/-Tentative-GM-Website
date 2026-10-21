@@ -24,7 +24,9 @@
         "body": "ข้อมูลหลังเข้าสู่ระบบเท่านั้น — ห้ามแสดงก่อนเข้าสู่ระบบ",
         "prelogin_contacts": [
           { "label": "โทรหาทีม GM", "contact_name": "คุณสมมติ ใจดี (ทีม GM)", "phone": "02-000-0000", "email": "a09.private@tdfb.co" },
-          { "label": "แจ้งที่ห้องทีม GM", "detail": "อาคารทดสอบ ก ชั้น 1 (ตัวอย่าง)" }
+          { "label": "แจ้งที่ห้องทีม GM", "detail": "อาคารทดสอบ ก ชั้น 1 (ตัวอย่าง)" },
+          { "label": "แชท LINE OA ทีม GM (ตัวอย่าง)", "url": "https://example.com/gm-line-oa" },
+          { "label": "ลิงก์ที่ระบบไม่รับ (ตัวอย่าง)", "url": "javascript:alert(1)" }
         ]
       }
     }
