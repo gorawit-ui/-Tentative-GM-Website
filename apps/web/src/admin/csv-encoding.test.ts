@@ -3,7 +3,7 @@
 // and the Admin confirms that the first rows read as Thai before choosing columns; a wrong guess can be
 // overridden by choosing the encoding.
 import { describe, expect, it } from 'vitest';
-import { CSV_ENCODINGS, decodeCsvBytes, detectCsvEncoding } from './index';
+import { CSV_ENCODINGS, decodeCsvBytes, detectCsvEncoding } from './csv-encoding';
 
 const TEXT = 'Primary Email,ชื่อ,ทีม\r\nsomchai@tdfb.co,คุณสมชาย ใจดี,ฝ่ายผลิต\r\n';
 

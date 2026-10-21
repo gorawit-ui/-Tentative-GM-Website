@@ -16,6 +16,10 @@ export function adminWorkerStore(db: Firestore, options: { readonly maxAttempts?
           get: (path) => transaction.get(path),
           set: (path, data) => transaction.set(path, data),
           delete: (path) => transaction.delete(path),
+          list: (collection, field, value, limit) => {
+            if (transaction.list === undefined) throw new Error('this store cannot list');
+            return transaction.list(collection, field, value, limit);
+          },
         }),
       ),
     async due(collection, state, now, limit, after) {

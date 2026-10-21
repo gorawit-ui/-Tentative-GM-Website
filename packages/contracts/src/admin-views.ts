@@ -56,4 +56,6 @@ export interface AdminHealthView {
   readonly slack_fallback: Readonly<Record<string, number>>;
   readonly failed_jobs: readonly { readonly id: string; readonly kind: string; readonly code?: string; readonly at?: Instant }[];
   readonly failed_job_count: number;
+  /** D-A10-1: request types whose default owner is not an active GM (code only, never the person). */
+  readonly default_owner_issues: readonly { readonly type: string; readonly code: string }[];
 }

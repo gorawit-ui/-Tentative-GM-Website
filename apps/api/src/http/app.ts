@@ -10,7 +10,7 @@ import { ContractRejected, parseAdminCommand, parseCommand, parsePeopleImportBod
 import { LifecycleRejected, RequestRejected, requireGmAdmin, type DeploymentEnvironment } from '@gm/domain';
 import { executeAdminCommand } from '../admin/commands';
 import { randomAreaId, randomQrId } from '../admin/ids';
-import { importPeople, linkAccount, previewPeople, readPeople, readUnlisted } from '../admin/people';
+import { importPeople, linkAccount, previewPeople, readPeople, readUnlisted, runReleaseJob } from '../admin/people';
 import { readCalendar, readHealth, readPlaces } from '../admin/reads';
 import {
   CommandRejected,
@@ -110,6 +110,8 @@ const CONFLICT_CODES = new Set([
   'NOT_WAITING',
   'STALE_WAITING_INTERVAL',
   'ALREADY_RESPONDED',
+  // D-A10-2: the Admin must confirm the latest count of open requests a GM holds.
+  'OPEN_REQUESTS_ASSIGNED',
   // A11: the Admin's change clashes with what is there (Part 3 §13 states: keep the form, say why).
   'AREA_LABEL_TAKEN',
   'LOCATION_LABEL_TAKEN',
@@ -266,6 +268,12 @@ function routes(deps: HttpDeps): readonly Route[] {
           newAreaId: deps.newAreaId ?? randomAreaId,
           newQrId: deps.newQrId ?? randomQrId,
         });
+        // D-A10-2: the open requests of a GM just switched off are released now (the worker finishes
+        // the job if this stops half way).
+        const releaseJob = outcome.result.release_job;
+        if (typeof releaseJob === 'string') {
+          await runReleaseJob(deps.commandStore, releaseJob, { now: api.now(), directories: { peopleDirectory: deps.peopleDirectory, routingDirectory: deps.routingDirectory } });
+        }
         return { status: 200, body: { replayed: outcome.replayed, result: outcome.result } };
       },
     },

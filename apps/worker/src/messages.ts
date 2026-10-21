@@ -89,6 +89,9 @@ function headlineOf(notice: NoticeContent): string | undefined {
       return 'งานถูกยกเลิก';
     case 'request_reopened':
       return 'งานถูกเปิดกลับมาดำเนินการอีกครั้ง';
+    case 'request_unassigned':
+      // D-A10-2: the assignee's account was switched off; any GM may take it.
+      return 'ผู้รับผิดชอบเดิมใช้งานระบบไม่ได้แล้ว งานนี้ยังไม่มอบหมาย รอทีม GM รับเรื่อง';
     case 'request_taken_over':
       // D-A03-4: to the previous assignee; D-A07-1: who took it.
       return name === undefined ? 'มี GM รับงานนี้ต่อจากคุณแล้ว' : `${name} รับงานนี้ต่อจากคุณแล้ว`;

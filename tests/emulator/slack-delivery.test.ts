@@ -688,7 +688,8 @@ describe('“ยังไม่มอบหมาย”: every GM hears it when 
         expect(response.status).toBe(200);
         const { result } = (await response.json()) as { result: { request_id: string; request_number: string } };
         await runTick(deps());
-        expect(slack.calls.map((call) => call.body.channel)).toEqual([SLACK_IDS[GM]]);
+        // D-A10-1: every active GM by role (GM and GM2; the owner on leave is skipped).
+        expect(slack.calls.map((call) => call.body.channel).sort()).toEqual([SLACK_IDS[GM], SLACK_IDS[GM2]].sort());
         expect(texts()[0]?.split('\n')[0]).toBe(`*${result.request_number}* ยังไม่มอบหมาย รอทีม GM รับเรื่อง`);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));

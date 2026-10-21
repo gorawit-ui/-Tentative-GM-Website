@@ -11,6 +11,8 @@ export interface WorkerTransaction {
   set(path: string, data: object): void;
   /** Removes a document (the shared request pipeline may drop a public summary). */
   delete(path: string): void;
+  /** D-A10-1: documents whose `field` equals `value` (the GMs by role), at most `limit`. A read. */
+  list?(collection: string, field: string, value: string, limit: number): Promise<readonly { readonly id: string; readonly data: StoredData }[]>;
 }
 
 export interface DueDocument {

@@ -480,11 +480,10 @@ describe('D-A10-2: switching off a GM who still has open requests', () => {
     expect(await personView(GM)).toMatchObject({ open_assigned: 2 });
     expect(await personView(EMPLOYEE)).toMatchObject({ open_assigned: 0 });
 
-    expect(await admin('set_person_active', { person_id: GM, active: false })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', open_assigned: 2 } });
-    expect(await admin('set_person_active', { person_id: GM, active: false, release_open_requests: 1 })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', open_assigned: 2 } });
+    expect(await admin('set_person_active', { person_id: GM, active: false })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', current: { open_assigned: 2 } } });
+    expect(await admin('set_person_active', { person_id: GM, active: false, release_open_requests: 1 })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', current: { open_assigned: 2 } } });
     expect(await readDoc(harness.db, `access/${uids.get(GM)}`)).toMatchObject({ enabled: true });
 
-    const outboxBefore = (await readCollection(harness.db, 'outbox')).size;
     expect(await admin('set_person_active', { person_id: GM, active: false, release_open_requests: 2 })).toMatchObject({ status: 200, body: { result: { person_id: GM, active: false, released: 2 } } });
     expect(await readDoc(harness.db, `access/${uids.get(GM)}`)).toMatchObject({ enabled: false });
     for (const id of [queued, working]) {
@@ -499,7 +498,7 @@ describe('D-A10-2: switching off a GM who still has open requests', () => {
     expect(await readDoc(harness.db, `requests/${queued}`)).toMatchObject({ last_updated_at: NOW });
     expect(await readDoc(harness.db, `gm_profiles/${GM}`)).not.toHaveProperty('focus_request_id');
     expect(await readDoc(harness.db, `requests/${cancelled}`)).toMatchObject({ status: 'cancelled', assignee_id: GM });
-    const notices = [...(await readCollection(harness.db, 'outbox')).values()].slice(outboxBefore).filter((entry) => entry.event_kind === 'request_unassigned');
+    const notices = [...(await readCollection(harness.db, 'outbox')).values()].filter((entry) => entry.event_kind === 'request_unassigned');
     // “แจ้ง GM ที่เหลือ”: the active GMs by role (D-A10-1) — here the GM Admin — once per request.
     expect(notices.map((entry) => [entry.request_id, entry.recipient_id, entry.audience]).sort()).toEqual(
       [
@@ -573,6 +572,8 @@ describe('the people list (Part 3 §13.3)', () => {
       linked: true,
       slack_mapped: true,
       in_latest_import: true,
+      // D-A10-2: open requests held (counted for GMs only).
+      open_assigned: 0,
     });
     expect(JSON.stringify(all)).not.toContain('U01EMPLOYEE');
     expect((await peopleList('จีเอ็ม')).people.map((person) => person.person_id)).toEqual([GM]);

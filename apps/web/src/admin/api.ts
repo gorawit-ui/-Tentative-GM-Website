@@ -50,6 +50,8 @@ export interface PersonView {
   readonly linked: boolean;
   readonly slack_mapped: boolean;
   readonly in_latest_import: boolean;
+  /** D-A10-2: open requests this person is the assignee of. */
+  readonly open_assigned: number;
 }
 
 export interface PeoplePage {
@@ -105,7 +107,7 @@ export function adminCommand(type: string, payload: Record<string, unknown>, com
 /** Thai words for the codes an Admin page can meet (Part 3 §13 states: say why, keep the form). */
 const MESSAGES: Readonly<Record<string, string>> = {
   AREA_LABEL_TAKEN: 'มีบริเวณชื่อนี้ในสถานที่นี้แล้ว',
-  LABEL_INVALID: 'ชื่อต้องมี 1–60 ตัวอักษร',
+  LABEL_INVALID: 'ชื่อต้องมี 1–60 ตัวอักษร (ชื่อคนไม่เกิน 100)',
   LOCATION_INACTIVE: 'สถานที่นี้ถูกปิดใช้งาน เปิดใช้งานก่อนเพิ่มบริเวณ',
   LOCATION_NOT_FOUND: 'ไม่พบสถานที่นี้ ลองโหลดหน้าใหม่',
   AREA_NOT_FOUND: 'ไม่พบบริเวณนี้ ลองโหลดหน้าใหม่',
@@ -121,6 +123,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   LOCATION_LABEL_TAKEN: 'มีสถานที่ชื่อนี้แล้ว',
   LAST_GM_ADMIN: 'ต้องมี GM Admin ที่ใช้งานอยู่อย่างน้อย 1 คน จึงเปลี่ยนสิทธิ์หรือปิดบัญชีคนนี้ไม่ได้',
   PERSON_EXISTS: 'คนนี้อยู่ในรายชื่อแล้ว',
+  OPEN_REQUESTS_ASSIGNED: 'จำนวนงานที่คนนี้รับผิดชอบเปลี่ยนไปแล้ว ตรวจจำนวนใหม่แล้วยืนยันอีกครั้ง',
   PERSON_NOT_FOUND: 'ไม่พบคนนี้ในรายชื่อ ลองโหลดหน้าใหม่',
   FIELD_INVALID: 'ข้อมูลไม่ถูกต้อง ตรวจแล้วลองใหม่',
   GM_ADMIN_ONLY: 'บัญชีนี้ไม่มีสิทธิ์ GM Admin',

@@ -35,6 +35,7 @@ export const ADMIN_COMMAND_TYPES = [
   'set_person_role',
   'set_person_active',
   'add_person',
+  'update_person',
 ] as const;
 export type AdminCommandType = (typeof ADMIN_COMMAND_TYPES)[number];
 
@@ -54,8 +55,15 @@ export type AdminCommand =
   | { readonly command_id: string; readonly type: 'remove_holiday'; readonly payload: { readonly date: string } }
   | { readonly command_id: string; readonly type: 'set_reminder_time'; readonly payload: { readonly working_morning_time: string } }
   | { readonly command_id: string; readonly type: 'set_person_role'; readonly payload: { readonly person_id: string; readonly role: Role } }
-  | { readonly command_id: string; readonly type: 'set_person_active'; readonly payload: { readonly person_id: string; readonly active: boolean } }
-  | { readonly command_id: string; readonly type: 'add_person'; readonly payload: { readonly email: string; readonly name: string; readonly team?: string } };
+  | {
+      readonly command_id: string;
+      readonly type: 'set_person_active';
+      /** D-A10-2: switching off a GM with open requests carries the count the Admin confirmed. */
+      readonly payload: { readonly person_id: string; readonly active: boolean; readonly release_open_requests?: number };
+    }
+  | { readonly command_id: string; readonly type: 'add_person'; readonly payload: { readonly email: string; readonly name: string; readonly team?: string } }
+  /** D-A10-6: name and team edited by hand (no team = cleared); the next CSV import writes over them. */
+  | { readonly command_id: string; readonly type: 'update_person'; readonly payload: { readonly person_id: string; readonly name: string; readonly team?: string } };
 
 const COMMAND_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -146,14 +154,26 @@ function payloadOf(type: AdminCommandType, value: unknown): AdminCommand['payloa
       return { person_id: personIdField(payload, path, 'person_id'), role: enumField(payload, path, 'role', ROLES) };
     }
     case 'set_person_active': {
-      const payload = strictObject(value, path, ['person_id', 'active']);
-      return { person_id: personIdField(payload, path, 'person_id'), active: booleanField(payload, path, 'active') };
+      const payload = strictObject(value, path, ['person_id', 'active', 'release_open_requests']);
+      const parsed = { person_id: personIdField(payload, path, 'person_id'), active: booleanField(payload, path, 'active') };
+      if (!Object.hasOwn(payload, 'release_open_requests')) return parsed;
+      const count = payload.release_open_requests;
+      if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+        throw new ContractRejected('FIELD_INVALID', join(path, 'release_open_requests'), 'release_open_requests must be a whole number ≥ 0');
+      }
+      return { ...parsed, release_open_requests: count };
     }
     case 'add_person': {
       const payload = strictObject(value, path, ['email', 'name', 'team']);
       const email = personIdFromCsvEmail(stringField(payload, path, 'email'), join(path, 'email'));
       const name = stringField(payload, path, 'name');
       return Object.hasOwn(payload, 'team') ? { email, name, team: stringField(payload, path, 'team') } : { email, name };
+    }
+    case 'update_person': {
+      const payload = strictObject(value, path, ['person_id', 'name', 'team']);
+      const personId = personIdField(payload, path, 'person_id');
+      const name = stringField(payload, path, 'name');
+      return Object.hasOwn(payload, 'team') ? { person_id: personId, name, team: stringField(payload, path, 'team') } : { person_id: personId, name };
     }
     case 'set_reminder_time': {
       const payload = strictObject(value, path, ['working_morning_time']);
