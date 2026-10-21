@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { fixtureAuthUsers, type FixtureAuthUser } from './emulator';
 
-export type AccountKey = 'requester' | 'viewer' | 'gm' | 'admin' | 'disabled' | 'offboard' | 'logout' | 'new' | 'outsider' | 'lookalike';
+export type AccountKey = 'requester' | 'viewer' | 'gm' | 'admin' | 'disabled' | 'offboard' | 'logout' | 'new' | 'first' | 'joiner' | 'outsider' | 'lookalike';
 
 export function account(key: AccountKey): FixtureAuthUser {
   const found = fixtureAuthUsers().find((user) => user.uid === `uid-a09-${key}`);

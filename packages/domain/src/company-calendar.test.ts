@@ -59,9 +59,13 @@ describe('holidays', () => {
   });
 });
 
-describe('open weekdays', () => {
-  it('any distinct set of at least one day, sorted', () => {
-    expect(planOpenWeekdays(DEFAULT_COMPANY_CALENDAR, [6, 1, 2]).openWeekdays).toEqual([1, 2, 6]);
+describe('open weekdays — D-A11-1: locked Monday–Friday in phase A (one calendar for the whole company)', () => {
+  it('Monday–Friday is the only accepted set', () => {
+    expect(planOpenWeekdays(DEFAULT_COMPANY_CALENDAR, [5, 4, 3, 2, 1]).openWeekdays).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it.each([[[1, 2, 3, 4, 5, 6]], [[6, 7]], [[1, 2, 3, 4]], [[1, 2, 3, 4, 5, 6, 7]]])('%j → WEEKDAYS_LOCKED (site calendars with weekends come in B02)', (days) => {
+    expect(rejected(() => planOpenWeekdays(DEFAULT_COMPANY_CALENDAR, days))).toBe('WEEKDAYS_LOCKED');
   });
 
   it.each([[[]], [[1, 1]], [[0]], [[8]], [[1.5]]])('%j → WEEKDAYS_INVALID', (days) => {

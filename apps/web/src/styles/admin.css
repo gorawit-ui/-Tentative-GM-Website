@@ -54,6 +54,11 @@
 .gm-qr-sheet .gm-qr-url { color: #333; }
 .gm-qr-watermark { position: absolute; inset: 50% auto auto 50%; z-index: 1; width: max-content; max-width: 140%; padding: var(--gm-space-2) var(--gm-space-4); transform: translate(-50%, -50%) rotate(-24deg); color: #b42318; background: rgb(255 255 255 / 0.82); border: 3px solid #b42318; border-radius: var(--gm-radius-control); font-size: clamp(1.25rem, 6vw, 2.25rem); font-weight: var(--gm-font-weight-semibold); line-height: 1.3; pointer-events: none; }
 
+/* Confirmation dialog (D-A11-5). */
+.gm-dialog-backdrop { position: fixed; inset: 0; z-index: var(--gm-z-dialog); display: grid; place-items: center; padding: var(--gm-space-4); background: rgb(0 0 0 / 0.45); }
+.gm-dialog { display: grid; gap: var(--gm-space-4); width: min(100%, 28rem); max-height: calc(100dvh - 2 * var(--gm-space-4)); overflow: auto; padding: var(--gm-space-5); background: rgb(var(--gm-surface)); color: rgb(var(--gm-text)); border-radius: var(--gm-radius-card); box-shadow: var(--gm-shadow-card); overflow-wrap: anywhere; }
+.gm-dialog-buttons { justify-content: flex-end; }
+
 /* Calendar: weekday checks as large tap targets (the real checkbox covers the whole row). */
 .gm-checks { display: flex; flex-wrap: wrap; gap: var(--gm-space-2); margin: 0; padding: 0; border: 0; }
 .gm-check { position: relative; display: inline-flex; align-items: center; gap: var(--gm-space-2); min-height: var(--gm-touch-min); padding: 0 var(--gm-space-3); border: 1px solid rgb(var(--gm-control-border)); border-radius: var(--gm-radius-control); background: rgb(var(--gm-surface)); cursor: pointer; }
@@ -61,6 +66,7 @@
 .gm-check-box { width: 20px; height: 20px; flex-shrink: 0; border: 2px solid rgb(var(--gm-control-border)); border-radius: 6px; background: rgb(var(--gm-surface)); }
 .gm-check input:checked + .gm-check-box { background: rgb(var(--gm-brand-solid)); border-color: rgb(var(--gm-brand-solid)); box-shadow: inset 0 0 0 3px rgb(var(--gm-surface)); }
 .gm-check:has(input:checked) { border-color: rgb(var(--gm-brand-solid)); background: rgb(var(--gm-brand-soft)); }
+.gm-checks:disabled .gm-check, .gm-checks:disabled .gm-check input { cursor: default; }
 .gm-check input:focus-visible + .gm-check-box { outline: 3px solid rgb(var(--gm-focus)); outline-offset: 2px; }
 
 .gm-year-nav { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: var(--gm-space-2); max-width: 32rem; }
@@ -117,4 +123,19 @@
   .gm-topbar, .gm-sidebar, .gm-bottom-nav, .gm-skip-link, .gm-print-hide, .gm-page-head { display: none !important; }
   main.gm-main { padding: 0; }
   .gm-qr-sheet { margin: 0; border: 0; }
+}
+
+/* A10 — people (§13.3) and the CSV import (P7-ADMIN-01). */
+.gm-person-facts { display: flex; flex-wrap: wrap; gap: var(--gm-space-1) var(--gm-space-3); margin: 0; padding: 0; list-style: none; font-size: var(--gm-font-size-caption); color: rgb(var(--gm-text-muted)); }
+.gm-person-facts > li:first-child { color: rgb(var(--gm-text)); font-weight: var(--gm-font-weight-medium); }
+.gm-person-flag { padding-inline: var(--gm-space-2); color: rgb(var(--gm-text)); background: rgb(var(--gm-surface-muted)); border: 1px dashed rgb(var(--gm-control-border)); border-radius: var(--gm-radius-control); }
+.gm-import-columns { display: grid; gap: var(--gm-space-3); }
+.gm-import-counts { display: flex; flex-wrap: wrap; gap: var(--gm-space-2) var(--gm-space-4); margin: 0; padding: 0; list-style: none; font-weight: var(--gm-font-weight-medium); }
+.gm-import-rows { display: grid; gap: var(--gm-space-2); margin: 0; padding: 0; list-style: none; }
+.gm-import-rows > li { display: grid; gap: var(--gm-space-1); min-width: 0; padding-block: var(--gm-space-2); border-bottom: 1px solid rgb(var(--gm-border)); overflow-wrap: anywhere; }
+.gm-import-email { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--gm-font-size-caption); }
+.gm-file-input { min-height: 44px; padding-block: var(--gm-space-2); }
+@media (min-width: 768px) {
+  .gm-import-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gm-import-rows > li { grid-template-columns: 5rem minmax(0, 1fr) minmax(0, 1.4fr); align-items: baseline; }
 }

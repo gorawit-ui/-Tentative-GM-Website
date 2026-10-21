@@ -37,5 +37,5 @@ export interface WorkerStore {
    * A05: IDs of open requests (queued / in progress / waiting) after `after`, by ID — only for the
    * one-off recompute after a calendar change, never on every tick (Part 6 §6.9).
    */
-  openRequests(after: string | undefined, limit: number): Promise<readonly string[]>;
+  openRequests(after: string | undefined, limit: number, statuses?: readonly string[]): Promise<readonly string[]>;
 }

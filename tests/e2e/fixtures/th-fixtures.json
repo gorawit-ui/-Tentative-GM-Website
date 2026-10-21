@@ -1,5 +1,5 @@
 {
-  "$comment": "ข้อมูลสมมติสำหรับ E2E เท่านั้น ไม่ใช่ข้อมูลพนักงานหรือสถานที่จริง ห้ามใส่ข้อมูลจริง; collection ขึ้นต้น fixture_ เป็นข้อมูลตัวอย่างเดิมของ S00; access / content_pages ใช้ schema จริง (A09); locations / areas / qr_codes / calendars / integration_state / scheduled_work / outbox ใช้ schema จริง (A11) ชื่อสถานที่ตาม brief แต่ข้อมูลอื่นสมมติ",
+  "$comment": "ข้อมูลสมมติสำหรับ E2E เท่านั้น ไม่ใช่ข้อมูลพนักงานหรือสถานที่จริง ห้ามใส่ข้อมูลจริง; collection ขึ้นต้น fixture_ เป็นข้อมูลตัวอย่างเดิมของ S00; access / content_pages ใช้ schema จริง (A09); people / people_picker ใช้ schema จริง (A10); locations / areas / qr_codes / calendars / integration_state / scheduled_work / outbox ใช้ schema จริง (A11) ชื่อสถานที่ตาม brief แต่ข้อมูลอื่นสมมติ",
   "collections": {
     "fixture_places": {
       "place-test-1": { "name": "อาคารทดสอบ ก", "area": "ห้องประชุมชั้น 2", "order": 1 },
@@ -29,6 +29,33 @@
           { "label": "ลิงก์ที่ระบบไม่รับ (ตัวอย่าง)", "url": "javascript:alert(1)" }
         ]
       }
+    },
+    "people": {
+      "a09.requester@tdfb.co": { "email": "a09.requester@tdfb.co", "name": "คุณผู้ขอ ทดสอบ", "role": "requester", "active": true, "team_label": "ฝ่ายผลิต", "slack_user_id": "U0A09REQ", "uid": "uid-a09-requester" },
+      "a09.viewer@tdfb.co": { "email": "a09.viewer@tdfb.co", "name": "คุณผู้ดู ทดสอบ", "role": "viewer", "active": true, "uid": "uid-a09-viewer" },
+      "a09.gm@tdfb.co": { "email": "a09.gm@tdfb.co", "name": "คุณจีเอ็ม ทดสอบ", "role": "gm_staff", "active": true, "team_label": "ทีม GM", "uid": "uid-a09-gm" },
+      "a09.admin@tdfb.co": { "email": "a09.admin@tdfb.co", "name": "คุณแอดมิน ทดสอบ", "role": "gm_admin", "active": true, "team_label": "ทีม GM", "uid": "uid-a09-admin" },
+      "a09.disabled@tdfb.co": { "email": "a09.disabled@tdfb.co", "name": "คุณปิดแล้ว ทดสอบ", "role": "gm_admin", "active": false, "uid": "uid-a09-disabled" },
+      "a09.offboard@tdfb.co": { "email": "a09.offboard@tdfb.co", "name": "คุณออกระหว่างใช้ ทดสอบ", "role": "requester", "active": true, "uid": "uid-a09-offboard" },
+      "a09.logout@tdfb.co": { "email": "a09.logout@tdfb.co", "name": "คุณออกจากระบบ ทดสอบ", "role": "gm_staff", "active": true, "uid": "uid-a09-logout" },
+      "a10.first@tdfb.co": { "email": "a10.first@tdfb.co", "name": "คุณเข้าครั้งแรก ทดสอบ", "role": "requester", "active": true },
+      "a10.p-mobile-360x640@tdfb.co": { "email": "a10.p-mobile-360x640@tdfb.co", "name": "คุณทดสอบสิทธิ์ mobile-360x640", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.p-mobile-390x844@tdfb.co": { "email": "a10.p-mobile-390x844@tdfb.co", "name": "คุณทดสอบสิทธิ์ mobile-390x844", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.p-laptop-1366x768@tdfb.co": { "email": "a10.p-laptop-1366x768@tdfb.co", "name": "คุณทดสอบสิทธิ์ laptop-1366x768", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" },
+      "a10.p-desktop-1440x900@tdfb.co": { "email": "a10.p-desktop-1440x900@tdfb.co", "name": "คุณทดสอบสิทธิ์ desktop-1440x900", "role": "requester", "active": true, "team_label": "ฝ่ายทดสอบ" }
+    },
+    "people_picker": {
+      "a09.requester@tdfb.co": { "name": "คุณผู้ขอ ทดสอบ", "team_label": "ฝ่ายผลิต" },
+      "a09.viewer@tdfb.co": { "name": "คุณผู้ดู ทดสอบ" },
+      "a09.gm@tdfb.co": { "name": "คุณจีเอ็ม ทดสอบ", "team_label": "ทีม GM" },
+      "a09.admin@tdfb.co": { "name": "คุณแอดมิน ทดสอบ", "team_label": "ทีม GM" },
+      "a09.offboard@tdfb.co": { "name": "คุณออกระหว่างใช้ ทดสอบ" },
+      "a09.logout@tdfb.co": { "name": "คุณออกจากระบบ ทดสอบ" },
+      "a10.first@tdfb.co": { "name": "คุณเข้าครั้งแรก ทดสอบ" },
+      "a10.p-mobile-360x640@tdfb.co": { "name": "คุณทดสอบสิทธิ์ mobile-360x640", "team_label": "ฝ่ายทดสอบ" },
+      "a10.p-mobile-390x844@tdfb.co": { "name": "คุณทดสอบสิทธิ์ mobile-390x844", "team_label": "ฝ่ายทดสอบ" },
+      "a10.p-laptop-1366x768@tdfb.co": { "name": "คุณทดสอบสิทธิ์ laptop-1366x768", "team_label": "ฝ่ายทดสอบ" },
+      "a10.p-desktop-1440x900@tdfb.co": { "name": "คุณทดสอบสิทธิ์ desktop-1440x900", "team_label": "ฝ่ายทดสอบ" }
     },
     "locations": {
       "loc-wh300": { "label": "WH300", "active": true, "order": 1 },
@@ -62,7 +89,7 @@
     }
   },
   "auth_users": {
-    "$comment": "บัญชี Google ใน Auth emulator เท่านั้น (uid ตรงกับ access ด้านบน); outsider/lookalike/new ไม่มี access",
+    "$comment": "บัญชี Google ใน Auth emulator เท่านั้น (uid ตรงกับ access ด้านบน); outsider/lookalike/new/joiner ไม่มี access และไม่อยู่ในรายชื่อ; first อยู่ในรายชื่อ (people) แต่ยังไม่เคย login (A10)",
     "requester": { "uid": "uid-a09-requester", "email": "a09.requester@tdfb.co", "name": "คุณผู้ขอ ทดสอบ" },
     "viewer": { "uid": "uid-a09-viewer", "email": "a09.viewer@tdfb.co", "name": "คุณผู้ดู ทดสอบ" },
     "gm": { "uid": "uid-a09-gm", "email": "a09.gm@tdfb.co", "name": "คุณจีเอ็ม ทดสอบ" },
@@ -71,6 +98,8 @@
     "offboard": { "uid": "uid-a09-offboard", "email": "a09.offboard@tdfb.co", "name": "คุณออกระหว่างใช้ ทดสอบ" },
     "logout": { "uid": "uid-a09-logout", "email": "a09.logout@tdfb.co", "name": "คุณออกจากระบบ ทดสอบ" },
     "new": { "uid": "uid-a09-new", "email": "a09.new@tdfb.co", "name": "คุณยังไม่มีสิทธิ์ ทดสอบ" },
+    "first": { "uid": "uid-a09-first", "email": "a10.first@tdfb.co", "name": "คุณเข้าครั้งแรก ทดสอบ" },
+    "joiner": { "uid": "uid-a09-joiner", "email": "a10.joiner@tdfb.co", "name": "คุณขอเข้าใช้ ทดสอบ" },
     "outsider": { "uid": "uid-a09-outsider", "email": "a09.outsider@gmail.com", "name": "คนนอก ทดสอบ" },
     "lookalike": { "uid": "uid-a09-lookalike", "email": "a09.lookalike@tdfb.co.th", "name": "โดเมนคล้าย ทดสอบ" }
   }

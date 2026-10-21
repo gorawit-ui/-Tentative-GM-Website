@@ -7,7 +7,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Role } from '@gm/domain';
 import { clearDeviceAndLeave } from './device';
-import { auth, db } from './firebase';
+import { auth, db, webConfig } from './firebase';
 import { accessStateOf, isCompanySignIn } from './session';
 
 export interface SignedInUser {
@@ -38,6 +38,28 @@ interface SessionValue {
 const SessionContext = createContext<SessionValue | undefined>(undefined);
 
 const CANCELLED = new Set(['auth/popup-closed-by-user', 'auth/user-cancelled']);
+
+type LinkResult = 'linked' | 'already' | 'disabled' | 'not_listed' | 'failed';
+
+/**
+ * A10 / D-A09-1: no access document yet → ask the API once to link this verified company e-mail to the
+ * person on the list (the API writes access/{uid}; the listener then sees it). Never by name.
+ */
+async function linkFirstLogin(user: User): Promise<LinkResult> {
+  try {
+    const response = await fetch(`${webConfig.apiBaseUrl}/api/me/link`, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: { authorization: `Bearer ${await user.getIdToken()}`, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    if (!response.ok) return 'failed';
+    const body = (await response.json()) as { readonly result?: unknown };
+    return body.result === 'linked' || body.result === 'already' || body.result === 'disabled' || body.result === 'not_listed' ? body.result : 'failed';
+  } catch {
+    return 'failed';
+  }
+}
 
 function signedInUser(user: User): SignedInUser {
   const email = user.email ?? '';
@@ -77,10 +99,20 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
           return;
         }
         setState({ kind: 'checking', user: who });
+        let linking: Promise<LinkResult> | undefined;
         stopAccess = onSnapshot(
           doc(db, 'access', user.uid),
           (snapshot) => {
-            const access = accessStateOf(snapshot.exists() ? snapshot.data() : undefined);
+            if (!snapshot.exists()) {
+              // The first login: link once; the access document then arrives through this listener.
+              linking ??= linkFirstLogin(user);
+              void linking.then((result) => {
+                if (current !== run || result === 'linked' || result === 'already') return;
+                setState({ kind: result === 'disabled' ? 'disabled' : 'no_access', user: who });
+              });
+              return;
+            }
+            const access = accessStateOf(snapshot.data());
             setState(access.kind === 'active' ? { kind: 'active', user: who, role: access.role, personId: access.personId } : { kind: access.kind, user: who });
           },
           () => setState({ kind: 'error', user: who }),

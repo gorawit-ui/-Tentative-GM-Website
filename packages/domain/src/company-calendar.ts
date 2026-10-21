@@ -14,8 +14,9 @@ export interface CompanyCalendarContent {
   readonly holidayNames: Readonly<Record<string, string>>;
 }
 
-/** Part 3 §13.4 A: the company calendar is Monday–Friday until the Admin says otherwise. */
-export const DEFAULT_COMPANY_CALENDAR: CompanyCalendarContent = { timezone: 'Asia/Bangkok', openWeekdays: [1, 2, 3, 4, 5], holidays: [], holidayNames: {} };
+/** Part 3 §13.4 A / D-A11-1: the company calendar is Monday–Friday (weekends per site: B02). */
+export const PHASE_A_WEEKDAYS: readonly IsoWeekday[] = [1, 2, 3, 4, 5];
+export const DEFAULT_COMPANY_CALENDAR: CompanyCalendarContent = { timezone: 'Asia/Bangkok', openWeekdays: PHASE_A_WEEKDAYS, holidays: [], holidayNames: {} };
 
 /** What is stored now (absent → the default); anything unreadable is left out rather than guessed. */
 export function companyCalendarContentOf(stored: unknown): CompanyCalendarContent {
@@ -46,6 +47,9 @@ export function planOpenWeekdays(current: CompanyCalendarContent, weekdays: read
   if (days.length === 0 || days.length !== weekdays.length || !days.every((day) => Number.isInteger(day) && day >= 1 && day <= 7)) {
     reject('WEEKDAYS_INVALID', 'Open weekdays must be distinct ISO weekdays, at least one');
   }
+  // D-A11-1: one calendar for the whole company in phase A — a Saturday for a factory would count for
+  // the office too, so it stays Monday–Friday; open weekends per site arrive with B02.
+  if (days.join(',') !== PHASE_A_WEEKDAYS.join(',')) reject('WEEKDAYS_LOCKED', 'Phase A keeps the company calendar Monday–Friday (site calendars: B02)');
   return checked({ ...current, openWeekdays: days as IsoWeekday[] });
 }
 

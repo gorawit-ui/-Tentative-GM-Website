@@ -6,10 +6,11 @@
 // no-store; errors carry a code (and a field path for contract errors), never request data. The log
 // line per request has the route name, status and code only.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { ContractRejected, parseAdminCommand, parseCommand } from '@gm/contracts';
+import { ContractRejected, parseAdminCommand, parseCommand, parsePeopleImportBody } from '@gm/contracts';
 import { LifecycleRejected, RequestRejected, requireGmAdmin, type DeploymentEnvironment } from '@gm/domain';
 import { executeAdminCommand } from '../admin/commands';
 import { randomAreaId, randomQrId } from '../admin/ids';
+import { importPeople, linkAccount, previewPeople, readPeople, readUnlisted } from '../admin/people';
 import { readCalendar, readHealth, readPlaces } from '../admin/reads';
 import {
   CommandRejected,
@@ -39,6 +40,7 @@ import {
   type ApiDeps,
   type Caller,
   type UploadPurpose,
+  verifyCompanySignIn,
 } from '../endpoints/index';
 import { route as healthRoute } from '../routes';
 import { corsDecision } from './cors';
@@ -72,14 +74,25 @@ const ALLOWED_METHODS = 'GET, POST';
 const ALLOWED_HEADERS = 'authorization, content-type';
 
 type Reply = { readonly status: number; readonly body?: unknown; readonly headers?: Readonly<Record<string, string>> };
-type Handler = (context: { readonly token: string | undefined; readonly body: () => Promise<Record<string, unknown>>; readonly params: readonly string[] }) => Promise<Reply>;
+type Handler = (context: {
+  readonly token: string | undefined;
+  readonly body: () => Promise<Record<string, unknown>>;
+  readonly params: readonly string[];
+  readonly query: URLSearchParams;
+}) => Promise<Reply>;
 
 interface Route {
   readonly name: string;
   readonly method: 'GET' | 'POST';
   readonly pattern: RegExp;
   readonly handle: Handler;
+  /** A10: a larger body for the people import (mapped rows of the whole staff list). */
+  readonly maxBodyBytes?: number;
 }
+
+/** A10: up to MAX_IMPORT_ROWS mapped rows. */
+const PEOPLE_IMPORT_MAX_BODY_BYTES = 1024 * 1024;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const SEGMENT = '([^/]+)';
 
@@ -99,10 +112,14 @@ const CONFLICT_CODES = new Set([
   'ALREADY_RESPONDED',
   // A11: the Admin's change clashes with what is there (Part 3 §13 states: keep the form, say why).
   'AREA_LABEL_TAKEN',
+  'LOCATION_LABEL_TAKEN',
   'AREA_HAS_QR',
   'HOLIDAY_EXISTS',
+  // A10: the last active GM Admin stays; a person already on the list.
+  'LAST_GM_ADMIN',
+  'PERSON_EXISTS',
 ]);
-const NOT_FOUND_CODES = new Set(['REQUEST_NOT_FOUND', 'LOCATION_NOT_FOUND', 'AREA_NOT_FOUND', 'QR_NOT_FOUND', 'HOLIDAY_NOT_FOUND']);
+const NOT_FOUND_CODES = new Set(['REQUEST_NOT_FOUND', 'LOCATION_NOT_FOUND', 'AREA_NOT_FOUND', 'QR_NOT_FOUND', 'HOLIDAY_NOT_FOUND', 'PERSON_NOT_FOUND']);
 const UNAVAILABLE_CODES = new Set(['ROUTING_NOT_CONFIGURED', 'CALENDAR_NOT_CONFIGURED', 'CATALOG_NOT_READY']);
 
 function statusOfDomainCode(code: string): number {
@@ -184,6 +201,56 @@ function routes(deps: HttpDeps): readonly Route[] {
         requireGmAdmin(actorOf(await authenticate(api, token)));
         return { status: 200, body: await readHealth(api) };
       },
+    },
+    {
+      // A10 (Part 3 §13.3): the people list, a page at a time, searched by name or e-mail.
+      name: 'admin.people',
+      method: 'GET',
+      pattern: /^\/api\/admin\/people$/,
+      handle: async ({ token, query }) => {
+        requireGmAdmin(actorOf(await authenticate(api, token)));
+        const offset = Number(query.get('offset') ?? '0');
+        return { status: 200, body: await readPeople(api, query.get('q') ?? '', Number.isFinite(offset) ? offset : 0) };
+      },
+    },
+    {
+      name: 'admin.unlisted_logins',
+      method: 'GET',
+      pattern: /^\/api\/admin\/unlisted-logins$/,
+      handle: async ({ token }) => {
+        requireGmAdmin(actorOf(await authenticate(api, token)));
+        return { status: 200, body: await readUnlisted(api) };
+      },
+    },
+    {
+      name: 'admin.people_preview',
+      method: 'POST',
+      pattern: /^\/api\/admin\/people\/preview$/,
+      maxBodyBytes: PEOPLE_IMPORT_MAX_BODY_BYTES,
+      async handle({ token, body }) {
+        requireGmAdmin(actorOf(await authenticate(api, token)));
+        return { status: 200, body: await previewPeople(api, parsePeopleImportBody(await body())) };
+      },
+    },
+    {
+      name: 'admin.people_import',
+      method: 'POST',
+      pattern: /^\/api\/admin\/people\/import$/,
+      maxBodyBytes: PEOPLE_IMPORT_MAX_BODY_BYTES,
+      async handle({ token, body }) {
+        const actor = actorOf(await authenticate(api, token));
+        requireGmAdmin(actor);
+        const input = parsePeopleImportBody(await body(), ['import_id']);
+        if (typeof input.import_id !== 'string' || !UUID.test(input.import_id)) throw new ContractRejected('COMMAND_ID_INVALID', 'import_id', 'import_id must be a lowercase UUID');
+        return { status: 200, body: await importPeople(api, deps.commandStore, input.import_id, input, { actorId: actor.personId, now: api.now() }) };
+      },
+    },
+    {
+      // A10 / D-A09-1: the first login — links a verified company e-mail on the list (never a name).
+      name: 'me.link',
+      method: 'POST',
+      pattern: /^\/api\/me\/link$/,
+      handle: async ({ token }) => ({ status: 200, body: await linkAccount(deps.commandStore, await verifyCompanySignIn(api, token), api.now()) }),
     },
     {
       name: 'admin.commands',
@@ -390,10 +457,12 @@ export function createApiHandler(deps: HttpDeps): (request: IncomingMessage, res
           } else {
             routeName = found.candidate.name;
             let cached: Promise<Record<string, unknown>> | undefined;
+            const routeLimit = found.candidate.maxBodyBytes ?? limit;
             reply = await found.candidate.handle({
               token: bearer(request.headers.authorization),
               params: found.match!.slice(1),
-              body: () => (cached ??= readJson(request, limit)),
+              query: new URL(request.url ?? '/', 'http://localhost').searchParams,
+              body: () => (cached ??= readJson(request, routeLimit)),
             });
           }
         }

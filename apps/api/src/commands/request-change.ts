@@ -10,6 +10,7 @@
 //   stale check (`scheduled_work/stale-{id}`).
 import {
   buildRequestProjections,
+  canonicalJson,
   joinRequestRecord,
   splitRequestRecord,
   type GmRequestDetailDocument,
@@ -17,7 +18,7 @@ import {
   type RequestRecord,
 } from '@gm/contracts';
 import { releaseFocusIfNotInProgress } from '@gm/domain';
-import type { Instant } from '@gm/time';
+import type { CalendarSnapshot, Instant } from '@gm/time';
 import {
   BOARD_COUNTER_PATH,
   CommandRejected,
@@ -25,6 +26,7 @@ import {
   GM_SUMMARIES_COLLECTION,
   OUTBOX_COLLECTION,
   PUBLIC_SUMMARIES_COLLECTION,
+  outboxDocument,
   REQUESTS_COLLECTION,
   type CommandResult,
   type PeopleDirectory,
@@ -210,10 +212,57 @@ export async function persistChange(
   // A05: the stale check moves with every write (GM progress, revision, or no longer open).
   transaction.set(staleJobPath(requestId), staleJobDocument(requestId, next, routing.workCalendar, now));
   for (const write of change.extraWrites ?? []) transaction.set(write.path, write.data);
-  for (const notice of notices) transaction.set(`${OUTBOX_COLLECTION}/${notice.id}`, notice.data);
+  for (const notice of notices) transaction.set(`${OUTBOX_COLLECTION}/${notice.id}`, outboxDocument(notice.data));
   if (head !== undefined) transaction.set(headPath, head);
   return {
     result: { request_id: requestId, request_number: next.request_number, revision: next.revision, status: next.status },
     outboxIds: notices.map((notice) => notice.id),
   };
+}
+
+/**
+ * FU-11 (A10): after the people list renames someone (or changes their team), the display pairs and
+ * labels of a request still open follow (D-S10-1); a closed or cancelled request keeps its names. Not an
+ * event — no revision, history or unread step — and nothing is written when the value is the same
+ * (§6.9). `involves` lets the caller skip requests of nobody renamed before reading names.
+ */
+export async function refreshRequestNames(
+  transaction: RecordTransaction,
+  requestId: string,
+  context: { readonly now: Instant; readonly workCalendar: CalendarSnapshot; readonly peopleDirectory: PeopleDirectory; readonly involves: (personIds: readonly string[]) => boolean },
+): Promise<boolean> {
+  const loaded = await loadRequest(transaction, requestId);
+  if (loaded === undefined) return false;
+  const { record, stored } = loaded;
+  if (record.status === 'cancelled' || record.closed_at !== undefined) return false;
+  const waitedPerson = record.status === 'waiting' && record.waiting_on?.kind === 'person' ? record.waiting_on.person_id : undefined;
+  const people = [record.created_by_id, record.requester_id, record.assignee_id, waitedPerson, ...record.related_person_ids].filter((id): id is string => id !== undefined);
+  if (!context.involves(people)) return false;
+  const names = await context.peopleDirectory.displayNames(transaction, [...new Set(people)]);
+  const teams = waitedPerson === undefined || record.is_confidential || context.peopleDirectory.teamLabels === undefined ? new Map<string, string>() : await context.peopleDirectory.teamLabels(transaction, [waitedPerson]);
+  const gmStored = await transaction.get(`${GM_SUMMARIES_COLLECTION}/${requestId}`);
+  const publicStored = record.is_confidential ? undefined : await transaction.get(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`);
+  const projections = buildRequestProjections(requestId, record, {
+    now: context.now,
+    workCalendar: context.workCalendar,
+    personLabel: (personId) => names.get(personId),
+    personTeamLabel: (personId) => teams.get(personId),
+  });
+  const same = (a: unknown, b: unknown) => a !== undefined && canonicalJson(a) === canonicalJson(b);
+  let wrote = false;
+  if (!same(stored, projections.detail)) {
+    transaction.set(`${REQUESTS_COLLECTION}/${requestId}`, projections.detail);
+    wrote = true;
+  }
+  // Only the labels move here; the stale flag stays the stale job's (U4).
+  const gm = gmStored === undefined ? projections.gm : { ...projections.gm, stale: gmStored.stale, stale_threshold_at: gmStored.stale_threshold_at };
+  if (!same(gmStored, gm)) {
+    transaction.set(`${GM_SUMMARIES_COLLECTION}/${requestId}`, gm);
+    wrote = true;
+  }
+  if (projections.public !== null && !same(publicStored, projections.public)) {
+    transaction.set(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`, projections.public);
+    wrote = true;
+  }
+  return wrote;
 }

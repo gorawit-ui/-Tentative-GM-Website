@@ -21,6 +21,8 @@ describe('routeOf', () => {
     ['/admin/content', '', { area: 'admin', section: 'content' }],
     // A11: the system health page (FU-25), one location's areas, and the print page of one QR code.
     ['/admin/health', '', { area: 'admin', section: 'health' }],
+    // A10: the people CSV import steps.
+    ['/admin/users/import', '', { area: 'admin', section: 'users', view: 'import' }],
     ['/admin/locations/loc-wh300', '', { area: 'admin', section: 'locations', itemId: 'loc-wh300' }],
     ['/admin/qr/Qr1234567890abcdefghij/print', '', { area: 'admin', section: 'qr', itemId: 'Qr1234567890abcdefghij', view: 'print' }],
   ] as const)('%s%s → %o', (pathname, search, expected) => {

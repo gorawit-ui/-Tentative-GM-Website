@@ -1,7 +1,7 @@
 // A11 — pieces every Admin page shares (Part 3 §13 + its states table): a heading that takes the focus,
 // loading / failed states with “ลองใหม่”, a status line after a save, the active/closed badge, and the
 // one layout switch (mobile list → desktop table) decided by the same 1024px line as the shell.
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 const WIDE = '(min-width: 1024px)';
 
@@ -95,4 +95,62 @@ export function SaveLine({ saved }: { readonly saved: Saved }) {
       </p>
     );
   return null;
+}
+
+/**
+ * A question before a change that cannot be taken back quietly (D-A11-5: deleting a holiday). Focus
+ * starts on “ยกเลิก”; Escape cancels; the buttons are full-size targets on every screen.
+ */
+export function ConfirmDialog({
+  title,
+  confirm,
+  children,
+  onCancel,
+  onConfirm,
+}: {
+  readonly title: string;
+  readonly confirm: string;
+  readonly children: ReactNode;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => Promise<void>;
+}) {
+  const titleId = useId();
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+  return (
+    <div className="gm-dialog-backdrop">
+      <div className="gm-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
+        <h2 id={titleId}>{title}</h2>
+        <div className="gm-admin-stack">{children}</div>
+        <div className="gm-admin-row-buttons gm-dialog-buttons">
+          <button ref={cancelRef} type="button" className="gm-btn gm-btn--secondary" onClick={onCancel} disabled={busy}>
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            className="gm-btn gm-btn--danger"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

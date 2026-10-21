@@ -11,7 +11,8 @@ export interface Caller {
   readonly viewer: AccessViewer;
 }
 
-export async function authenticate(deps: ApiDeps, idToken: string | undefined): Promise<Caller> {
+/** A verified Google sign-in with a company e-mail (D-S10-5); access is not looked at (A10 first login). */
+export async function verifyCompanySignIn(deps: ApiDeps, idToken: string | undefined): Promise<{ readonly uid: string; readonly email: string }> {
   if (idToken === undefined || idToken === '') throw new ApiError(401, 'UNAUTHENTICATED');
   let token: VerifiedToken;
   try {
@@ -20,6 +21,11 @@ export async function authenticate(deps: ApiDeps, idToken: string | undefined): 
     throw new ApiError(401, 'TOKEN_INVALID');
   }
   if (!isCorporateGoogleToken(token)) throw new ApiError(403, 'NOT_CORPORATE');
+  return { uid: token.uid, email: (token.email ?? '').toLowerCase() };
+}
+
+export async function authenticate(deps: ApiDeps, idToken: string | undefined): Promise<Caller> {
+  const token = await verifyCompanySignIn(deps, idToken);
   const access = (await deps.db.doc(`access/${token.uid}`).get()).data();
   if (access === undefined) throw new ApiError(403, 'NO_ACCESS');
   if (access.enabled !== true) throw new ApiError(403, 'ACCOUNT_DISABLED');

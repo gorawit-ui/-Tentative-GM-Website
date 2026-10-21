@@ -1,6 +1,6 @@
 // S12 — API read and file endpoints (transport-agnostic; HTTP routing joins in A01).
 export { ApiError } from './errors';
-export { authenticate, type Caller } from './authenticate';
+export { authenticate, verifyCompanySignIn, type Caller } from './authenticate';
 export { consoleLogger, type ApiLogger, type LogFields } from './log';
 export type { ApiDeps, SignedUrlRequest, StorageBucket, StorageFile, TokenVerifier, UrlSigner, VerifiedToken } from './deps';
 export { countAwaitingConfirmation, getRequestDetail, listComments, listGmHistory, listHistory, listMyRequests, listWaitingIntervals, markSeen, type MyRequestCard } from './requests';

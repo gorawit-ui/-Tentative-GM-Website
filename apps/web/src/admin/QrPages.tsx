@@ -6,7 +6,7 @@
 import { useId, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { AdminAreaView, AdminPlacesView, AdminQrView } from '@gm/contracts';
-import { PROD_PUBLIC_BASE_URL, qrPrintMode, qrTargetUrl } from '@gm/domain';
+import { qrPrintMode, qrTargetUrl } from '@gm/domain';
 import { Icon } from '../components/Icon';
 import { webConfig } from '../firebase';
 import { qrMatrix, qrSvgDocument, qrSvgPath, QR_QUIET_ZONE } from '../qr';
@@ -264,7 +264,7 @@ export function QrPrintPage({ qrId }: { readonly qrId: string }) {
   const base = qrBaseUrl();
   const link = qrTargetUrl(base, qr.id);
   const name = placeName(places, area);
-  const sample = qrPrintMode(webConfig.publicBaseUrl) === 'sample';
+  const sample = qrPrintMode(webConfig.publicBaseUrl, webConfig.prodBaseUrl) === 'sample';
   return (
     <>
       <div className="gm-admin-back gm-print-hide">{back}</div>
@@ -273,7 +273,7 @@ export function QrPrintPage({ qrId }: { readonly qrId: string }) {
       </AdminHead>
       {sample && (
         <div className="gm-notice gm-notice--warning gm-print-hide" role="note">
-          <p className="font-semibold">ยังไม่ได้ตั้งโดเมนจริง ({PROD_PUBLIC_BASE_URL})</p>
+          <p className="font-semibold">{webConfig.prodBaseUrl === undefined ? 'ยังไม่ได้ตั้งโดเมนจริงของระบบ' : `ยังไม่ได้ตั้งโดเมนจริง (${webConfig.prodBaseUrl}) เป็นลิงก์ของ QR`}</p>
           <p>QR ที่พิมพ์ด้วยโดเมนชั่วคราว ({base}) จะใช้ไม่ได้เมื่อย้ายไปโดเมนจริง ตอนนี้จึงพิมพ์ได้เป็นตัวอย่างเท่านั้น</p>
         </div>
       )}

@@ -104,6 +104,21 @@ export function planAreaActive(area: AreaFacts | undefined, active: boolean): { 
   return { active };
 }
 
+/** D-A11-4: a new location; `all` = every location, closed ones too (names stay taken). */
+export function planNewLocation(all: readonly LocationFacts[], label: unknown): { readonly label: string; readonly active: true } {
+  const name = placeLabelOf(label);
+  if (all.some((location) => sameLabel(location.label, name))) reject('LOCATION_LABEL_TAKEN', 'There is already a location with that name');
+  return { label: name, active: true };
+}
+
+/** D-A11-4: a new name, same ID — its areas, QR codes and requests point at the ID. */
+export function planRenameLocation(location: LocationFacts | undefined, all: readonly LocationFacts[], label: unknown): { readonly label: string } {
+  if (location === undefined) return reject('LOCATION_NOT_FOUND', 'No such location');
+  const name = placeLabelOf(label);
+  if (all.some((other) => other.id !== location.id && sameLabel(other.label, name))) reject('LOCATION_LABEL_TAKEN', 'There is already a location with that name');
+  return { label: name };
+}
+
 export function planLocationActive(location: LocationFacts | undefined, active: boolean): { readonly active: boolean } {
   if (location === undefined) return reject('LOCATION_NOT_FOUND', 'No such location');
   return { active };
@@ -140,8 +155,6 @@ export function planQrActive(qr: QrFacts | undefined, active: boolean): { readon
   return { active };
 }
 
-/** Part 6 Domain table: the production domain; to be confirmed before printing (P7-INFRA-01). */
-export const PROD_PUBLIC_BASE_URL = 'https://gm.tdfb.co';
 export const QR_PATH = '/q/';
 
 /** The origin a QR link starts with: https, or this machine (emulator runs) — no path. */
@@ -159,12 +172,13 @@ export function qrTargetUrl(baseUrl: string, qrId: string): string {
 
 /**
  * A QR printed with a temporary domain stops working when the app moves to the real one, so the print
- * page is a watermarked sample until the base URL is the production domain.
+ * page is a watermarked sample until the base URL is the production domain. D-A11-3: that domain comes
+ * from config (proposed https://gm.tdfb.co, confirmed at P7-INFRA-01) — unset means always a sample.
  */
-export function qrPrintMode(baseUrl: string | undefined): 'final' | 'sample' {
-  if (baseUrl === undefined) return 'sample';
+export function qrPrintMode(baseUrl: string | undefined, prodBaseUrl: string | undefined): 'final' | 'sample' {
+  if (baseUrl === undefined || prodBaseUrl === undefined) return 'sample';
   try {
-    return baseOrigin(baseUrl) === PROD_PUBLIC_BASE_URL ? 'final' : 'sample';
+    return baseOrigin(baseUrl) === baseOrigin(prodBaseUrl) ? 'final' : 'sample';
   } catch {
     return 'sample';
   }

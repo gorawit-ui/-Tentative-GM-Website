@@ -10,7 +10,7 @@ export const TICK_STALE_AFTER_MS = 30 * 60_000;
 /**
  * `slack_fallback_code` values the worker writes when it e-mails instead (A07 D-A07-4, A08 D-A08-6):
  * the stored Slack ID does not reach anyone, the user is disabled, or the app itself does not work.
- * Health counts each; anything else is counted as `OTHER`.
+ * Health counts each (the worker writes no other code).
  */
 export const SLACK_FALLBACK_CODES = [
   'SLACK_NOT_MAPPED',

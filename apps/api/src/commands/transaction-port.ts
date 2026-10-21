@@ -16,6 +16,8 @@ export interface CommandTransaction {
    * one location, to keep area names unique). A read: call it before the first write.
    */
   list?(collection: string, field: string, value: string, limit: number): Promise<readonly { readonly id: string; readonly data: StoredData }[]>;
+  /** A11/D-A11-4: every document of a small collection, at most `limit` (e.g. the locations). A read. */
+  listAll?(collection: string, limit: number): Promise<readonly { readonly id: string; readonly data: StoredData }[]>;
 }
 
 export interface CommandStore {

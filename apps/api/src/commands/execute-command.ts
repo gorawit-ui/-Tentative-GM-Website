@@ -67,6 +67,13 @@ export const OUTBOX_COLLECTION = 'outbox';
 /** D-S08-6: `commands/{id}` is kept 30 days through a Firestore TTL policy on `expire_at`. */
 export const COMMAND_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const COMMAND_EXPIRY_FIELD = 'expire_at';
+/** D-A11-6: an outbox entry is kept 90 days (Firestore TTL on the same `expire_at` field). */
+export const OUTBOX_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** The stored outbox entry: its data plus the time the TTL policy may delete it. */
+export function outboxDocument(data: { readonly created_at: Instant }): Record<string, unknown> {
+  return { ...data, [COMMAND_EXPIRY_FIELD]: data.created_at + OUTBOX_RETENTION_MS };
+}
 
 /** Refused by the executor itself; domain refusals keep their own error types and codes. */
 export class CommandRejected extends Error {
@@ -296,7 +303,7 @@ async function create(
     isConfidential: record.is_confidential,
     now,
   });
-  for (const entry of [...outbox, ...related]) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, entry.data);
+  for (const entry of [...outbox, ...related]) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, outboxDocument(entry.data));
   // A05: the first stale check, 3 business days + 1 ms after creation (Part 6 §6.9).
   transaction.set(staleJobPath(requestId), staleJobDocument(requestId, record, facts.workCalendar, now));
   return { result: { request_id: requestId, request_number: requestNumber }, outboxIds: [...outbox, ...related].map((entry) => entry.id) };

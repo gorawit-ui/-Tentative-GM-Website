@@ -233,6 +233,9 @@ describe('create: one transaction writes the request, its projections, counter, 
         channel: 'auto',
         state: 'pending',
         attempts: 0,
+        created_at: NOW,
+        // D-A11-6: kept 90 days (Firestore TTL on expire_at).
+        expire_at: NOW + 90 * 24 * 60 * 60 * 1000,
       }),
     ]);
     expect(queued).toEqual([[expect.stringMatching(/^[0-9a-f]{40}$/)]]);

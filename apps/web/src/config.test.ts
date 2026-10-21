@@ -65,3 +65,17 @@ describe('A11: the base URL printed in QR codes (Part 6 §6.2: `{base}/q/{qr_id}
     expect(() => resolveWebConfig({ VITE_GM_PUBLIC_BASE_URL: raw })).toThrow(/VITE_GM_PUBLIC_BASE_URL/);
   });
 });
+
+describe('D-A11-3: the production domain that lifts the QR watermark comes from config, not code', () => {
+  it('not set → none (every printed QR is a sample)', () => {
+    expect(resolveWebConfig({}).prodBaseUrl).toBeUndefined();
+  });
+
+  it('an https origin', () => {
+    expect(resolveWebConfig({ VITE_GM_PROD_BASE_URL: 'https://gm.tdfb.co/' }).prodBaseUrl).toBe('https://gm.tdfb.co');
+  });
+
+  it.each(['http://gm.tdfb.co', 'https://gm.tdfb.co/app', 'gm.tdfb.co'])('refuses %j', (raw) => {
+    expect(() => resolveWebConfig({ VITE_GM_PROD_BASE_URL: raw })).toThrow(/VITE_GM_PROD_BASE_URL/);
+  });
+});

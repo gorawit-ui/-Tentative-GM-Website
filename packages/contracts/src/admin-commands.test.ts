@@ -21,6 +21,8 @@ describe('parseAdminCommand', () => {
   it('knows the Admin commands of A11', () => {
     expect(ADMIN_COMMAND_TYPES).toEqual([
       'seed_places',
+      'add_location',
+      'rename_location',
       'add_area',
       'rename_area',
       'set_area_active',
@@ -32,11 +34,16 @@ describe('parseAdminCommand', () => {
       'put_holiday',
       'remove_holiday',
       'set_reminder_time',
+      'set_person_role',
+      'set_person_active',
+      'add_person',
     ]);
   });
 
   it.each([
     [{ type: 'seed_places', payload: {} }],
+    [{ type: 'add_location', payload: { label: 'คลังสินค้า บางนา' } }],
+    [{ type: 'rename_location', payload: { location_id: 'loc-fac16', label: 'FAC16 (โรงงานใหม่)' } }],
     [{ type: 'add_area', payload: { location_id: 'loc-fac16', label: 'ห้องประชุม' } }],
     [{ type: 'rename_area', payload: { area_id: 'area-wh300-qa-1', label: 'ห้อง QA' } }],
     [{ type: 'set_area_active', payload: { area_id: 'area-wh300-qa-1', active: false } }],
@@ -49,6 +56,9 @@ describe('parseAdminCommand', () => {
     [{ type: 'put_holiday', payload: { date: '2027-01-02', name: 'ชดเชย', replaces: '2027-01-01' } }],
     [{ type: 'remove_holiday', payload: { date: '2027-01-01' } }],
     [{ type: 'set_reminder_time', payload: { working_morning_time: '08:30' } }],
+    [{ type: 'set_person_role', payload: { person_id: 'somchai@tdfb.co', role: 'gm_staff' } }],
+    [{ type: 'set_person_active', payload: { person_id: 'somchai@tdfb.co', active: false } }],
+    [{ type: 'add_person', payload: { email: 'new.person@tdfb.co', name: 'คุณใหม่', team: 'ฝ่ายขาย' } }],
   ])('%o', (command) => {
     expect(parseAdminCommand({ command_id: ID, ...command })).toEqual({ command_id: ID, ...command });
   });

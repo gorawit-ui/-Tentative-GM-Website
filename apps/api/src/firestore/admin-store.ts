@@ -46,6 +46,10 @@ export const INSTANT_FIELDS: ReadonlySet<string> = new Set([
   'exited_at',
   'reminded_at',
   'send_at',
+  // A10: first login and logins not on the list.
+  'linked_at',
+  'first_seen_at',
+  'last_seen_at',
 ]);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -88,6 +92,10 @@ export function adminCommandStore(db: Firestore, options: { readonly maxAttempts
             },
             delete: (path) => {
               transaction.delete(db.doc(path));
+            },
+            listAll: async (collection, limit) => {
+              const snapshot = await transaction.get(db.collection(collection).limit(limit));
+              return snapshot.docs.map((document) => ({ id: document.id, data: fromStored(document.data()) }));
             },
             list: async (collection, field, value, limit) => {
               const snapshot = await transaction.get(db.collection(collection).where(field, '==', value).limit(limit));

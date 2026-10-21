@@ -5,15 +5,16 @@ import { describe, expect, it } from 'vitest';
 import {
   LifecycleRejected,
   PLACE_SEED,
-  PROD_PUBLIC_BASE_URL,
   isQrId,
   placeLabelOf,
   planAreaActive,
   planMoveQr,
   planNewArea,
+  planNewLocation,
   planQrActive,
   planQrForArea,
   planRenameArea,
+  planRenameLocation,
   qrPrintMode,
   qrTargetUrl,
   requireGmAdmin,
@@ -57,6 +58,27 @@ describe('PLACE_SEED (Part 1 brief)', () => {
     expect(PLACE_SEED.areas.every((area) => area.locationId === 'loc-wh300')).toBe(true);
     expect(new Set(PLACE_SEED.areas.map((area) => area.id)).size).toBe(6);
     expect(PLACE_SEED.areas[0]?.id).toBe('area-wh300-pack-1');
+  });
+});
+
+describe('locations — D-A11-4: the Admin adds and renames them; the ID never changes', () => {
+  const all: LocationFacts[] = [WH300, FAC16, { id: 'loc-cafe222', label: 'Cafe 222', active: false }];
+
+  it('a new location with a unique name, open', () => {
+    expect(planNewLocation(all, '  คลังสินค้า  บางนา ')).toEqual({ label: 'คลังสินค้า บางนา', active: true });
+  });
+
+  it('a taken name (ignoring case and spaces, closed ones too) → LOCATION_LABEL_TAKEN; blank → LABEL_INVALID', () => {
+    expect(rejected(() => planNewLocation(all, 'wh300'))).toBe('LOCATION_LABEL_TAKEN');
+    expect(rejected(() => planNewLocation(all, 'Cafe  222'))).toBe('LOCATION_LABEL_TAKEN');
+    expect(rejected(() => planNewLocation(all, ' '))).toBe('LABEL_INVALID');
+  });
+
+  it('rename: a new unique name for the same ID (its QR codes and open requests follow by ID)', () => {
+    expect(planRenameLocation(FAC16, all, 'FAC16 (โรงงานใหม่)')).toEqual({ label: 'FAC16 (โรงงานใหม่)' });
+    expect(planRenameLocation(FAC16, all, 'FAC16')).toEqual({ label: 'FAC16' });
+    expect(rejected(() => planRenameLocation(FAC16, all, 'WH300'))).toBe('LOCATION_LABEL_TAKEN');
+    expect(rejected(() => planRenameLocation(undefined, all, 'x'))).toBe('LOCATION_NOT_FOUND');
   });
 });
 
@@ -138,13 +160,15 @@ describe('QR: one per area, unguessable, moved without printing again (§13.2, P
     expect(() => qrTargetUrl('https://gm.tdfb.co', '../admin')).toThrow(RangeError);
   });
 
-  it('print: a sample (watermarked) until the base URL is the production domain', () => {
-    expect(PROD_PUBLIC_BASE_URL).toBe('https://gm.tdfb.co');
-    expect(qrPrintMode('https://gm.tdfb.co')).toBe('final');
-    expect(qrPrintMode('https://gm.tdfb.co/')).toBe('final');
+  it('D-A11-3: print is a sample (watermarked) until the QR base URL is the configured production domain', () => {
+    expect(qrPrintMode('https://gm.tdfb.co', 'https://gm.tdfb.co')).toBe('final');
+    expect(qrPrintMode('https://gm.tdfb.co/', 'https://GM.tdfb.co')).toBe('final');
+    // No production domain configured (the default until P7-INFRA-01): always a sample, even on gm.tdfb.co.
+    expect(qrPrintMode('https://gm.tdfb.co', undefined)).toBe('sample');
     for (const base of ['https://gm-dev.tdfb.co', 'http://127.0.0.1:4173', 'https://tentative.web.app', '', undefined]) {
-      expect(qrPrintMode(base)).toBe('sample');
+      expect(qrPrintMode(base, 'https://gm.tdfb.co')).toBe('sample');
     }
+    expect(qrPrintMode('https://gm.tdfb.co', 'not a url')).toBe('sample');
   });
 
   it('a new QR only for an active area that has none', () => {
