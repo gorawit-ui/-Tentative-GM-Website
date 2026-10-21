@@ -32,6 +32,7 @@ export {
   type RecordTransaction,
 } from './lifecycle';
 export { runWaitingCommand } from './waiting';
+export { refreshRequestNames } from './request-change';
 export { intervalPath } from './waiting-state';
 export { OPEN_FOR_STALE, staleJobDocument, staleJobPath } from './stale-job';
 export { commandFingerprint } from './fingerprint';

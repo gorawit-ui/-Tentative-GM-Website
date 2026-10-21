@@ -21,7 +21,7 @@ export const TICK_STEPS = ['outbox_recovery', 'scheduled_work'] as const;
 export type TickStep = (typeof TICK_STEPS)[number];
 
 /** `scheduled_work` job kinds from the §6.9 table; handlers arrive with their tasks (A05, B09, B15, A26…). */
-export const SCHEDULED_WORK_KINDS = ['stale', 'auto_close', 'presence_reset', 'digest', 'renewal', 'aggregate_reconcile', 'backup', 'cleanup'] as const;
+export const SCHEDULED_WORK_KINDS = ['stale', 'auto_close', 'presence_reset', 'display_refresh', 'digest', 'renewal', 'aggregate_reconcile', 'backup', 'cleanup'] as const;
 export type ScheduledWorkKind = (typeof SCHEDULED_WORK_KINDS)[number];
 
 export function isScheduledWorkKind(value: unknown): value is ScheduledWorkKind {

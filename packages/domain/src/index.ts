@@ -254,3 +254,4 @@ export {
   planRemoveHoliday,
   type CompanyCalendarContent,
 } from './company-calendar';
+export { accessFor, linkDecision, planPersonActive, planPersonRole, type PersonFacts } from './people-admin';

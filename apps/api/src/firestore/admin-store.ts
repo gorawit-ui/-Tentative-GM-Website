@@ -46,6 +46,10 @@ export const INSTANT_FIELDS: ReadonlySet<string> = new Set([
   'exited_at',
   'reminded_at',
   'send_at',
+  // A10: first login and logins not on the list.
+  'linked_at',
+  'first_seen_at',
+  'last_seen_at',
 ]);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>

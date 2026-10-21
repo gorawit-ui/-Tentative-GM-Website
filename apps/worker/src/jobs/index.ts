@@ -4,9 +4,10 @@ import type { LifecycleDirectories } from '@gm/api/commands';
 import type { ScheduledWorkKind } from '@gm/domain';
 import type { JobHandler } from '../scheduled-work';
 import { autoCloseJob } from './auto-close';
+import { displayRefreshJob } from './display-refresh';
 import { presenceResetJob } from './presence-reset';
 import { staleJob } from './stale';
 
 export function workerJobHandlers(directories: LifecycleDirectories): Partial<Record<ScheduledWorkKind, JobHandler>> {
-  return { auto_close: autoCloseJob(directories), stale: staleJob(), presence_reset: presenceResetJob() };
+  return { auto_close: autoCloseJob(directories), stale: staleJob(), presence_reset: presenceResetJob(), display_refresh: displayRefreshJob(directories) };
 }

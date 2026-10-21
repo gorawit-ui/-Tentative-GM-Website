@@ -34,6 +34,7 @@ import type { Instant } from '@gm/time';
 import { COMMANDS_COLLECTION, COMMAND_EXPIRY_FIELD, COMMAND_RETENTION_MS, CommandRejected } from '../commands/execute-command';
 import { commandFingerprint } from '../commands/fingerprint';
 import type { CommandStore, CommandTransaction, StoredData } from '../commands/transaction-port';
+import { addPerson, setPersonActive, setPersonRole } from './people';
 
 export const COMPANY_CALENDAR_PATH = 'calendars/company';
 export const NOTIFICATION_SETTINGS_PATH = 'settings/notifications';
@@ -209,6 +210,12 @@ async function run(transaction: CommandTransaction, command: AdminCommand, conte
       transaction.set(COMPANY_CALENDAR_PATH, document);
       return { revision: document.revision };
     }
+    case 'set_person_role':
+      return setPersonRole(transaction, command.payload.person_id, command.payload.role, now);
+    case 'set_person_active':
+      return setPersonActive(transaction, command.payload.person_id, command.payload.active, now);
+    case 'add_person':
+      return addPerson(transaction, command.payload, now);
     case 'set_reminder_time': {
       const stored = await transaction.get(NOTIFICATION_SETTINGS_PATH);
       transaction.set(NOTIFICATION_SETTINGS_PATH, { ...stored, working_morning_time: command.payload.working_morning_time, updated_at: now });

@@ -122,3 +122,18 @@ export type {
   AdminQrView,
   AdminTickView,
 } from './admin-views';
+export { parseCsv } from './csv';
+export {
+  MAX_IMPORT_ROWS,
+  MAX_PERSON_NAME_CHARS,
+  MAX_TEAM_LABEL_CHARS,
+  checkPeopleRows,
+  parsePeopleImportBody,
+  peopleRowsFromTable,
+  type CheckedPerson,
+  type PeopleColumnMapping,
+  type PeopleImportBody,
+  type PeopleImportRow,
+  type PeopleRowError,
+  type PeopleRowProblem,
+} from './people-import';
