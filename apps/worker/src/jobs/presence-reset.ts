@@ -4,8 +4,7 @@
 // tick is kept. The pinned request is untouched. The UI already shows the effective presence from
 // the expiry, so the reset only keeps the stored value from going stale. Reads the GM list and their
 // profiles once a day (a handful of documents).
-import { gmProfileOf } from '@gm/api/directories';
-import { isPersonId } from '@gm/contracts';
+import { gmPeople, gmProfileOf } from '@gm/api/directories';
 import { resetPresence } from '@gm/domain';
 import type { JobHandler } from '../scheduled-work';
 
@@ -17,14 +16,12 @@ export function presenceResetJobId(bangkokDate: string): string {
   return `presence_reset-${bangkokDate}`;
 }
 
-const strings = (value: unknown): readonly string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
-
 export function presenceResetJob(): JobHandler {
   return async (context) => {
     await context.runChecked(async (transaction) => {
-      const routing = await transaction.get('settings/routing');
+      // D-A10-1: the GMs are the people with a GM role.
       const profiles = [];
-      for (const personId of new Set(strings(routing?.gm_person_ids).filter(isPersonId))) {
+      for (const { id: personId } of await gmPeople(transaction)) {
         const stored = await transaction.get(`gm_profiles/${personId}`);
         if (stored !== undefined) profiles.push({ personId, stored });
       }

@@ -47,6 +47,7 @@ const healthy: HealthFacts = {
   slackFallback: {},
   failedJobs: [],
   failedJobCount: 0,
+  defaultOwnerIssues: [],
 };
 
 describe('systemHealth', () => {
@@ -85,5 +86,16 @@ describe('systemHealth', () => {
 
   it('red wins over warning', () => {
     expect(systemHealth({ ...healthy, tick: undefined, outbox: { failed: 2, deliveryUnknown: 0, emailCapPending: 0 } }).level).toBe('red');
+  });
+
+  it('D-A10-1: a default owner who is no longer an active GM → warning, naming the request type and why', () => {
+    const issues = [
+      { type: 'maintenance', code: 'DEFAULT_OWNER_NOT_GM' },
+      { type: 'document_request', code: 'DEFAULT_OWNER_INACTIVE' },
+    ] as const;
+    const health = systemHealth({ ...healthy, defaultOwnerIssues: issues });
+    expect(health.level).toBe('warning');
+    expect(health.defaultOwnerIssues).toEqual(issues);
+    expect(systemHealth({ ...healthy, tick: undefined, defaultOwnerIssues: issues }).level).toBe('red');
   });
 });

@@ -25,6 +25,10 @@ describe('routeOf', () => {
     ['/admin/users/import', '', { area: 'admin', section: 'users', view: 'import' }],
     ['/admin/locations/loc-wh300', '', { area: 'admin', section: 'locations', itemId: 'loc-wh300' }],
     ['/admin/qr/Qr1234567890abcdefghij/print', '', { area: 'admin', section: 'qr', itemId: 'Qr1234567890abcdefghij', view: 'print' }],
+    // A12: a scanned QR opens the repair form with that code (checked by the API: unknown, off, or the
+    // area off → the page says so and the person picks the place themself).
+    ['/q/A11FixtureQrPackOne001', '', { area: 'repair', qrId: 'A11FixtureQrPackOne001' }],
+    ['/q/qr-1', '', { area: 'repair', qrId: 'qr-1' }],
   ] as const)('%s%s → %o', (pathname, search, expected) => {
     expect(routeOf(pathname, search)).toEqual(expected);
   });
@@ -42,7 +46,8 @@ describe('routeOf', () => {
     ['/admin/qr/not-a-qr-id/print', ''],
     ['/admin/health/now', ''],
     ['/dashboard', ''],
-    ['/q/qr-1', ''],
+    ['/q/', ''],
+    ['/q/A11FixtureQrPackOne001/extra', ''],
     ['/requests/', ''],
   ])('%s%s → not a phase A page', (pathname, search) => {
     expect(routeOf(pathname, search)).toEqual({ area: 'not_found' });
@@ -59,6 +64,7 @@ describe('routeOf', () => {
 describe('hidesBottomNav (Part 5 Patch F6: the whole repair form)', () => {
   it.each([
     [{ area: 'repair' }, true],
+    [{ area: 'repair', qrId: 'A11FixtureQrPackOne001' }, true],
     [{ area: 'gm_on_behalf' }, true],
     [{ area: 'gm_create' }, false],
     [{ area: 'home' }, false],

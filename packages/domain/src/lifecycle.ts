@@ -44,7 +44,9 @@ export type LifecycleEventKind =
   | 'closed'
   | 'not_resolved'
   | 'cancelled'
-  | 'reopened';
+  | 'reopened'
+  /** D-A10-2: the assignee's account was switched off; the request waits for any GM again. */
+  | 'unassigned';
 
 /** History entry produced by a command (the caller persists it). */
 export interface LifecycleEvent {
@@ -121,6 +123,28 @@ function requireOpenConfirmation(state: LifecycleState, actor: Actor, completion
   if (completionCycleId !== state.completionCycleId) {
     reject('STALE_COMPLETION_CYCLE', 'The answer refers to an earlier completion');
   }
+}
+
+/** D-A10-2: statuses whose assignee is still working on the request (completed waits for the requester). */
+const RELEASED_STATUSES: readonly RequestStatus[] = ['queued', 'in_progress', 'waiting'];
+
+/**
+ * D-A10-2: the Admin switched off `personId`, a GM still assigned to this request — it becomes
+ * “ยังไม่มอบหมาย”: no assignee; in progress goes back to queued; waiting keeps waiting on the same
+ * party (the interval is not touched). Not GM progress, so the stale clock does not move. Nothing to do
+ * (undefined) when the request is someone else's, already unassigned, past the work, or from Trello —
+ * so running it again is harmless.
+ */
+export function releaseAssignment<S extends LifecycleState>(
+  state: S,
+  command: { readonly personId: string; readonly now: Instant },
+): LifecycleResult<S> | undefined {
+  if (state.source !== 'web' || state.assigneeId !== command.personId || !RELEASED_STATUSES.includes(state.status)) return undefined;
+  const { assigneeId: previousAssigneeId, ...rest } = state;
+  return {
+    state: { ...rest, status: state.status === 'in_progress' ? 'queued' : state.status } as S,
+    event: { kind: 'unassigned', at: command.now, actorId: 'system', previousAssigneeId, reason: 'ASSIGNEE_INACTIVE' },
+  };
 }
 
 export function acceptRequest<S extends LifecycleState>(

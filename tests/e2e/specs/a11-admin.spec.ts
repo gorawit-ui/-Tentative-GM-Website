@@ -303,6 +303,8 @@ test.describe('สุขภาพระบบ (FU-25)', () => {
       slack_fallback: {},
       failed_jobs: [],
       failed_job_count: 0,
+      // D-A10-1: the default owners are all active GMs.
+      default_owner_issues: [],
     });
     let reply = body(now - 45 * 60_000);
     await page.route('**/api/admin/health', (route) => route.fulfill({ json: reply }));

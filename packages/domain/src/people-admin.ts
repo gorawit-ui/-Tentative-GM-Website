@@ -31,10 +31,38 @@ export function planPersonRole(person: PersonFacts | undefined, role: Role, acti
   return { role };
 }
 
-export function planPersonActive(person: PersonFacts | undefined, active: boolean, activeGmAdminIds: readonly string[]): { readonly active: boolean } {
+/**
+ * D-A10-2: switching off a GM who is still the assignee of open requests needs the Admin to confirm
+ * that count (the latest one, read in the same transaction); those requests are then released.
+ */
+export function planPersonActive(
+  person: PersonFacts | undefined,
+  active: boolean,
+  activeGmAdminIds: readonly string[],
+  work: { readonly openAssigned: number; readonly confirmedOpenAssigned?: number | undefined } = { openAssigned: 0 },
+): { readonly active: boolean; readonly releaseOpenRequests: boolean } {
   if (person === undefined) return reject('PERSON_NOT_FOUND', 'No such person');
   if (!active) requireAnotherAdmin(person, activeGmAdminIds);
-  return { active };
+  const release = !active && isGmRole(person.role) && work.openAssigned > 0;
+  if (release && work.confirmedOpenAssigned !== work.openAssigned) {
+    reject('OPEN_REQUESTS_ASSIGNED', 'This GM still has open requests; confirm how many are released');
+  }
+  return { active, releaseOpenRequests: release };
+}
+
+/** D-A10-1: who is a GM is the role in `people` (no second list in `settings/routing`). */
+export function isGmRole(role: unknown): boolean {
+  return role === 'gm_staff' || role === 'gm_admin';
+}
+
+export type DefaultOwnerIssue = 'DEFAULT_OWNER_NOT_LISTED' | 'DEFAULT_OWNER_NOT_GM' | 'DEFAULT_OWNER_INACTIVE';
+
+/** D-A10-1 / D-S07-5: a default owner who is not an active GM counts as not set up — and why, for the health page. */
+export function defaultOwnerIssue(person: PersonFacts | undefined): DefaultOwnerIssue | undefined {
+  if (person === undefined) return 'DEFAULT_OWNER_NOT_LISTED';
+  if (!isGmRole(person.role)) return 'DEFAULT_OWNER_NOT_GM';
+  if (!person.active) return 'DEFAULT_OWNER_INACTIVE';
+  return undefined;
 }
 
 /** The first login (D-A09-1): link a listed active person; a listed person switched off gets no access. */

@@ -38,7 +38,7 @@ import { staleJobDocument, staleJobPath } from './stale-job';
 import type { CommandTransaction, StoredData } from './transaction-port';
 
 /** The part of a transaction the pipeline uses (the worker's transaction has the same three). */
-export type RecordTransaction = Pick<CommandTransaction, 'get' | 'set' | 'delete'>;
+export type RecordTransaction = Pick<CommandTransaction, 'get' | 'set' | 'delete' | 'list'>;
 
 export interface LifecycleDirectories {
   readonly peopleDirectory: PeopleDirectory;

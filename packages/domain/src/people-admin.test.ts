@@ -3,7 +3,7 @@
 // verified email (never by name); role and account changes go to access at once; the last active GM
 // Admin can be neither demoted nor switched off (nobody could open the Admin pages again).
 import { describe, expect, it } from 'vitest';
-import { LifecycleRejected, accessFor, linkDecision, planPersonActive, planPersonRole, type PersonFacts } from './index';
+import { LifecycleRejected, accessFor, defaultOwnerIssue, isGmRole, linkDecision, planPersonActive, planPersonRole, type PersonFacts } from './index';
 
 const rejected = (work: () => unknown) => {
   try {
@@ -41,13 +41,13 @@ describe('planPersonRole', () => {
 
 describe('planPersonActive', () => {
   it('switch an account off and on', () => {
-    expect(planPersonActive(staff, false, [admin.personId])).toEqual({ active: false });
-    expect(planPersonActive({ ...staff, active: false }, true, [admin.personId])).toEqual({ active: true });
+    expect(planPersonActive(staff, false, [admin.personId])).toEqual({ active: false, releaseOpenRequests: false });
+    expect(planPersonActive({ ...staff, active: false }, true, [admin.personId])).toEqual({ active: true, releaseOpenRequests: false });
   });
 
   it('the last active GM Admin cannot be switched off → LAST_GM_ADMIN', () => {
     expect(rejected(() => planPersonActive(admin, false, [admin.personId]))).toBe('LAST_GM_ADMIN');
-    expect(planPersonActive(admin, false, [admin.personId, admin2.personId])).toEqual({ active: false });
+    expect(planPersonActive(admin, false, [admin.personId, admin2.personId])).toEqual({ active: false, releaseOpenRequests: false });
   });
 });
 
@@ -69,5 +69,36 @@ describe('linkDecision: the first login (D-A09-1)', () => {
 
   it('not on the list → not_listed (recorded for the GM Admin)', () => {
     expect(linkDecision(undefined)).toBe('not_listed');
+  });
+});
+
+describe('D-A10-1: who is a GM comes from the role in people (no second list in settings/routing)', () => {
+  it('gm_staff and gm_admin are GM; viewer and requester are not', () => {
+    expect(['gm_staff', 'gm_admin', 'viewer', 'requester'].map((role) => isGmRole(role))).toEqual([true, true, false, false]);
+    expect(isGmRole(undefined)).toBe(false);
+  });
+
+  it('a default owner who is not an active GM is not set up (D-S07-5) — and says why', () => {
+    expect(defaultOwnerIssue({ personId: 'gm@tdfb.co', role: 'gm_staff', active: true })).toBeUndefined();
+    expect(defaultOwnerIssue({ personId: 'admin@tdfb.co', role: 'gm_admin', active: true })).toBeUndefined();
+    expect(defaultOwnerIssue({ personId: 'gm@tdfb.co', role: 'gm_staff', active: false })).toBe('DEFAULT_OWNER_INACTIVE');
+    expect(defaultOwnerIssue({ personId: 'was.gm@tdfb.co', role: 'requester', active: true })).toBe('DEFAULT_OWNER_NOT_GM');
+    expect(defaultOwnerIssue({ personId: 'was.gm@tdfb.co', role: 'viewer', active: true })).toBe('DEFAULT_OWNER_NOT_GM');
+    expect(defaultOwnerIssue(undefined)).toBe('DEFAULT_OWNER_NOT_LISTED');
+  });
+});
+
+describe('D-A10-2: switching off a GM who still has open work needs that count confirmed', () => {
+  it('a GM with open requests: refused until the count is confirmed; the count must be the latest', () => {
+    expect(rejected(() => planPersonActive(staff, false, [admin.personId], { openAssigned: 2 }))).toBe('OPEN_REQUESTS_ASSIGNED');
+    expect(rejected(() => planPersonActive(staff, false, [admin.personId], { openAssigned: 2, confirmedOpenAssigned: 1 }))).toBe('OPEN_REQUESTS_ASSIGNED');
+    expect(planPersonActive(staff, false, [admin.personId], { openAssigned: 2, confirmedOpenAssigned: 2 })).toEqual({ active: false, releaseOpenRequests: true });
+  });
+
+  it('no open work, or not a GM: switched off as before', () => {
+    expect(planPersonActive(staff, false, [admin.personId], { openAssigned: 0 })).toEqual({ active: false, releaseOpenRequests: false });
+    const employee: PersonFacts = { personId: 'employee@tdfb.co', role: 'requester', active: true };
+    expect(planPersonActive(employee, false, [admin.personId], { openAssigned: 0 })).toEqual({ active: false, releaseOpenRequests: false });
+    expect(planPersonActive(staff, true, [admin.personId], { openAssigned: 3 })).toEqual({ active: true, releaseOpenRequests: false });
   });
 });

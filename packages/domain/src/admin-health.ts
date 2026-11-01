@@ -4,6 +4,7 @@
 // check; e-mail sent instead of Slack is counted by reason but changes no level on its own.
 import type { Instant } from '@gm/time';
 import { channelAppHealth, type ChannelHealth } from './channel-health';
+import type { DefaultOwnerIssue } from './people-admin';
 
 export const TICK_STALE_AFTER_MS = 30 * 60_000;
 
@@ -68,6 +69,13 @@ export interface HealthFacts {
   /** The failed jobs shown (a page), and how many there are in all. */
   readonly failedJobs: readonly FailedJob[];
   readonly failedJobCount: number;
+  /** D-A10-1: request types whose default owner is not an active GM (new requests stay unassigned). */
+  readonly defaultOwnerIssues: readonly DefaultOwnerProblem[];
+}
+
+export interface DefaultOwnerProblem {
+  readonly type: string;
+  readonly code: DefaultOwnerIssue;
 }
 
 export interface SystemHealth {
@@ -78,6 +86,7 @@ export interface SystemHealth {
   readonly slackFallback: Readonly<Record<string, number>>;
   readonly failedJobs: readonly FailedJob[];
   readonly failedJobCount: number;
+  readonly defaultOwnerIssues: readonly DefaultOwnerProblem[];
 }
 
 export function systemHealth(facts: HealthFacts): SystemHealth {
@@ -85,7 +94,7 @@ export function systemHealth(facts: HealthFacts): SystemHealth {
   const slackApp = channelAppHealth(facts.slackApp);
   const red = tick.level === 'red' || slackApp.level === 'red' || facts.failedJobCount > 0;
   const { failed, deliveryUnknown, emailCapPending } = facts.outbox;
-  const warning = failed > 0 || deliveryUnknown > 0 || emailCapPending > 0;
+  const warning = failed > 0 || deliveryUnknown > 0 || emailCapPending > 0 || facts.defaultOwnerIssues.length > 0;
   return {
     level: red ? 'red' : warning ? 'warning' : 'ok',
     tick,
@@ -94,5 +103,6 @@ export function systemHealth(facts: HealthFacts): SystemHealth {
     slackFallback: facts.slackFallback,
     failedJobs: facts.failedJobs,
     failedJobCount: facts.failedJobCount,
+    defaultOwnerIssues: facts.defaultOwnerIssues,
   };
 }

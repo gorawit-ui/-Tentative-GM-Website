@@ -4,9 +4,10 @@
 // “ตรวจรายการก่อนบันทึก” shows what will be new / updated / unchanged and every bad row with its reason
 // before anything is saved. After saving, the file and its rows are dropped from the page. People missing
 // from the file are only counted (the list marks them; the Admin decides — nobody is switched off).
-import { useId, useState, type ChangeEvent } from 'react';
+import { useId, useMemo, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
 import { MAX_IMPORT_ROWS, parseCsv, peopleRowsFromTable, type PeopleImportRow } from '@gm/contracts';
+import { CSV_ENCODINGS, decodeCsvBytes, detectCsvEncoding, type CsvEncoding } from './csv-encoding';
 import { adminPath } from '../routes';
 import { adminErrorText, importPeople, previewPeople, type PeoplePreview } from './api';
 import { AdminHead, SaveLine, type Saved } from './common';
@@ -105,10 +106,90 @@ function Preview({ preview }: { readonly preview: PeoplePreview }) {
   );
 }
 
+/** D-A10-3: the encodings in words; Excel in Thai Windows saves “CSV” as Windows-874. */
+const ENCODING_LABELS: Readonly<Record<CsvEncoding, string>> = {
+  'utf-8': 'UTF-8',
+  'utf-16le': 'UTF-16 LE (Excel “Unicode Text”)',
+  'utf-16be': 'UTF-16 BE',
+  'windows-874': 'Windows-874 (Excel ภาษาไทย)',
+};
+const PREVIEW_ROWS = 3;
+
+/** The file's bytes read in one encoding: the parsed table, or why it cannot be used. */
+function tableOf(bytes: Uint8Array, encoding: CsvEncoding): { readonly table?: readonly (readonly string[])[]; readonly problem?: string } {
+  try {
+    const parsed = parseCsv(decodeCsvBytes(bytes, encoding).text);
+    if (parsed.length < 2) return { problem: 'ไฟล์ไม่มีข้อมูล ต้องมีแถวหัวคอลัมน์และรายชื่ออย่างน้อย 1 แถว' };
+    if (parsed.length - 1 > MAX_IMPORT_ROWS) return { problem: `ไฟล์มีมากกว่า ${MAX_IMPORT_ROWS} แถว แบ่งไฟล์แล้วนำเข้าทีละส่วน` };
+    return { table: parsed };
+  } catch {
+    return { problem: 'อ่านไฟล์ด้วยชนิดนี้ไม่ได้ ลองเลือกชนิดไฟล์อื่น หรือตรวจว่าเป็นไฟล์ CSV' };
+  }
+}
+
+/** D-A10-3: the guessed encoding and the first rows; the Admin confirms they read as Thai (or picks another). */
+function EncodingCheck({
+  guessed,
+  encoding,
+  table,
+  problem,
+  onEncoding,
+  onConfirm,
+}: {
+  readonly guessed: CsvEncoding;
+  readonly encoding: CsvEncoding;
+  readonly table: readonly (readonly string[])[] | undefined;
+  readonly problem: string | undefined;
+  readonly onEncoding: (encoding: CsvEncoding) => void;
+  readonly onConfirm: () => void;
+}) {
+  const id = useId();
+  return (
+    <section className="gm-admin-panel gm-admin-stack" aria-labelledby="encoding-heading" data-testid="import-encoding">
+      <h2 id="encoding-heading">2. ตรวจว่าอ่านภาษาไทยออก</h2>
+      <p>{`ระบบเดาว่าเป็น ${ENCODING_LABELS[guessed]} — ดู ${PREVIEW_ROWS} แถวแรกด้านล่าง ถ้าภาษาไทยเป็นตัวแปลก ๆ ให้เลือกชนิดไฟล์อื่น`}</p>
+      <div className="gm-field gm-field--narrow">
+        <label htmlFor={id}>ชนิดไฟล์ (การเข้ารหัส)</label>
+        <select id={id} className="gm-input" value={encoding} onChange={(event) => onEncoding(event.target.value as CsvEncoding)}>
+          {CSV_ENCODINGS.map((option) => (
+            <option key={option} value={option}>
+              {ENCODING_LABELS[option]}
+            </option>
+          ))}
+        </select>
+      </div>
+      {problem !== undefined ? (
+        <p className="gm-notice gm-notice--danger" role="alert">
+          {problem}
+        </p>
+      ) : (
+        <ol className="gm-import-rows">
+          {(table ?? []).slice(1, 1 + PREVIEW_ROWS).map((cells, index) => (
+            <li key={index}>
+              <span className="font-semibold">{`แถว ${index + 2}`}</span>
+              <span>{cells.filter((cell) => cell.trim() !== '').join(' · ')}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div>
+        <button type="button" className="gm-btn gm-btn--primary" disabled={problem !== undefined} onClick={onConfirm}>
+          อ่านออกถูกต้อง ไปเลือกคอลัมน์
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function PeopleImportPage() {
   const fileId = useId();
   const [fileKey, setFileKey] = useState(0);
-  const [table, setTable] = useState<readonly (readonly string[])[] | undefined>(undefined);
+  const [file, setFile] = useState<{ readonly bytes: Uint8Array; readonly guessed: CsvEncoding } | undefined>(undefined);
+  const [encoding, setEncoding] = useState<CsvEncoding>('utf-8');
+  const [confirmed, setConfirmed] = useState(false);
+  // Parsed once per file and encoding, not on every keystroke.
+  const read = useMemo(() => (file === undefined ? undefined : tableOf(file.bytes, encoding)), [file, encoding]);
+  const table = confirmed ? read?.table : undefined;
   const [mapping, setMapping] = useState<Mapping>(NO_MAPPING);
   const [rows, setRows] = useState<readonly PeopleImportRow[] | undefined>(undefined);
   const [preview, setPreview] = useState<PeoplePreview | undefined>(undefined);
@@ -121,24 +202,21 @@ export function PeopleImportPage() {
   };
 
   const readFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    setTable(undefined);
+    const chosen = event.target.files?.[0];
+    setFile(undefined);
+    setConfirmed(false);
     setMapping(NO_MAPPING);
     forget();
     setSaved({ kind: 'idle' });
-    if (file === undefined) return;
-    if (file.size > MAX_FILE_BYTES) {
+    if (chosen === undefined) return;
+    if (chosen.size > MAX_FILE_BYTES) {
       setSaved({ kind: 'error', text: 'ไฟล์ใหญ่เกิน 2 MB ตรวจว่าเป็นไฟล์รายชื่อที่ถูกต้อง' });
       return;
     }
-    try {
-      const parsed = parseCsv(await file.text());
-      if (parsed.length < 2) setSaved({ kind: 'error', text: 'ไฟล์ไม่มีข้อมูล ต้องมีแถวหัวคอลัมน์และรายชื่ออย่างน้อย 1 แถว' });
-      else if (parsed.length - 1 > MAX_IMPORT_ROWS) setSaved({ kind: 'error', text: `ไฟล์มีมากกว่า ${MAX_IMPORT_ROWS} แถว แบ่งไฟล์แล้วนำเข้าทีละส่วน` });
-      else setTable(parsed);
-    } catch {
-      setSaved({ kind: 'error', text: 'อ่านไฟล์ไม่ได้ ตรวจว่าเป็นไฟล์ CSV (UTF-8) แล้วลองใหม่' });
-    }
+    const bytes = new Uint8Array(await chosen.arrayBuffer());
+    const guessed = detectCsvEncoding(bytes);
+    setEncoding(guessed);
+    setFile({ bytes, guessed });
   };
 
   const choose = (column: Column) => (value: string) => {
@@ -181,7 +259,8 @@ export function PeopleImportPage() {
       const reply = await importPeople(crypto.randomUUID(), rows, mapping.slack !== '');
       const result = reply.result;
       // The file and its rows are not kept once saved (P7-ADMIN-01).
-      setTable(undefined);
+      setFile(undefined);
+      setConfirmed(false);
       setMapping(NO_MAPPING);
       forget();
       setFileKey((key) => key + 1);
@@ -217,9 +296,19 @@ export function PeopleImportPage() {
           </div>
           <p className="gm-admin-muted">คนใหม่เป็นพนักงานทั่วไป ตั้งสิทธิ์ที่หน้ารายชื่อ · คนเดิมอัปเดตชื่อและทีม (สิทธิ์และบัญชีไม่เปลี่ยน)</p>
         </section>
+        {file !== undefined && !confirmed && (
+          <EncodingCheck
+            guessed={file.guessed}
+            encoding={encoding}
+            table={read?.table}
+            problem={read?.problem}
+            onEncoding={setEncoding}
+            onConfirm={() => setConfirmed(true)}
+          />
+        )}
         {table !== undefined && (
           <section className="gm-admin-panel gm-admin-stack" aria-labelledby="columns-heading">
-            <h2 id="columns-heading">{`2. เลือกคอลัมน์ (${table.length - 1} แถว)`}</h2>
+            <h2 id="columns-heading">{`3. เลือกคอลัมน์ (${table.length - 1} แถว)`}</h2>
             <div className="gm-import-columns">
               <ColumnSelect label="คอลัมน์อีเมล" header={table[0] ?? []} value={mapping.email} optional={false} onChange={choose('email')} />
               <ColumnSelect label="คอลัมน์ชื่อที่แสดง" header={table[0] ?? []} value={mapping.name} optional={false} onChange={choose('name')} />

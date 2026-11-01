@@ -9,6 +9,14 @@ import { formatThaiDateTime } from '@gm/time';
 import { getHealth } from './api';
 import { AdminHead, LoadFailed, Loading, useAdminData } from './common';
 
+/** D-A10-1: request types and why their default owner cannot take new requests. */
+const REQUEST_TYPE_LABELS: Readonly<Record<string, string>> = { maintenance: 'แจ้งซ่อม', document_request: 'ขอเอกสาร', document_intake: 'ส่งเอกสาร' };
+const OWNER_ISSUE_LABELS: Readonly<Record<string, string>> = {
+  DEFAULT_OWNER_NOT_GM: 'ไม่ได้เป็นทีม GM แล้ว',
+  DEFAULT_OWNER_INACTIVE: 'ถูกปิดบัญชี',
+  DEFAULT_OWNER_NOT_LISTED: 'ไม่อยู่ในรายชื่อพนักงาน',
+};
+
 const LEVEL_TEXT: Readonly<Record<AdminHealthView['level'], string>> = { ok: 'ปกติ', warning: 'ควรตรวจ', red: 'ต้องแก้ไข' };
 
 /** What the Admin can do about each fallback reason. */
@@ -75,6 +83,20 @@ function HealthBody({ health, onRetry }: { readonly health: AdminHealthView; rea
                     <span className="font-semibold">{job.id}</span>
                     <span className="gm-admin-muted">{[job.code, job.at === undefined ? undefined : formatThaiDateTime(job.at)].filter(Boolean).join(' · ')}</span>
                   </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Card>
+        <Card testId="health-owners" level={health.default_owner_issues.length > 0 ? 'warning' : 'ok'} title="ผู้รับผิดชอบเริ่มต้น">
+          {health.default_owner_issues.length === 0 ? (
+            <p>ผู้รับผิดชอบเริ่มต้นทุกประเภทเป็นทีม GM ที่ใช้งานอยู่</p>
+          ) : (
+            <>
+              <p>งานใหม่ของประเภทเหล่านี้จะ “ยังไม่มอบหมาย” และแจ้ง GM ทุกคน จนกว่าจะตั้งผู้รับผิดชอบเริ่มต้นใหม่</p>
+              <ul className="gm-health-list">
+                {health.default_owner_issues.map((issue) => (
+                  <li key={issue.type}>{`${REQUEST_TYPE_LABELS[issue.type] ?? issue.type}: ผู้รับผิดชอบเริ่มต้น${OWNER_ISSUE_LABELS[issue.code] ?? issue.code}`}</li>
                 ))}
               </ul>
             </>

@@ -4,7 +4,10 @@
 // account change names the person and the new state in a confirmation first (§13.3: no surprise, no
 // self-escalation — the API checks GM Admin and keeps the last one). People who signed in but are not
 // on the list (D-A09-1) are listed with “เพิ่มเข้ารายชื่อ”. Mobile: cards; desktop: a table.
+// D-A10-2: switching off a GM who holds open requests says how many and what happens to them; D-A10-5: a
+// new employee can be added by hand (e-mail checked like an import); D-A10-6: name and team by hand.
 import { useCallback, useId, useState, type FormEvent } from 'react';
+import { personIdFromCsvEmail } from '@gm/contracts';
 import { Link } from 'react-router';
 import { ROLES, type Role } from '@gm/domain';
 import { formatThaiDateTime } from '@gm/time';
@@ -33,11 +36,48 @@ function AccountBadge({ active }: { readonly active: boolean }) {
 
 type Pending = { readonly kind: 'role'; readonly role: Role } | { readonly kind: 'active'; readonly active: boolean };
 
+/** D-A10-6: name and team by hand; the next import writes over them (said under the form). */
+function DetailsForm({ person, run, onClose }: { readonly person: PersonView; readonly run: Run; readonly onClose: () => void }) {
+  const [name, setName] = useState(person.name);
+  const [team, setTeam] = useState(person.team_label ?? '');
+  return (
+    <form
+      className="gm-admin-stack"
+      onSubmit={async (event: FormEvent) => {
+        event.preventDefault();
+        const payload = { person_id: person.person_id, name, ...(team.trim() === '' ? {} : { team }) };
+        if (await run('update_person', payload, `แก้ชื่อและทีมของ ${person.person_id} แล้ว`)) onClose();
+      }}
+    >
+      <label className="gm-field">
+        <span>ชื่อที่แสดง</span>
+        <input className="gm-input" value={name} maxLength={100} onChange={(event) => setName(event.target.value)} required />
+      </label>
+      <label className="gm-field">
+        <span>ทีม (ไม่บังคับ)</span>
+        <input className="gm-input" value={team} maxLength={60} onChange={(event) => setTeam(event.target.value)} />
+      </label>
+      <p className="gm-admin-muted">การนำเข้า CSV ครั้งถัดไปจะเขียนทับค่าที่แก้ด้วยมือ</p>
+      <div className="gm-admin-row-buttons">
+        <button type="submit" className="gm-btn gm-btn--primary">
+          บันทึกชื่อและทีม
+        </button>
+        <button type="button" className="gm-btn gm-btn--secondary" onClick={onClose}>
+          ยกเลิก
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function PersonActions({ person, run }: { readonly person: PersonView; readonly run: Run }) {
   const [editing, setEditing] = useState(false);
+  const [details, setDetails] = useState(false);
   const [role, setRole] = useState<Role>(person.role);
   const [pending, setPending] = useState<Pending | undefined>(undefined);
   const roleId = useId();
+  // D-A10-2: what a switch-off of this person releases (the API checks the count again).
+  const releasing = pending?.kind === 'active' && !pending.active ? person.open_assigned : 0;
   const who = (
     <>
       <p className="font-semibold">{person.name}</p>
@@ -81,10 +121,15 @@ function PersonActions({ person, run }: { readonly person: PersonView; readonly 
             </button>
           </div>
         </form>
+      ) : details ? (
+        <DetailsForm person={person} run={run} onClose={() => setDetails(false)} />
       ) : (
         <div className="gm-admin-row-buttons">
           <button type="button" className="gm-btn gm-btn--secondary" onClick={() => setEditing(true)}>
             เปลี่ยนสิทธิ์
+          </button>
+          <button type="button" className="gm-btn gm-btn--secondary" onClick={() => setDetails(true)}>
+            แก้ชื่อ/ทีม
           </button>
           <button type="button" className="gm-btn gm-btn--secondary" onClick={() => setPending({ kind: 'active', active: !person.active })}>
             {person.active ? 'ปิดบัญชี' : 'เปิดบัญชี'}
@@ -109,15 +154,20 @@ function PersonActions({ person, run }: { readonly person: PersonView; readonly 
       {pending?.kind === 'active' && (
         <ConfirmDialog
           title={pending.active ? 'เปิดบัญชีนี้?' : 'ปิดบัญชีนี้?'}
-          confirm={pending.active ? 'เปิดบัญชี' : 'ปิดบัญชี'}
+          confirm={pending.active ? 'เปิดบัญชี' : releasing > 0 ? `ปิดบัญชีและปล่อยงาน ${releasing} งาน` : 'ปิดบัญชี'}
           onCancel={() => setPending(undefined)}
           onConfirm={async () => {
-            await run('set_person_active', { person_id: person.person_id, active: pending.active }, pending.active ? `เปิดบัญชีของ ${person.name} แล้ว` : `ปิดบัญชีของ ${person.name} แล้ว`);
+            const payload = { person_id: person.person_id, active: pending.active, ...(releasing > 0 ? { release_open_requests: releasing } : {}) };
+            const done = pending.active ? `เปิดบัญชีของ ${person.name} แล้ว` : releasing > 0 ? `ปิดบัญชีของ ${person.name} แล้ว งาน ${releasing} งานกลับเป็น “ยังไม่มอบหมาย”` : `ปิดบัญชีของ ${person.name} แล้ว`;
+            await run('set_person_active', payload, done);
             setPending(undefined);
           }}
         >
           {who}
           <p>{pending.active ? 'คนนี้กลับมาใช้งานได้ทันที' : 'คนนี้ใช้งานไม่ได้ทันที ข้อมูลและงานเดิมยังอยู่ เปิดกลับได้'}</p>
+          {releasing > 0 && (
+            <p className="gm-notice gm-notice--warning">{`มีงานที่รับผิดชอบค้างอยู่ ${releasing} งาน เมื่อปิดบัญชี งานเหล่านี้จะกลับเป็น “ยังไม่มอบหมาย” ปลดหมุด และแจ้ง GM ที่เหลือให้รับเรื่องต่อ`}</p>
+          )}
         </ConfirmDialog>
       )}
     </div>
@@ -231,6 +281,69 @@ function UnlistedEntry({ entry, run }: { readonly entry: UnlistedLogin; readonly
   );
 }
 
+/** D-A10-5: a new employee who is not in the CSV yet; the e-mail is checked like an imported one. */
+function AddPersonForm({ onAdded, onClose }: { readonly onAdded: (email: string) => Promise<void>; readonly onClose: () => void }) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [team, setTeam] = useState('');
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="gm-admin-panel gm-admin-stack"
+      data-testid="add-person-form"
+      onSubmit={async (event: FormEvent) => {
+        event.preventDefault();
+        let personId: string;
+        try {
+          personId = personIdFromCsvEmail(email);
+        } catch {
+          setError('ใช้อีเมล @tdfb.co ของบริษัทเท่านั้น');
+          return;
+        }
+        setBusy(true);
+        try {
+          await adminCommand('add_person', { email: personId, name, ...(team.trim() === '' ? {} : { team }) });
+          setError(undefined);
+          await onAdded(personId);
+        } catch (failure) {
+          setError(adminErrorText(failure));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <h2>เพิ่มคนด้วยมือ</h2>
+      <p className="gm-admin-muted">สำหรับพนักงานใหม่ที่ยังไม่อยู่ในไฟล์ CSV — เป็นพนักงานทั่วไป ตั้งสิทธิ์ได้หลังเพิ่ม</p>
+      <label className="gm-field">
+        <span>อีเมล</span>
+        <input className="gm-input" type="email" value={email} maxLength={120} onChange={(event) => setEmail(event.target.value)} required />
+      </label>
+      <label className="gm-field">
+        <span>ชื่อที่แสดง</span>
+        <input className="gm-input" value={name} maxLength={100} onChange={(event) => setName(event.target.value)} required />
+      </label>
+      <label className="gm-field">
+        <span>ทีม (ไม่บังคับ)</span>
+        <input className="gm-input" value={team} maxLength={60} onChange={(event) => setTeam(event.target.value)} />
+      </label>
+      {error !== undefined && (
+        <p className="gm-notice gm-notice--danger" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="gm-admin-row-buttons">
+        <button type="submit" className="gm-btn gm-btn--primary" disabled={busy}>
+          บันทึกคนใหม่
+        </button>
+        <button type="button" className="gm-btn gm-btn--secondary" onClick={onClose}>
+          ยกเลิก
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function UsersPage() {
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
@@ -249,6 +362,7 @@ export function UsersPage() {
   const people = useAdminData(loadPeople);
   const unlisted = useAdminData(getUnlisted);
   const [saved, setSaved] = useState<Saved>({ kind: 'idle' });
+  const [adding, setAdding] = useState(false);
 
   const run: Run = async (type, payload, done) => {
     try {
@@ -272,7 +386,22 @@ export function UsersPage() {
           <Link className="gm-btn gm-btn--secondary" to={PEOPLE_IMPORT_PATH}>
             นำเข้ารายชื่อจาก CSV
           </Link>
+          {!adding && (
+            <button type="button" className="gm-btn gm-btn--secondary" onClick={() => setAdding(true)}>
+              เพิ่มคนด้วยมือ
+            </button>
+          )}
         </div>
+        {adding && (
+          <AddPersonForm
+            onClose={() => setAdding(false)}
+            onAdded={async (email) => {
+              setAdding(false);
+              await people.reload();
+              setSaved({ kind: 'done', text: `เพิ่ม ${email} เข้ารายชื่อแล้ว` });
+            }}
+          />
+        )}
         <SaveLine saved={saved} />
         {unlisted.state.kind === 'ready' && unlisted.state.data.items.length > 0 && (
           <section className="gm-admin-panel gm-admin-stack" aria-labelledby="unlisted-heading">

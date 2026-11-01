@@ -11,6 +11,7 @@ import {
   confirmCompletion,
   createRequestDraft,
   reopenRequest,
+  releaseAssignment,
   reportNotResolved,
   type Actor,
   type LifecycleState,
@@ -606,6 +607,35 @@ describe('reopen (F04, US-09)', () => {
     const breached = { ...completedAwaiting(), slaBreachedAt: bkk('2026-12-29', '17:00') };
     const { state } = reopenRequest(breached, { actor: GM, now: REOPEN_AT, reason: 'ยังไม่เสร็จ' });
     expect(state.slaBreachedAt).toBe(bkk('2026-12-29', '17:00'));
+  });
+});
+
+describe('D-A10-2: a GM switched off — their open requests become unassigned', () => {
+  const now = bkk('2027-01-04', '10:00');
+
+  it('in progress → queued, nobody assigned; the GM progress clock is not moved', () => {
+    const result = releaseAssignment(inProgress(), { personId: GM.personId, now });
+    expect(result?.state).toEqual(requestState({ status: 'queued' }));
+    expect(result?.state).not.toHaveProperty('assigneeId');
+    expect(result?.event).toEqual({ kind: 'unassigned', at: now, actorId: 'system', previousAssigneeId: GM.personId, reason: 'ASSIGNEE_INACTIVE' });
+  });
+
+  it('queued and assigned → still queued, nobody assigned', () => {
+    const result = releaseAssignment(requestState({ assigneeId: GM.personId }), { personId: GM.personId, now });
+    expect(result?.state).toEqual(requestState());
+  });
+
+  it('waiting → still waiting on the same party, nobody assigned (the waiting interval is not touched)', () => {
+    const result = releaseAssignment(inProgress({ status: 'waiting' }), { personId: GM.personId, now });
+    expect(result?.state).toEqual(requestState({ status: 'waiting' }));
+  });
+
+  it('nothing to do: another GM\'s request, already unassigned, completed or closed, or from Trello', () => {
+    expect(releaseAssignment(inProgress({ assigneeId: GM_2.personId }), { personId: GM.personId, now })).toBeUndefined();
+    expect(releaseAssignment(requestState(), { personId: GM.personId, now })).toBeUndefined();
+    expect(releaseAssignment(completedAwaiting(), { personId: GM.personId, now })).toBeUndefined();
+    expect(releaseAssignment(inProgress({ status: 'cancelled', cancelledAt: now }), { personId: GM.personId, now })).toBeUndefined();
+    expect(releaseAssignment(inProgress({ source: 'trello' }), { personId: GM.personId, now })).toBeUndefined();
   });
 });
 

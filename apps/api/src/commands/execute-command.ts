@@ -101,7 +101,7 @@ export interface MaintenanceCatalog {
 }
 
 /** Directories only read, so the worker's transaction (A03 auto-close) can use them too. */
-export type ReadTransaction = Pick<CommandTransaction, 'get'>;
+export type ReadTransaction = Pick<CommandTransaction, 'get' | 'list'>;
 
 /** D-S10-1: display names from `people/{person_id}` (read inside the transaction, before any write). */
 export interface PeopleDirectory {

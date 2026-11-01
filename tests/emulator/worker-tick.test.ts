@@ -96,6 +96,8 @@ async function seedPeople(): Promise<void> {
       name: NAMES[personId],
       email: personId,
       active: personId !== LEFT,
+      // D-A10-1: who is a GM is the role in people.
+      role: personId === GM_SLACK || personId === GM_MAIL ? 'gm_staff' : 'requester',
       ...(SLACK_IDS[personId] === undefined ? {} : { slack_user_id: SLACK_IDS[personId] }),
     });
   }
@@ -506,7 +508,7 @@ describe('FU-20: pending entries left by a failed queue hand-off are swept by th
     await clearAuth();
     try {
       const batch = harness.db.batch();
-      batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { document_request: GM_SLACK }, gm_person_ids: [GM_SLACK, GM_MAIL] });
+      batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { document_request: GM_SLACK } });
       for (const gm of [GM_SLACK, GM_MAIL]) batch.set(harness.db.doc(`gm_profiles/${gm}`), { presence_status: { kind: 'unspecified' } });
       batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: [] });
       await batch.commit();

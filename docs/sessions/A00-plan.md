@@ -29,7 +29,7 @@
 | 9 | A09 Google login / 4 roles / route shell | S12, A01 | ได้ (ทำแล้ว: Auth emulator; เว็บรับเฉพาะ `demo-*` จนถึง P7-INFRA-01) | P7-INFRA-01 สำหรับ project จริง (FU-37) | FU-36 บางส่วน (หน้าแรก + test ห้ามจัดรูปแบบวันที่เอง); ใหม่ FU-37 (config จริง), FU-38 (ผูกบัญชี login แรก → A10), FU-39 (แก้ช่องทางติดต่อก่อน login → A23), FU-40 (bundle) |
 | 10 | A11 locations / areas / QR / company calendar (Admin) | A09 | ได้ (ทำแล้ว: ข้อมูลสังเคราะห์, emulator) | P7-ADMIN-04 วันหยุดจริง; P7-INFRA-01 domain ก่อนพิมพ์ QR (FU-42) | ปิด FU-25 (หน้าสุขภาพระบบ), FU-30 (เวลาส่งการเตือน); ใหม่ FU-42 (โดเมน prod ก่อนพิมพ์ QR), FU-43 (`/q/:qr_id` + catalog → A12), FU-44 (ช่วงเวลา outbox) |
 | 11 | A10 Admin people CSV / roles | A09 | ได้ (ทำแล้ว: CSV สังเคราะห์, emulator) | P7-ADMIN-01 CSV จริง (encoding/คอลัมน์ Q-A10-3) | ปิด FU-10, FU-11, FU-38, FU-44 (D-A11-6); ใหม่ FU-45 (แถบแดงหน้าแรก GM → A23), FU-46 (role ↔ routing) |
-| 12 | A12 public QR landing + repair step 1–3 | A09, A11 | ได้ | — | FU-21 (503 ยังตั้งค่าไม่ครบ → ข้อความไทย + ติดต่อ GM) |
+| 12 | A12 public QR landing + repair step 1–3 | A09, A11 | ได้ (ทำแล้ว: emulator) | — | ปิด FU-19, FU-43, FU-46 (D-A10-1); FU-21 ทำตอนเปิดฟอร์ม เหลือตอนส่ง (A14) |
 | 13 | A13 duplicate watch backend + interstitial | A12, A01 | ได้ | — | FU-08, FU-15 (contribution) |
 | 14 | A14 repair step 4 + submission/retry/title | A12, A13 | ได้ | — | — |
 | 15 | A15 photo compression / picker / progress | A14, S12 | ได้ | — | FU-14, FU-15, FU-18 |

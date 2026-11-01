@@ -51,8 +51,22 @@ const csvFor = (who: string) =>
     'a10.csv.noname@tdfb.co,,,,',
   ].join('\r\n');
 
+/** Windows-874 / TIS-620 bytes (Excel “CSV” saved in Thai Windows): ASCII as is, Thai U+0E01–U+0E5B at 0xA1–0xFB. */
+function windows874(text: string): Buffer {
+  return Buffer.from([...text].map((char) => {
+    const code = char.codePointAt(0) ?? 0;
+    return code < 0x80 ? code : code - 0x0e00 + 0xa0;
+  }));
+}
+
+/** D-A10-3: the page names the encoding it guessed and shows the first rows; the Admin confirms they read as Thai. */
+async function confirmReadable(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'อ่านออกถูกต้อง ไปเลือกคอลัมน์' }).click();
+}
+
 async function uploadAndMap(page: Page, who: string): Promise<void> {
   await page.getByLabel('ไฟล์ CSV รายชื่อพนักงาน').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.from(`﻿${csvFor(who)}\r\n`, 'utf8') });
+  await confirmReadable(page);
   // The columns come from the file's own header (the real Workspace export has not been seen yet).
   await page.getByLabel('คอลัมน์อีเมล').selectOption({ label: 'Primary Email' });
   await page.getByLabel('คอลัมน์ชื่อที่แสดง').selectOption({ label: 'First Name [Required]' });
@@ -167,6 +181,105 @@ test.describe('นำเข้า CSV (P7-ADMIN-01, FU-10)', () => {
     const missing = personRow(page, 'a09.viewer@tdfb.co');
     await expect(missing).toContainText('ไม่อยู่ในไฟล์ล่าสุด');
     await expect(missing.getByRole('button', { name: 'ปิดบัญชี', exact: true })).toBeVisible();
+  });
+});
+
+test.describe('D-A10-3: ชนิดไฟล์ CSV ที่ Excel ภาษาไทยบันทึก', () => {
+  test('a Windows-874 file: the encoding is guessed, the first 3 rows read as Thai, confirmed before choosing columns', async ({ page }, testInfo) => {
+    const who = `enc-${testInfo.project.name}`;
+    await openUsers(page);
+    await page.getByRole('link', { name: 'นำเข้ารายชื่อจาก CSV' }).click();
+    await page.getByLabel('ไฟล์ CSV รายชื่อพนักงาน').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: windows874(`${csvFor(who)}\r\n`) });
+    const check = page.getByTestId('import-encoding');
+    await expect(check).toContainText('Windows-874');
+    await expect(check).toContainText('คุณนำเข้า หนึ่ง');
+    await expect(check).toContainText('คุณนำเข้า สอง');
+    await expect(check).toContainText('คนนอกบริษัท');
+    // Only the first 3 data rows are shown.
+    await expect(check).not.toContainText('ซ้ำ หนึ่ง');
+    // Columns are chosen only after the Admin says the text reads right.
+    await expect(page.getByLabel('คอลัมน์อีเมล')).toHaveCount(0);
+    await expectLayout(page);
+    await confirmReadable(page);
+    await page.getByLabel('คอลัมน์อีเมล').selectOption({ label: 'Primary Email' });
+    await page.getByLabel('คอลัมน์ชื่อที่แสดง').selectOption({ label: 'First Name [Required]' });
+    await page.getByRole('button', { name: 'ตรวจรายการก่อนบันทึก' }).click();
+    await expect(page.getByTestId('import-preview')).toContainText('ใหม่ 2');
+  });
+
+  test('a wrong guess can be overridden: the preview follows the encoding chosen', async ({ page }, testInfo) => {
+    await openUsers(page);
+    await page.getByRole('link', { name: 'นำเข้ารายชื่อจาก CSV' }).click();
+    await page.getByLabel('ไฟล์ CSV รายชื่อพนักงาน').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: windows874(`${csvFor(`enc2-${testInfo.project.name}`)}\r\n`) });
+    const check = page.getByTestId('import-encoding');
+    await page.getByLabel('ชนิดไฟล์ (การเข้ารหัส)').selectOption('utf-8');
+    await expect(check).not.toContainText('คุณนำเข้า หนึ่ง');
+    await page.getByLabel('ชนิดไฟล์ (การเข้ารหัส)').selectOption('windows-874');
+    await expect(check).toContainText('คุณนำเข้า หนึ่ง');
+    await expectLayout(page);
+  });
+
+  test('a UTF-16 file (Excel “Unicode Text”) reads as Thai too', async ({ page }, testInfo) => {
+    await openUsers(page);
+    await page.getByRole('link', { name: 'นำเข้ารายชื่อจาก CSV' }).click();
+    const text = `${csvFor(`u16-${testInfo.project.name}`)}\r\n`;
+    await page.getByLabel('ไฟล์ CSV รายชื่อพนักงาน').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]) });
+    await expect(page.getByTestId('import-encoding')).toContainText('UTF-16');
+    await expect(page.getByTestId('import-encoding')).toContainText('คุณนำเข้า หนึ่ง');
+  });
+});
+
+test.describe('D-A10-2 / D-A10-5 / D-A10-6: รายชื่อ', () => {
+  test('switching off a GM who still holds open requests: the dialog says how many and what happens', async ({ page }) => {
+    await openUsers(page);
+    await page.getByLabel('ค้นชื่อหรืออีเมล').fill('a10.gm.busy@tdfb.co');
+    const row = personRow(page, 'a10.gm.busy@tdfb.co');
+    await row.getByRole('button', { name: 'ปิดบัญชี', exact: true }).click();
+    const dialog = page.getByRole('alertdialog', { name: 'ปิดบัญชีนี้?' });
+    await expect(dialog).toContainText('คุณจีเอ็ม งานค้าง');
+    await expect(dialog).toContainText('มีงานที่รับผิดชอบค้างอยู่ 2 งาน');
+    await expect(dialog).toContainText('กลับเป็น “ยังไม่มอบหมาย”');
+    await expect(dialog.getByRole('button', { name: 'ปิดบัญชีและปล่อยงาน 2 งาน' })).toBeVisible();
+    await expectLayout(page);
+    // Nothing is confirmed here: the shared GM stays on for the other projects.
+    await dialog.getByRole('button', { name: 'ยกเลิก' }).click();
+    await expect(row.getByRole('button', { name: 'ปิดบัญชี', exact: true })).toBeVisible();
+  });
+
+  test('add a new employee by hand: the e-mail is checked like an import; then an ordinary user on the list', async ({ page }, testInfo) => {
+    const email = `a10.hand-${testInfo.project.name}@tdfb.co`;
+    await openUsers(page);
+    await page.getByRole('button', { name: 'เพิ่มคนด้วยมือ' }).click();
+    const form = page.getByTestId('add-person-form');
+    await form.getByLabel('อีเมล').fill(`hand-${testInfo.project.name}@gmail.com`);
+    await form.getByLabel('ชื่อที่แสดง').fill('คุณเพิ่มด้วยมือ');
+    await form.getByRole('button', { name: 'บันทึกคนใหม่' }).click();
+    await expect(form.getByRole('alert')).toContainText('ใช้อีเมล @tdfb.co');
+    await expect(form.getByLabel('ชื่อที่แสดง')).toHaveValue('คุณเพิ่มด้วยมือ');
+    await expectLayout(page);
+    await form.getByLabel('อีเมล').fill(email.toUpperCase());
+    await form.getByLabel('ทีม (ไม่บังคับ)').fill('ฝ่ายขาย');
+    await form.getByRole('button', { name: 'บันทึกคนใหม่' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'เพิ่ม' })).toContainText(email);
+    await page.getByLabel('ค้นชื่อหรืออีเมล').fill(email);
+    await expect(personRow(page, email)).toContainText('คุณเพิ่มด้วยมือ');
+    await expect(personRow(page, email)).toContainText('ฝ่ายขาย');
+    await expect(personRow(page, email)).toContainText('พนักงาน');
+  });
+
+  test('edit a name and team by hand, told that the next CSV import writes over it', async ({ page }, testInfo) => {
+    const email = `a10.e-${testInfo.project.name}@tdfb.co`;
+    await openUsers(page);
+    await page.getByLabel('ค้นชื่อหรืออีเมล').fill(email);
+    const row = personRow(page, email);
+    await row.getByRole('button', { name: 'แก้ชื่อ/ทีม' }).click();
+    await expect(row).toContainText('การนำเข้า CSV ครั้งถัดไปจะเขียนทับค่าที่แก้ด้วยมือ');
+    await row.getByLabel('ชื่อที่แสดง').fill(`คุณแก้แล้ว ${testInfo.project.name}`);
+    await row.getByLabel('ทีม (ไม่บังคับ)').fill('ฝ่ายบัญชี');
+    await expectLayout(page);
+    await row.getByRole('button', { name: 'บันทึกชื่อและทีม' }).click();
+    await expect(row).toContainText(`คุณแก้แล้ว ${testInfo.project.name}`);
+    await expect(row).toContainText('ฝ่ายบัญชี');
   });
 });
 

@@ -39,6 +39,7 @@ import {
   chooseDeliveryChannel,
   claimDelivery,
   isDeliveryState,
+  isGmRole,
   requesterNoticeAfter,
   settleDelivery,
   type RequesterNoticeObservation,
@@ -195,8 +196,9 @@ async function accessStop(transaction: WorkerTransaction, entry: Entry, request:
   if (request.requester_id === entry.recipientId) return undefined;
   const readers = request.is_confidential === false ? ids(request.related_person_ids) : ids(request.confidential_grant_ids);
   if (readers.includes(entry.recipientId)) return undefined;
-  const routing = await transaction.get('settings/routing');
-  return ids(routing?.gm_person_ids).includes(entry.recipientId) ? undefined : 'NO_ACCESS';
+  // D-S06-4 / D-A10-1: an active GM (by the role in people) reads every request.
+  const person = await transaction.get(`people/${entry.recipientId}`);
+  return isGmRole(person?.role) && person?.active === true ? undefined : 'NO_ACCESS';
 }
 
 /** The stored entry without the fields of a running or previous attempt. */

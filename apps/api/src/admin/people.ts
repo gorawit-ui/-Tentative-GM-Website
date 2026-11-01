@@ -14,9 +14,10 @@ import {
   type CheckedPerson,
   type PeopleImportBody,
 } from '@gm/contracts';
-import { ROLES, accessFor, linkDecision, planPersonActive, planPersonRole, type PersonFacts, type Role } from '@gm/domain';
+import { LifecycleRejected, ROLES, accessFor, isGmRole, linkDecision, planPersonActive, planPersonRole, type PersonFacts, type Role } from '@gm/domain';
 import type { Instant } from '@gm/time';
 import { COMMANDS_COLLECTION, COMMAND_EXPIRY_FIELD, COMMAND_RETENTION_MS, CommandRejected } from '../commands/execute-command';
+import { releaseAssignmentOf, type LifecycleDirectories } from '../commands/lifecycle';
 import { commandFingerprint } from '../commands/fingerprint';
 import type { CommandStore, CommandTransaction, StoredData } from '../commands/transaction-port';
 import type { ApiDeps } from '../endpoints/deps';
@@ -29,6 +30,11 @@ export const PEOPLE_PAGE = 50;
 export const IMPORT_CHUNK = 100;
 export const MAX_UNLISTED = 200;
 const MAX_ADMINS = 200;
+/** D-A10-2: the open requests of one GM read in the switch-off transaction (a GM holds tens, not hundreds). */
+export const MAX_RELEASED_REQUESTS = 300;
+/** D-A10-2: statuses whose assignee still works on them (completed waits for the requester). */
+export const OPEN_ASSIGNED_STATUSES = ['queued', 'in_progress', 'waiting'] as const;
+export const RELEASE_JOB_KIND = 'release_assignments';
 
 const personPath = (personId: string) => `people/${personId}`;
 const pickerPath = (personId: string) => `people_picker/${personId}`;
@@ -62,6 +68,14 @@ export interface PersonView {
   readonly linked: boolean;
   readonly slack_mapped: boolean;
   readonly in_latest_import: boolean;
+  /** D-A10-2: open requests this person is the assignee of (GMs; 0 for everyone else). */
+  readonly open_assigned: number;
+}
+
+/** D-A10-2: how many open requests `personId` is the assignee of (a count, no request read). */
+async function openAssignedCount(api: Pick<ApiDeps, 'db'>, personId: string): Promise<number> {
+  const query = api.db.collection('requests').where('assignee_id', '==', personId).where('status', 'in', [...OPEN_ASSIGNED_STATUSES]);
+  return (await query.count().get()).data().count;
 }
 
 async function allPeople(api: Pick<ApiDeps, 'db'>): Promise<{ readonly id: string; readonly data: StoredData }[]> {
@@ -86,12 +100,14 @@ export async function readPeople(api: Pick<ApiDeps, 'db'>, query: string, offset
         linked: text(data.uid) !== undefined,
         slack_mapped: text(data.slack_user_id) !== undefined,
         in_latest_import: typeof latestId === 'string' && data.last_import_id === latestId,
+        open_assigned: 0,
       };
     })
     .filter((person) => needle === '' || person.person_id.includes(needle) || person.name.toLowerCase().includes(needle))
     .sort((a, b) => a.name.localeCompare(b.name, 'th') || a.person_id.localeCompare(b.person_id));
   const start = Math.max(0, Math.floor(offset));
-  const page = rows.slice(start, start + PEOPLE_PAGE);
+  // Counted for the GMs of this page only (a handful of count queries).
+  const page = await Promise.all(rows.slice(start, start + PEOPLE_PAGE).map(async (person) => (isGmRole(person.role) ? { ...person, open_assigned: await openAssignedCount(api, person.person_id) } : person)));
   return {
     people: page,
     total: rows.length,
@@ -264,12 +280,76 @@ export async function setPersonRole(transaction: CommandTransaction, personId: s
   return { person_id: personId, role: planned.role };
 }
 
-export async function setPersonActive(transaction: CommandTransaction, personId: string, active: boolean, now: Instant) {
+/** D-A10-2: the open requests `personId` is the assignee of, read in the transaction. */
+async function openAssignedIds(transaction: CommandTransaction, personId: string): Promise<string[]> {
+  if (transaction.list === undefined) throw new Error('this store cannot list requests');
+  const rows = await transaction.list('requests', 'assignee_id', personId, MAX_RELEASED_REQUESTS);
+  return rows.filter((row) => (OPEN_ASSIGNED_STATUSES as readonly unknown[]).includes(row.data.status)).map((row) => row.id).sort();
+}
+
+/**
+ * Account on/off. D-A10-2: switching off a GM who is the assignee of open requests needs the Admin to
+ * send that count (the latest, read here); a `release_assignments` job is written in the same
+ * transaction, so the release finishes even if the caller stops (the API runs it at once, the worker's
+ * tick picks up what is left).
+ */
+export async function setPersonActive(
+  transaction: CommandTransaction,
+  input: { readonly personId: string; readonly active: boolean; readonly confirmedOpenAssigned?: number | undefined; readonly jobId: string },
+  now: Instant,
+) {
+  const { personId, active } = input;
   const stored = await transaction.get(personPath(personId));
   const admins = await activeGmAdmins(transaction);
-  const planned = planPersonActive(personFacts(personId, stored), active, admins);
+  const person = personFacts(personId, stored);
+  const open = !active && person !== undefined && isGmRole(person.role) ? await openAssignedIds(transaction, personId) : [];
+  let planned;
+  try {
+    planned = planPersonActive(person, active, admins, { openAssigned: open.length, confirmedOpenAssigned: input.confirmedOpenAssigned });
+  } catch (error) {
+    if (error instanceof LifecycleRejected && error.code === 'OPEN_REQUESTS_ASSIGNED') {
+      throw new CommandRejected('OPEN_REQUESTS_ASSIGNED', 'Confirm how many open requests are released', { open_assigned: open.length });
+    }
+    throw error;
+  }
   writePerson(transaction, personId, { ...(stored as StoredData), active: planned.active, updated_at: now });
-  return { person_id: personId, active: planned.active };
+  if (!planned.releaseOpenRequests) return { person_id: personId, active: planned.active, released: 0 };
+  transaction.set(`scheduled_work/${input.jobId}`, { kind: RELEASE_JOB_KIND, state: 'scheduled', next_run_at: now, attempts: 0, created_at: now, person_id: personId, request_ids: open });
+  return { person_id: personId, active: planned.active, released: open.length, release_job: input.jobId };
+}
+
+/**
+ * D-A10-2: runs a `release_assignments` job now — one transaction per request, each rechecking the
+ * latest request — then marks it done. Safe to repeat, and safe next to the worker running the same job.
+ */
+export async function runReleaseJob(store: CommandStore, jobId: string, context: { readonly now: Instant; readonly directories: LifecycleDirectories }): Promise<number> {
+  const path = `scheduled_work/${jobId}`;
+  const job = await store.runTransaction(async (transaction) => transaction.get(path));
+  if (job === undefined || job.state !== 'scheduled' || typeof job.person_id !== 'string') return 0;
+  const personId = job.person_id;
+  let released = 0;
+  for (const requestId of Array.isArray(job.request_ids) ? job.request_ids.filter((id): id is string => typeof id === 'string') : []) {
+    if (await store.runTransaction((transaction) => releaseAssignmentOf(transaction, { requestId, personId, now: context.now }, context.directories))) released += 1;
+  }
+  await store.runTransaction(async (transaction) => {
+    const latest = await transaction.get(path);
+    if (latest?.state === 'scheduled') transaction.set(path, { ...latest, state: 'done', completed_at: context.now });
+  });
+  return released;
+}
+
+/** D-A10-6: name and team edited by hand (blank team = cleared); open requests follow (FU-11). */
+export async function updatePerson(transaction: CommandTransaction, input: { readonly personId: string; readonly name: string; readonly team?: string | undefined; readonly jobId: string }, now: Instant) {
+  const name = input.name.replace(/\s+/g, ' ').trim();
+  const team = (input.team ?? '').replace(/\s+/g, ' ').trim();
+  if (name === '' || [...name].length > MAX_PERSON_NAME_CHARS || [...team].length > MAX_TEAM_LABEL_CHARS) throw new CommandRejected('LABEL_INVALID', 'Name 1–100 and team up to 60 characters');
+  const stored = await transaction.get(personPath(input.personId));
+  if (stored === undefined) throw new CommandRejected('PERSON_NOT_FOUND', 'No such person');
+  const { team_label: previousTeam, ...rest } = stored;
+  const changed = stored.name !== name || (text(previousTeam) ?? '') !== team;
+  writePerson(transaction, input.personId, { ...rest, name, ...(team === '' ? {} : { team_label: team }), updated_at: now });
+  if (changed) transaction.set(`scheduled_work/${input.jobId}`, { kind: 'display_refresh', state: 'scheduled', next_run_at: now, attempts: 0, created_at: now, person_ids: [input.personId] });
+  return { person_id: input.personId, changed };
 }
 
 /** “เพิ่มเข้ารายชื่อ” from the logins not on the list (or by hand): an ordinary user, access at once. */

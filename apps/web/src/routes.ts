@@ -6,6 +6,8 @@ import { ADMIN_SECTIONS, isQrId, type AdminSection, type AppArea } from '@gm/dom
 export type AppRoute =
   | { readonly area: Exclude<AppArea, 'request_detail' | 'admin'> }
   | { readonly area: 'request_detail'; readonly requestId: string }
+  /** A12: a scanned QR code (`/q/:qr_id`) opens the repair form with that code; the API says what it points at. */
+  | { readonly area: 'repair'; readonly qrId: string }
   | { readonly area: 'admin'; readonly section: AdminSection; readonly itemId?: string; readonly view?: 'print' | 'import' }
   | { readonly area: 'not_found' };
 
@@ -40,6 +42,15 @@ const NEW_REQUEST_FORMS: readonly (readonly [type: string, origin: string, area:
   ['maintenance', 'gm_on_behalf', 'gm_on_behalf'],
 ];
 
+/** A path segment as text; a malformed escape stays as typed (the API then says the code is not found). */
+function safeDecode(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 export function routeOf(pathname: string, search: string): AppRoute {
   switch (pathname) {
     case HOME_PATH:
@@ -58,6 +69,8 @@ export function routeOf(pathname: string, search: string): AppRoute {
     default:
       break;
   }
+  const qr = /^\/q\/([^/]+)$/.exec(pathname);
+  if (qr?.[1] !== undefined) return { area: 'repair', qrId: safeDecode(qr[1]) };
   const detail = /^\/requests\/([^/]+)$/.exec(pathname);
   if (detail?.[1] !== undefined) return { area: 'request_detail', requestId: decodeURIComponent(detail[1]) };
   const admin = /^\/admin\/([^/]+)$/.exec(pathname);

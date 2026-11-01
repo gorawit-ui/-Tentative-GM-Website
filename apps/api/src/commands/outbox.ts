@@ -109,7 +109,7 @@ export type WaitingNoticeKind = 'waiting_requested' | 'waiting_reminder' | 'wait
 /** A04: messages to the waited party — sent only while their interval is current and they have access (F05 §9.3). */
 export const WAITING_PARTY_NOTICE_KINDS: ReadonlySet<string> = new Set<string>(['waiting_requested', 'waiting_reminder']);
 /** D-A03-2 / D-A03-4: what a GM hears about a status change made by someone else. */
-export type GmLifecycleNoticeKind = 'request_not_resolved' | 'request_taken_over';
+export type GmLifecycleNoticeKind = 'request_not_resolved' | 'request_taken_over' | 'request_unassigned';
 
 /** D-A03-7: status notices — an older one to the same person on the same request is superseded by a newer one. */
 export const STATUS_NOTICE_KINDS: ReadonlySet<string> = new Set<string>([
@@ -177,6 +177,36 @@ export function lifecycleOutbox(input: {
       ...(eventKind === 'request_taken_over' ? { actor_id: input.actorId } : {}),
     },
   }));
+}
+
+/**
+ * D-A10-2: the Admin switched off the assignee; every available GM (D-S07-3, GMs by role D-A10-1) hears
+ * that the request waits for someone to take it (“ยังไม่มอบหมาย”). One entry per GM per event.
+ */
+export function unassignedOutbox(input: {
+  readonly requestId: string;
+  readonly requestNumber: string;
+  readonly revision: number;
+  readonly activitySeq: number;
+  readonly gmRecipientIds: readonly string[];
+  readonly isConfidential: boolean;
+  readonly now: Instant;
+}): readonly OutboxEntry[] {
+  const eventId = `${input.requestId}:r${input.revision}`;
+  return [...new Set(input.gmRecipientIds)].map((recipientId) =>
+    entry(eventId, recipientId, {
+      event_kind: 'request_unassigned',
+      request_id: input.requestId,
+      request_number: input.requestNumber,
+      audience: 'gm',
+      confidential: input.isConfidential,
+      next_attempt_at: input.now,
+      created_at: input.now,
+      revision: input.revision,
+      activity_seq: input.activitySeq,
+      notice_variant: 'unassigned',
+    }),
+  );
 }
 
 function entry(

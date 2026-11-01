@@ -189,9 +189,10 @@ beforeAll(async () => {
   await clearAuth();
   const batch = harness.db.batch();
   for (const [personId, name] of Object.entries(NAMES)) {
-    batch.set(harness.db.doc(`people/${personId}`), { name, email: personId, active: true, ...(TEAMS[personId] === undefined ? {} : { team_label: TEAMS[personId] }) });
+    batch.set(harness.db.doc(`people/${personId}`), { name, email: personId, active: true, role: ROLES[personId] ?? 'requester', ...(TEAMS[personId] === undefined ? {} : { team_label: TEAMS[personId] }) });
   }
-  batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: GM1, document_request: GM2 }, gm_person_ids: [GM1, GM2, ADMIN] });
+  // D-A10-1: GM by the role in people; routing names the default owners only.
+  batch.set(harness.db.doc('settings/routing'), { default_owner_by_type: { maintenance: GM1, document_request: GM2 } });
   for (const gm of [GM1, GM2, ADMIN]) batch.set(harness.db.doc(`gm_profiles/${gm}`), { presence_status: { kind: 'unspecified' } });
   batch.set(harness.db.doc('calendars/company'), { timezone: 'Asia/Bangkok', open_weekdays: [1, 2, 3, 4, 5], holidays: HOLIDAYS });
   await batch.commit();
@@ -614,6 +615,21 @@ describe('the worker rechecks the interval and access before it sends (F05 §9.3
     setNow(MON + 60_000);
     await runTick(workerDeps());
     expect((await noticesOf(id, 'waiting_requested'))[0]).toMatchObject({ state: 'suppressed', last_error_code: 'NO_ACCESS' });
+  });
+
+  it('D-A10-1: a waited GM reads by role only while their account is on — switched off before delivery, the DM is suppressed', async () => {
+    setNow(MON);
+    const { id } = await inProgressDocument();
+    expect(await act(GM2, 'mark_confidential', { request_id: id, expected_revision: await revisionOf(id), sensitivity_reason: 'contract', keep_related_person_ids: [] })).toMatchObject({ status: 200 });
+    expect(await enterWaiting(id, { kind: 'person', person_id: GM1 }, {}, GM2)).toMatchObject({ status: 200 });
+    await harness.db.doc(`people/${GM1}`).update({ active: false });
+    try {
+      setNow(MON + 60_000);
+      await runTick(workerDeps());
+      expect((await noticesOf(id, 'waiting_requested'))[0]).toMatchObject({ recipient_id: GM1, state: 'suppressed', last_error_code: 'NO_ACCESS' });
+    } finally {
+      await harness.db.doc(`people/${GM1}`).update({ active: true });
+    }
   });
 
   it('a holiday reminder waits for 09:00 of the next business day, then goes out', async () => {

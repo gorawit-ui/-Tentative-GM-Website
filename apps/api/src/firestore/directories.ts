@@ -1,7 +1,8 @@
 // A01 — directory reads used by create commands, through the command transaction port (so every
 // read stays inside the same transaction, before any write). Production stores:
-//   people/{person_id}          name, active, team_label           (P7-ADMIN-01 CSV, A10; team: FU-10)
-//   settings/routing            default_owner_by_type, gm_person_ids (P7-ADMIN-04, A10)
+//   people/{person_id}          name, active, team_label, role      (P7-ADMIN-01 CSV, A10; team: FU-10)
+//                               — D-A10-1: the GMs are the people with role gm_staff / gm_admin
+//   settings/routing            default_owner_by_type               (P7-ADMIN-04)
 //   gm_profiles/{person_id}     presence_status, leave_ends_on, presence_updated_at
 //   calendars/company           timezone, open_weekdays, holidays    (P7-ADMIN-04, A11)
 //   settings/notifications      working_morning_time (FU-30, A11)
@@ -76,22 +77,40 @@ export function companyCalendarOf(calendar: StoredData): CalendarSnapshot {
   });
 }
 
+/** Upper bound of each GM role (a GM team is a handful of people). */
+export const MAX_GM_MEMBERS = 100;
+const GM_ROLES = ['gm_staff', 'gm_admin'] as const;
+
+/** D-A10-1: the people whose role is a GM role (active or not), in ID order. A read: before any write. */
+export async function gmPeople(transaction: ReadTransaction): Promise<readonly { readonly id: string; readonly data: StoredData }[]> {
+  if (transaction.list === undefined) throw new Error('this store cannot list people');
+  const rows = [];
+  for (const role of GM_ROLES) rows.push(...(await transaction.list('people', 'role', role, MAX_GM_MEMBERS)));
+  return rows.filter((row) => isPersonId(row.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** Every GM with their latest presence, for the default owner and “แจ้ง GM ทุกคน” (D-S07-3/5). */
+export async function gmMembers(transaction: ReadTransaction): Promise<GmMember[]> {
+  const members: GmMember[] = [];
+  for (const person of await gmPeople(transaction)) {
+    const profile = await transaction.get(`gm_profiles/${person.id}`);
+    members.push({ personId: person.id, active: person.data.active === true, profile: gmProfileOf(person.id, profile) });
+  }
+  return members;
+}
+
 export function transactionRoutingDirectory(): RoutingDirectory {
   return {
     async load(transaction) {
       const routing = await transaction.get('settings/routing');
-      if (routing === undefined) throw new CommandRejected('ROUTING_NOT_CONFIGURED', 'Default owners and GM members are not set up yet');
+      if (routing === undefined) throw new CommandRejected('ROUTING_NOT_CONFIGURED', 'Default owners are not set up yet');
       const workCalendar = await transactionCompanyCalendar(transaction);
       const owners = (routing.default_owner_by_type ?? {}) as Record<string, unknown>;
       const defaultOwnerByType: RoutingSettings['defaultOwnerByType'] = Object.fromEntries(
         REQUEST_TYPES.filter((type) => type !== 'gm_task' && isPersonId(owners[type])).map((type) => [type, owners[type] as string]),
       );
-      const members: GmMember[] = [];
-      for (const personId of new Set(strings(routing.gm_person_ids).filter(isPersonId))) {
-        const person = await transaction.get(`people/${personId}`);
-        const profile = await transaction.get(`gm_profiles/${personId}`);
-        members.push({ personId, active: person?.active === true, profile: gmProfileOf(personId, profile) });
-      }
+      // D-A10-1: a default owner who is not among them (no longer a GM) counts as inactive (D-S07-5).
+      const members = await gmMembers(transaction);
       return {
         settings: { defaultOwnerByType },
         members,
