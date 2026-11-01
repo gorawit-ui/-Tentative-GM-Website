@@ -169,6 +169,18 @@ test.describe('ติดตามเรื่องนี้ (U1, mocked API)', 
     await expectLayout(page);
   });
 
+  test('a title the GM edited without the place: the card still says where (U1 “ข้อมูลสถานที่/บริเวณที่เปิดเผยได้”)', async ({ page }) => {
+    await page.route('**/api/repair/duplicates?*', (route) =>
+      route.fulfill({ json: { matches: [MOCK_MATCH, { ...MOCK_MATCH, request_id: 'req-a13-mock-0002', request_number: 'DEV-9202', summary_title: 'แอร์ไม่เย็น มีน้ำหยด' }] } }),
+    );
+    await toSymptom(page, 'requester', 'WH300', 'ห้องแพ็คชั้น 1', 'แอร์');
+    await bar(page).getByRole('button', { name: 'ถัดไป' }).click();
+    const cards = interstitial(page).getByTestId('duplicate-card');
+    await expect(cards.nth(1).getByTestId('duplicate-place')).toHaveText('WH300 · ห้องแพ็คชั้น 1');
+    // The automatic title already says where: not repeated.
+    await expect(cards.nth(0).getByTestId('duplicate-place')).toHaveCount(0);
+  });
+
   test('without a note the payload has none; “ย้อนกลับ” in the dialog sends nothing', async ({ page }) => {
     const sent: { payload: Record<string, unknown> }[] = [];
     await page.route('**/api/repair/duplicates?*', (route) => route.fulfill({ json: { matches: [MOCK_MATCH] } }));
