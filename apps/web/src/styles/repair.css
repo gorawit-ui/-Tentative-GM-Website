@@ -35,9 +35,32 @@
 
 .gm-repair-not-ready { display: grid; gap: var(--gm-space-4); max-width: 720px; }
 
+/* A13 — U1 “มีคนแจ้งเรื่องนี้แล้ว” (prototype `.request-card`, `.tag`, success view): one card per match,
+   the status as text on its soft status colour (Part 4 status-*-fg on status-*-bg), full-width actions. */
+.gm-dup-list { display: grid; gap: var(--gm-space-3); }
+.gm-dup-card { display: grid; gap: var(--gm-space-2); min-width: 0; padding: var(--gm-space-3); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); overflow-wrap: anywhere; }
+.gm-dup-card-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--gm-space-2); }
+.gm-dup-number { color: rgb(var(--gm-text-muted)); font-size: var(--gm-font-size-caption); font-weight: var(--gm-font-weight-semibold); font-variant-numeric: tabular-nums; }
+.gm-dup-title { font-weight: var(--gm-font-weight-semibold); }
+.gm-dup-tag { justify-self: start; padding: 0 var(--gm-space-2); color: rgb(var(--gm-info-fg)); background: rgb(var(--gm-info-soft)); border-radius: var(--gm-radius-pill); font-size: var(--gm-font-size-caption); }
+.gm-dup-self { display: grid; gap: var(--gm-space-2); padding-top: var(--gm-space-2); border-top: 1px solid rgb(var(--gm-border)); }
+.gm-dup-card .gm-btn, .gm-dup-self .gm-btn { width: 100%; min-height: var(--gm-touch-min); }
+.gm-status-badge { padding: 0 var(--gm-space-2); border-radius: var(--gm-radius-pill); font-size: var(--gm-font-size-caption); font-weight: var(--gm-font-weight-medium); white-space: nowrap; }
+.gm-status-badge--queued { color: rgb(var(--gm-status-queued-fg)); background: rgb(var(--gm-status-queued-bg)); }
+.gm-status-badge--in_progress { color: rgb(var(--gm-status-in-progress-fg)); background: rgb(var(--gm-status-in-progress-bg)); }
+.gm-status-badge--waiting { color: rgb(var(--gm-status-waiting-fg)); background: rgb(var(--gm-status-waiting-bg)); }
+.gm-dup-failed { display: grid; gap: var(--gm-space-2); }
+.gm-dup-note { min-height: 6rem; resize: vertical; }
+.gm-dup-done { display: grid; gap: var(--gm-space-2); justify-items: start; padding: var(--gm-space-5); background: rgb(var(--gm-surface)); border: 1px solid rgb(var(--gm-border)); border-radius: var(--gm-radius-card); overflow-wrap: anywhere; }
+.gm-dup-done-mark { display: grid; place-items: center; width: 3rem; height: 3rem; color: rgb(var(--gm-brand-fg)); background: rgb(var(--gm-brand-soft)); border-radius: 50%; }
+.gm-dup-done .gm-actions { width: 100%; }
+.gm-repair--done { padding-bottom: 0; }
+
 @media (min-width: 1024px) {
   .gm-repair { padding-bottom: 0; }
   .gm-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .gm-repair-bar { position: static; height: auto; padding: var(--gm-space-3) 0 0; background: transparent; justify-content: space-between; }
   .gm-repair-bar > * { flex: 0 0 auto; min-width: 9rem; }
+  .gm-dup-card .gm-btn, .gm-dup-self .gm-btn { justify-self: start; width: auto; }
+  .gm-dup-self { grid-template-columns: 1fr auto; align-items: center; }
 }

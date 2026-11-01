@@ -133,6 +133,8 @@ export interface CreateGmTaskPayload extends RelatedChoicePayload {
 
 export interface WatchRequestPayload {
   readonly request_id: string;
+  /** U1 / A13: the one optional note sent with the watch (photos: A15). */
+  readonly note?: string;
 }
 
 /** A03: every lifecycle command names the request and the revision the user acted on. */
@@ -356,8 +358,8 @@ function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'
       };
     }
     case 'watch_request': {
-      const payload = strictObject(value, path, ['request_id']);
-      return { request_id: idField(payload, path, 'request_id') };
+      const payload = strictObject(value, path, ['request_id', 'note']);
+      return { request_id: idField(payload, path, 'request_id'), ...optional('note', optionalString(payload, path, 'note')) };
     }
     case 'accept_request': {
       const payload = strictObject(value, path, ['request_id', 'expected_revision', 'take_over']);

@@ -24,6 +24,7 @@ import {
   ApiError,
   authenticate,
   readQrState,
+  readRepairDuplicates,
   readRepairOptions,
   countAwaitingConfirmation,
   createUploadUrl,
@@ -312,6 +313,13 @@ function routes(deps: HttpDeps): readonly Route[] {
       method: 'GET',
       pattern: /^\/api\/repair\/options$/,
       handle: async ({ token }) => ({ status: 200, body: await readRepairOptions(api, token) }),
+    },
+    {
+      // A13 / U1: open public repairs matching the place, area and symptom chosen (A14 asks again).
+      name: 'repair.duplicates',
+      method: 'GET',
+      pattern: /^\/api\/repair\/duplicates$/,
+      handle: async ({ token, query }) => ({ status: 200, body: await readRepairDuplicates(api, token, query) }),
     },
     {
       name: 'repair.qr',

@@ -133,6 +133,17 @@ export {
 } from './request-number';
 export { watchRequest, type WatchOutcome, type WatchState } from './watch';
 export {
+  DUPLICATE_OPEN_STATUSES,
+  MAX_WATCH_NOTE_CHARS,
+  duplicateMatches,
+  isDuplicateMatch,
+  viewerRelation,
+  watchNote,
+  type DuplicateCandidate,
+  type DuplicateSelection,
+  type DuplicateViewer,
+} from './duplicates';
+export {
   addRelatedPersons,
   planRelatedAddition,
   removeRelatedPerson,

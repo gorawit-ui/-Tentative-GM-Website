@@ -3,15 +3,18 @@
 // previewed as soon as the symptom is chosen. A working QR fills the place and area and opens at the
 // symptom step with “ไม่ใช่ที่นี่?”; a code that cannot be used says why and fills in nothing unusable.
 // Everything comes from the API (the Admin's active places, D-A11-4); before login the person is sent to
-// the login page with the code in the return address. Step 4 (details, photos, sending) is A14; the
-// duplicate check before it (U1) is A13. Mobile: no bottom navigation, an action bar of 64 px (F6).
+// the login page with the code in the return address. A13: after the symptom (not “อื่นๆ”) the form asks
+// for open repairs that match (U1); a match shows “มีคนแจ้งเรื่องนี้แล้ว” first, a failed check says so.
+// Step 4 (details, photos, sending, the recheck when sending) is A14. Mobile: no bottom navigation, an
+// action bar of 64 px (F6).
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { repairTitlePreview } from '@gm/domain';
+import { OTHER_SYMPTOM_KEY, repairTitlePreview } from '@gm/domain';
 import { ApiCallError, apiCall } from '../api-client';
 import { ContactBox } from '../components/ContactBox';
 import { Icon } from '../components/Icon';
 import { HOME_PATH } from '../routes';
+import { DuplicateList, WatchDialog, Watched, fetchDuplicates, type DuplicateMatch, type WatchFailure, type WatchOutcome } from './DuplicateCheck';
 
 interface Place {
   readonly id: string;
@@ -124,9 +127,27 @@ function ActionBar({ children }: { readonly children: ReactNode }) {
   );
 }
 
+/** U1: the duplicate check between steps 3 and 4. */
+type DuplicateState =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'checking' }
+  | { readonly kind: 'matches'; readonly matches: readonly DuplicateMatch[] }
+  | { readonly kind: 'failed' };
+
+const WATCH_REFUSED: Readonly<Record<WatchFailure, string>> = {
+  not_open: 'งานนี้ปิดหรือเสร็จไปแล้ว ติดตามไม่ได้',
+  not_available: 'งานนี้ติดตามไม่ได้แล้ว',
+};
+
 function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly qr: QrState | undefined }) {
   const [selection, setSelection] = useState<Selection>(() => startOf(options, qr));
   const [error, setError] = useState<string | undefined>(undefined);
+  const [duplicates, setDuplicates] = useState<DuplicateState>({ kind: 'idle' });
+  // “ไม่ใช่ แจ้งเรื่องใหม่”: not asked again about the same requests (U1).
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
+  const [watching, setWatching] = useState<DuplicateMatch | undefined>(undefined);
+  const [watched, setWatched] = useState<{ readonly match: DuplicateMatch; readonly outcome: WatchOutcome } | undefined>(undefined);
+  const [notice, setNotice] = useState<string | undefined>(undefined);
   const [qrMessage, setQrMessage] = useState<string | undefined>(qr === undefined || qr.state === 'ok' ? undefined : QR_MESSAGES[qr.state]);
   const { step, locationId, areaId, symptomKey, fromQr } = selection;
   const location = options.locations.find((place) => place.id === locationId);
@@ -139,16 +160,47 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
 
   const go = (next: Step) => {
     setError(undefined);
+    setDuplicates({ kind: 'idle' });
     setSelection((current) => ({ ...current, step: next }));
     window.scrollTo({ top: 0 });
   };
+  const checkDuplicates = async (skip: ReadonlySet<string> = dismissed) => {
+    if (locationId === undefined || symptomKey === undefined) return;
+    setDuplicates({ kind: 'checking' });
+    try {
+      const found = await fetchDuplicates({ locationId, areaId: areaId === '' ? undefined : areaId, symptomKey });
+      const matches = found.filter((match) => !skip.has(match.request_id));
+      if (matches.length === 0) return go(4);
+      setDuplicates({ kind: 'matches', matches });
+      window.scrollTo({ top: 0 });
+    } catch {
+      // Never read as “no duplicate” (U1): say the check failed.
+      setDuplicates({ kind: 'failed' });
+    }
+  };
   const forward = () => {
+    setNotice(undefined);
     if (step === 1 && location === undefined) return setError('เลือกสถานที่ก่อน');
     if (step === 2 && areaId === undefined) return setError('เลือกบริเวณ หรือ “ไม่ระบุ” ก่อน');
     if (step === 3 && symptom === undefined) return setError('เลือกอาการก่อน');
+    if (step === 3 && symptomKey !== OTHER_SYMPTOM_KEY) {
+      setError(undefined);
+      return void checkDuplicates();
+    }
     go((step + 1) as Step);
   };
+  const backward = () => {
+    setNotice(undefined);
+    if (duplicates.kind === 'matches' || duplicates.kind === 'failed') return setDuplicates({ kind: 'idle' });
+    go((step - 1) as Step);
+  };
+  const notSame = () => {
+    if (duplicates.kind === 'matches') setDismissed((current) => new Set([...current, ...duplicates.matches.map((match) => match.request_id)]));
+    go(4);
+  };
   const changePlace = () => {
+    setNotice(undefined);
+    setDuplicates({ kind: 'idle' });
     setQrMessage(undefined);
     setSelection((current) => ({ ...current, step: 1, fromQr: false }));
     setError(undefined);
@@ -183,6 +235,7 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
           </>
         );
       case 3:
+        if (duplicates.kind === 'matches') return <DuplicateList matches={duplicates.matches} onWatch={setWatching} />;
         return (
           <Choices
             items={options.symptoms.map((candidate) => ({ value: candidate.key, label: candidate.label }))}
@@ -203,9 +256,23 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
     }
   })();
 
+  if (watched !== undefined) {
+    return (
+      <div className="gm-repair gm-repair--done">
+        <Watched match={watched.match} outcome={watched.outcome} />
+      </div>
+    );
+  }
+
+  const showingMatches = step === 3 && duplicates.kind === 'matches';
   return (
     <div className="gm-repair">
       <Stepper step={step} />
+      {notice !== undefined && (
+        <p className="gm-notice gm-notice--warning" role="alert">
+          {notice}
+        </p>
+      )}
       {qrMessage !== undefined && (
         <p className="gm-notice gm-notice--warning" role="alert">
           {qrMessage}
@@ -223,10 +290,31 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
         </div>
       )}
       <section className="gm-repair-step-panel" aria-labelledby="repair-step-heading">
-        <h2 id="repair-step-heading">{STEP_TITLES[step - 1]}</h2>
+        <h2 id="repair-step-heading">{showingMatches ? 'มีคนแจ้งเรื่องนี้แล้ว' : STEP_TITLES[step - 1]}</h2>
         {error !== undefined && (
           <p className="gm-notice gm-notice--danger" role="alert">
             {error}
+          </p>
+        )}
+        {step === 3 && duplicates.kind === 'failed' && (
+          <div className="gm-notice gm-notice--warning gm-dup-failed" data-testid="repair-duplicates-failed">
+            <p className="font-semibold" role="alert">
+              ตรวจงานซ้ำไม่ได้
+            </p>
+            <p>ยังไม่รู้ว่ามีคนแจ้งเรื่องนี้แล้วหรือไม่ ลองตรวจอีกครั้ง หรือแจ้งเรื่องใหม่ต่อได้</p>
+            <div className="gm-admin-row-buttons">
+              <button type="button" className="gm-btn gm-btn--secondary" onClick={() => void checkDuplicates()}>
+                ลองอีกครั้ง
+              </button>
+              <button type="button" className="gm-btn gm-btn--secondary" onClick={() => go(4)}>
+                แจ้งเรื่องใหม่ต่อ
+              </button>
+            </div>
+          </div>
+        )}
+        {step === 3 && duplicates.kind === 'checking' && (
+          <p className="gm-admin-muted" role="status">
+            กำลังตรวจว่ามีคนแจ้งเรื่องนี้แล้วหรือไม่…
           </p>
         )}
         {content}
@@ -244,13 +332,17 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
             ออกจากฟอร์ม
           </Link>
         ) : (
-          <button type="button" className="gm-btn gm-btn--secondary" onClick={() => go((step - 1) as Step)}>
+          <button type="button" className="gm-btn gm-btn--secondary" onClick={backward}>
             <Icon name="back" />
             ย้อนกลับ
           </button>
         )}
-        {step < 4 ? (
-          <button type="button" className="gm-btn gm-btn--primary" onClick={forward}>
+        {showingMatches ? (
+          <button type="button" className="gm-btn gm-btn--secondary" onClick={notSame}>
+            ไม่ใช่ แจ้งเรื่องใหม่
+          </button>
+        ) : step < 4 ? (
+          <button type="button" className="gm-btn gm-btn--primary" onClick={forward} disabled={duplicates.kind === 'checking'}>
             ถัดไป
           </button>
         ) : (
@@ -259,6 +351,23 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
           </Link>
         )}
       </ActionBar>
+      {watching !== undefined && (
+        <WatchDialog
+          match={watching}
+          onCancel={() => setWatching(undefined)}
+          onWatched={(outcome) => {
+            setWatching(undefined);
+            setWatched({ match: watching, outcome });
+            window.scrollTo({ top: 0 });
+          }}
+          onRefused={(why) => {
+            setWatching(undefined);
+            setNotice(WATCH_REFUSED[why]);
+            // The list may have changed: check again (nothing open → step 4).
+            void checkDuplicates();
+          }}
+        />
+      )}
     </div>
   );
 }

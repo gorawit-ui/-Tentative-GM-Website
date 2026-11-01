@@ -11,6 +11,7 @@
 // the transaction (Part 6 §6.6); the HTTP layer hands the new outbox IDs to the queue after commit.
 // A03: lifecycle commands on an existing request run in the same wrapper (lifecycle.ts); A04: waiting,
 // related persons and the confidential flag too (waiting.ts), all through request-change.ts.
+import { createHash } from 'node:crypto';
 import {
   buildRequestProjections,
   isLifecycleCommand,
@@ -32,6 +33,7 @@ import {
   noAccountNotice,
   routeNewRequest,
   nextRequestSequence,
+  watchNote,
   watchRequest,
   type Actor,
   type CreateRequestCommand,
@@ -190,7 +192,7 @@ export async function executeCommand(
         ? await runLifecycleCommand(transaction, command, context)
         : isWaitingCommand(command)
           ? await runWaitingCommand(transaction, command, context)
-          : { result: await watch(transaction, command.payload.request_id, context), outboxIds: [] };
+          : { result: await watch(transaction, command.payload, context), outboxIds: [] };
     transaction.set(commandPath, {
       type: command.type,
       actor_id: context.actor.personId,
@@ -427,7 +429,17 @@ function newRequestRecord(draft: RequestDraft, requestNumber: string, now: Insta
   };
 }
 
-async function watch(transaction: CommandTransaction, requestId: string, context: CommandContext): Promise<CommandResult> {
+/**
+ * U1 / A13: the one watcher contribution per person per request (Part 6 §6.4.2), in `gm_history` (GM
+ * only, D-S09-5). Its ID comes from the person, so a second one cannot be added; photos join it in A15.
+ */
+function contributionPath(requestId: string, personId: string): string {
+  return `${REQUESTS_COLLECTION}/${requestId}/gm_history/contribution-${createHash('sha256').update(personId).digest('hex').slice(0, 24)}`;
+}
+
+async function watch(transaction: CommandTransaction, payload: { readonly request_id: string; readonly note?: string | undefined }, context: CommandContext): Promise<CommandResult> {
+  const requestId = payload.request_id;
+  const note = watchNote(payload.note);
   const path = `${REQUESTS_COLLECTION}/${requestId}`;
   const gmDetailPath = `${GM_REQUEST_DETAILS_COLLECTION}/${requestId}`;
   const stored = await transaction.get(path);
@@ -463,6 +475,10 @@ async function watch(transaction: CommandTransaction, requestId: string, context
   if (userState === undefined) {
     const seq = request.activity_seq ?? 0;
     transaction.set(userStatePath, { type: 'watcher', activity_seq: seq, last_seen_activity_seq: seq, created_at: context.now });
+  }
+  // Not GM progress: `last_updated_at`, the stale check and `activity_seq` stay (U1).
+  if (note !== undefined) {
+    transaction.set(contributionPath(requestId, context.actor.personId), { kind: 'watcher_contribution', actor_id: context.actor.personId, note, photo_count: 0, created_at: context.now });
   }
   return { request_id: requestId, request_number: request.request_number, watch: outcome };
 }
