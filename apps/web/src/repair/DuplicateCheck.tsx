@@ -40,7 +40,14 @@ const STATUS_LABELS: Readonly<Record<DuplicateMatch['status'], string>> = { queu
 
 export const requestPath = (requestId: string) => `/requests/${encodeURIComponent(requestId)}`;
 
+/** U1: where it is, when the title (which a GM may have edited) does not already say so (prototype `card`). */
+function placeLine(match: DuplicateMatch): string | undefined {
+  if (match.location_label === undefined || match.summary_title.includes(match.location_label)) return undefined;
+  return match.area_label === undefined ? match.location_label : `${match.location_label} · ${match.area_label}`;
+}
+
 function DuplicateCard({ match, onWatch }: { readonly match: DuplicateMatch; readonly onWatch: (match: DuplicateMatch) => void }) {
+  const place = placeLine(match);
   return (
     <article className="gm-dup-card" data-testid="duplicate-card">
       <div className="gm-dup-card-top">
@@ -48,6 +55,11 @@ function DuplicateCard({ match, onWatch }: { readonly match: DuplicateMatch; rea
         <span className={`gm-status-badge gm-status-badge--${match.status}`}>{STATUS_LABELS[match.status]}</span>
       </div>
       <p className="gm-dup-title">{match.summary_title}</p>
+      {place !== undefined && (
+        <p className="gm-admin-muted" data-testid="duplicate-place">
+          {place}
+        </p>
+      )}
       <p className="gm-admin-muted">{match.is_assigned && match.assignee_label !== undefined ? `ผู้รับผิดชอบ: ${match.assignee_label}` : 'ยังไม่มอบหมาย'}</p>
       {match.watcher_count > 0 && <p className="gm-dup-tag">{`มีผู้แจ้งเพิ่ม ${match.watcher_count} คน`}</p>}
       {match.viewer === 'requester' ? (
