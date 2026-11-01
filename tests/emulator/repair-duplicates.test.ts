@@ -117,8 +117,8 @@ describe('GET /api/repair/duplicates — U1 matching after step 3', () => {
       matches: [
         {
           request_id: id,
-          request_number: expect.stringMatching(/^GM-/),
-          summary_title: 'แอร์ไม่เย็น — ห้องแพ็คชั้น 1 · WH300',
+          request_number: expect.stringMatching(/^DEV-\d{4}$/),
+          summary_title: 'แอร์ — ห้องแพ็คชั้น 1 · WH300',
           status: 'queued',
           is_assigned: true,
           assignee_label: `คุณ ${GM.split('@')[0]}`,
