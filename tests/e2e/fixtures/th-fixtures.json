@@ -104,10 +104,17 @@
     "requests": {
       "req-a10-busy-0001": { "request_number": "DEV-9001", "status": "queued", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" },
       "req-a10-busy-0002": { "request_number": "DEV-9002", "status": "in_progress", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" },
-      "req-a10-busy-0003": { "request_number": "DEV-9003", "status": "cancelled", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" }
+      "req-a10-busy-0003": { "request_number": "DEV-9003", "status": "cancelled", "assignee_id": "a10.gm.busy@tdfb.co", "type": "maintenance" },
+      "req-a13-dup-0001": { "type": "maintenance", "source": "web", "status": "queued", "request_number": "DEV-9101", "summary_title": "กล้องวงจรปิด — ห้อง QA ชั้น 1 · WH300", "requester_id": "a09.viewer@tdfb.co", "is_confidential": false, "location_id": "loc-wh300", "area_id": "area-wh300-qa-1", "symptom_key": "cctv", "created_at": 1793500000000, "last_updated_at": 1793500000000, "revision": 1 }
     },
     "settings": {
       "routing": { "default_owner_by_type": { "maintenance": "a09.gm@tdfb.co" } }
+    },
+    "gm_request_details": {
+      "req-a13-dup-0001": { "watcher_ids": ["a09.logout@tdfb.co"] }
+    },
+    "request_summaries": {
+      "req-a13-dup-0001": { "request_id": "req-a13-dup-0001", "request_number": "DEV-9101", "summary_title": "กล้องวงจรปิด — ห้อง QA ชั้น 1 · WH300", "type": "maintenance", "category": "damage", "source": "web", "location_id": "loc-wh300", "area_id": "area-wh300-qa-1", "symptom_key": "cctv", "status": "queued", "created_at": 1793500000000, "last_updated_at": 1793500000000, "awaiting_confirmation": false, "is_assigned": false, "watcher_count": 1 }
     }
   },
   "auth_users": {

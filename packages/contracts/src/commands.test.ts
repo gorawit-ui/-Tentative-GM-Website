@@ -101,6 +101,11 @@ describe('parseCommand — valid commands come back as fresh typed objects', () 
     ).toEqual({ requester: { name_text: 'คุณสมศรี (ไม่มีบัญชี)' }, details: { type: 'maintenance', location_id: 'loc-wh300', symptom_key: 'aircon' } });
   });
 
+  it('A13 / U1: watch_request may carry the one optional note sent with the watch', () => {
+    expect(parseCommand(withPayload(WATCH, { note: 'แอร์มีน้ำหยดด้วย' })).payload).toEqual({ request_id: 'req-7f3a9c', note: 'แอร์มีน้ำหยดด้วย' });
+    expect(() => parseCommand(withPayload(WATCH, { note: 12 }))).toThrow(/payload\.note/);
+  });
+
   it('every one of the 7 category keys is accepted (D-S04-1)', () => {
     for (const category of GM_CATEGORY_KEYS) {
       expect(parseCommand(withPayload(GM_TASK, { category })).payload).toMatchObject({ category });
@@ -116,7 +121,7 @@ describe('parseCommand — unknown fields are refused at every level', () => {
     ['create_gm_task payload (gm_task has no requester, C2)', withPayload(GM_TASK, { requester_id: 'person-employee-01' }), 'payload.requester_id'],
     ['create_gm_task payload (initial waiting comes with A21)', withPayload(GM_TASK, { waiting_on: { kind: 'other', name: 'x' } }), 'payload.waiting_on'],
     ['create_gm_task payload (a chosen assignee comes with routing in A01/A21)', withPayload(GM_TASK, { assignee_id: 'person-gm-02' }), 'payload.assignee_id'],
-    ['watch_request payload', withPayload(WATCH, { note: 'แจ้งด้วยคน' }), 'payload.note'],
+    ['watch_request payload (A13: a note is allowed, photos come with A15)', withPayload(WATCH, { photo_ids: ['p-1'] }), 'payload.photo_ids'],
     [
       'the on-behalf requester',
       withPayload(ON_BEHALF, { requester: { person_id: 'employee03@tdfb.co', email: 'x@tdfb.co' } }),
