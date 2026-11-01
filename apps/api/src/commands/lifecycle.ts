@@ -304,6 +304,10 @@ export async function releaseAssignmentOf(
   const outcome = releaseAssignment(toLifecycleState(record, interval), { personId: input.personId, now: input.now });
   if (outcome === undefined) return false;
   const routing = await directories.routingDirectory.load(transaction);
+  // D-A12-2: a GM demoted to a role that is not a GM is no longer among the routing members, so
+  // their pin on this request is released here (read before any write).
+  const profilePath = `gm_profiles/${input.personId}`;
+  const profile = await transaction.get(profilePath);
   await persist(transaction, loaded, outcome, {
     actorId: 'system',
     now: input.now,
@@ -321,5 +325,9 @@ export async function releaseAssignmentOf(
         now: input.now,
       }),
   });
+  if (profile?.focus_request_id === loaded.requestId) {
+    const { focus_request_id: _released, ...rest } = profile;
+    transaction.set(profilePath, rest);
+  }
   return true;
 }

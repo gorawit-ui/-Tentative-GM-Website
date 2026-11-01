@@ -272,12 +272,41 @@ function writePerson(transaction: CommandTransaction, personId: string, next: St
   if (uid !== undefined) transaction.set(`access/${uid}`, accessFor({ personId, role: roleOf(next.role), active: next.active === true }));
 }
 
-export async function setPersonRole(transaction: CommandTransaction, personId: string, role: Role, now: Instant) {
+/**
+ * D-A12-2: a GM moved to a role that is not a GM releases their open requests like a switch-off
+ * (D-A10-2) — same confirmed latest count, same `release_assignments` job.
+ */
+export async function setPersonRole(
+  transaction: CommandTransaction,
+  input: { readonly personId: string; readonly role: Role; readonly confirmedOpenAssigned?: number | undefined; readonly jobId: string },
+  now: Instant,
+) {
+  const { personId, role } = input;
   const stored = await transaction.get(personPath(personId));
   const admins = await activeGmAdmins(transaction);
-  const planned = planPersonRole(personFacts(personId, stored), role, admins);
+  const person = personFacts(personId, stored);
+  const open = person !== undefined && isGmRole(person.role) && !isGmRole(role) ? await openAssignedIds(transaction, personId) : [];
+  const planned = confirmedPlan(open.length, () => planPersonRole(person, role, admins, { openAssigned: open.length, confirmedOpenAssigned: input.confirmedOpenAssigned }));
   writePerson(transaction, personId, { ...(stored as StoredData), role: planned.role, updated_at: now });
-  return { person_id: personId, role: planned.role };
+  if (!planned.releaseOpenRequests) return { person_id: personId, role: planned.role, released: 0 };
+  writeReleaseJob(transaction, input.jobId, personId, open, now);
+  return { person_id: personId, role: planned.role, released: open.length, release_job: input.jobId };
+}
+
+/** OPEN_REQUESTS_ASSIGNED from the plan carries the latest count back to the Admin. */
+function confirmedPlan<T>(openAssigned: number, plan: () => T): T {
+  try {
+    return plan();
+  } catch (error) {
+    if (error instanceof LifecycleRejected && error.code === 'OPEN_REQUESTS_ASSIGNED') {
+      throw new CommandRejected('OPEN_REQUESTS_ASSIGNED', 'Confirm how many open requests are released', { open_assigned: openAssigned });
+    }
+    throw error;
+  }
+}
+
+function writeReleaseJob(transaction: CommandTransaction, jobId: string, personId: string, requestIds: readonly string[], now: Instant): void {
+  transaction.set(`scheduled_work/${jobId}`, { kind: RELEASE_JOB_KIND, state: 'scheduled', next_run_at: now, attempts: 0, created_at: now, person_id: personId, request_ids: [...requestIds] });
 }
 
 /** D-A10-2: the open requests `personId` is the assignee of, read in the transaction. */
@@ -303,18 +332,10 @@ export async function setPersonActive(
   const admins = await activeGmAdmins(transaction);
   const person = personFacts(personId, stored);
   const open = !active && person !== undefined && isGmRole(person.role) ? await openAssignedIds(transaction, personId) : [];
-  let planned;
-  try {
-    planned = planPersonActive(person, active, admins, { openAssigned: open.length, confirmedOpenAssigned: input.confirmedOpenAssigned });
-  } catch (error) {
-    if (error instanceof LifecycleRejected && error.code === 'OPEN_REQUESTS_ASSIGNED') {
-      throw new CommandRejected('OPEN_REQUESTS_ASSIGNED', 'Confirm how many open requests are released', { open_assigned: open.length });
-    }
-    throw error;
-  }
+  const planned = confirmedPlan(open.length, () => planPersonActive(person, active, admins, { openAssigned: open.length, confirmedOpenAssigned: input.confirmedOpenAssigned }));
   writePerson(transaction, personId, { ...(stored as StoredData), active: planned.active, updated_at: now });
   if (!planned.releaseOpenRequests) return { person_id: personId, active: planned.active, released: 0 };
-  transaction.set(`scheduled_work/${input.jobId}`, { kind: RELEASE_JOB_KIND, state: 'scheduled', next_run_at: now, attempts: 0, created_at: now, person_id: personId, request_ids: open });
+  writeReleaseJob(transaction, input.jobId, personId, open, now);
   return { person_id: personId, active: planned.active, released: open.length, release_job: input.jobId };
 }
 

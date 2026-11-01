@@ -54,7 +54,12 @@ export type AdminCommand =
   | { readonly command_id: string; readonly type: 'put_holiday'; readonly payload: { readonly date: string; readonly name: string; readonly replaces?: string } }
   | { readonly command_id: string; readonly type: 'remove_holiday'; readonly payload: { readonly date: string } }
   | { readonly command_id: string; readonly type: 'set_reminder_time'; readonly payload: { readonly working_morning_time: string } }
-  | { readonly command_id: string; readonly type: 'set_person_role'; readonly payload: { readonly person_id: string; readonly role: Role } }
+  | {
+      readonly command_id: string;
+      readonly type: 'set_person_role';
+      /** D-A12-2: moving a GM with open requests to a role that is not a GM carries the confirmed count. */
+      readonly payload: { readonly person_id: string; readonly role: Role; readonly release_open_requests?: number };
+    }
   | {
       readonly command_id: string;
       readonly type: 'set_person_active';
@@ -150,18 +155,14 @@ function payloadOf(type: AdminCommandType, value: unknown): AdminCommand['payloa
       return { date: dateField(payload, path, 'date') };
     }
     case 'set_person_role': {
-      const payload = strictObject(value, path, ['person_id', 'role']);
-      return { person_id: personIdField(payload, path, 'person_id'), role: enumField(payload, path, 'role', ROLES) };
+      const payload = strictObject(value, path, ['person_id', 'role', 'release_open_requests']);
+      const parsed = { person_id: personIdField(payload, path, 'person_id'), role: enumField(payload, path, 'role', ROLES) };
+      return Object.hasOwn(payload, 'release_open_requests') ? { ...parsed, release_open_requests: releaseCount(payload, path) } : parsed;
     }
     case 'set_person_active': {
       const payload = strictObject(value, path, ['person_id', 'active', 'release_open_requests']);
       const parsed = { person_id: personIdField(payload, path, 'person_id'), active: booleanField(payload, path, 'active') };
-      if (!Object.hasOwn(payload, 'release_open_requests')) return parsed;
-      const count = payload.release_open_requests;
-      if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
-        throw new ContractRejected('FIELD_INVALID', join(path, 'release_open_requests'), 'release_open_requests must be a whole number ≥ 0');
-      }
-      return { ...parsed, release_open_requests: count };
+      return Object.hasOwn(payload, 'release_open_requests') ? { ...parsed, release_open_requests: releaseCount(payload, path) } : parsed;
     }
     case 'add_person': {
       const payload = strictObject(value, path, ['email', 'name', 'team']);
@@ -197,4 +198,13 @@ export function parseAdminCommand(body: unknown): AdminCommand {
   }
   const payload = payloadOf(type as AdminCommandType, requiredField(envelope, '', 'payload'));
   return { command_id: commandId, type, payload } as AdminCommand;
+}
+
+/** D-A10-2 / D-A12-2: the open-request count the Admin confirmed. */
+function releaseCount(payload: Readonly<Record<string, unknown>>, path: string): number {
+  const count = payload.release_open_requests;
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+    throw new ContractRejected('FIELD_INVALID', join(path, 'release_open_requests'), 'release_open_requests must be a whole number ≥ 0');
+  }
+  return count;
 }
