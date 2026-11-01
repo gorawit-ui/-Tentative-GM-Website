@@ -22,7 +22,7 @@ const employee: PersonFacts = { personId: 'employee@tdfb.co', role: 'requester',
 
 describe('planPersonRole', () => {
   it.each(['viewer', 'gm_staff', 'gm_admin', 'requester'] as const)('an employee can be given %s', (role) => {
-    expect(planPersonRole(employee, role, [admin.personId])).toEqual({ role });
+    expect(planPersonRole(employee, role, [admin.personId])).toEqual({ role, releaseOpenRequests: false });
   });
 
   it('the last active GM Admin cannot be demoted → LAST_GM_ADMIN', () => {
@@ -30,7 +30,7 @@ describe('planPersonRole', () => {
   });
 
   it('with another active GM Admin, one can be demoted', () => {
-    expect(planPersonRole(admin, 'viewer', [admin.personId, admin2.personId])).toEqual({ role: 'viewer' });
+    expect(planPersonRole(admin, 'viewer', [admin.personId, admin2.personId])).toEqual({ role: 'viewer', releaseOpenRequests: false });
   });
 
   it('no such person → PERSON_NOT_FOUND; an unknown role → ROLE_INVALID', () => {
@@ -102,3 +102,19 @@ describe('D-A10-2: switching off a GM who still has open work needs that count c
     expect(planPersonActive(staff, true, [admin.personId], { openAssigned: 3 })).toEqual({ active: true, releaseOpenRequests: false });
   });
 });
+
+describe('D-A12-2: demoting a GM who still has open work releases it, like switching off (D-A10-2)', () => {
+  it('to a non-GM role: refused until the latest count is confirmed, then released', () => {
+    for (const role of ['requester', 'viewer'] as const) {
+      expect(rejected(() => planPersonRole(staff, role, [admin.personId], { openAssigned: 2 }))).toBe('OPEN_REQUESTS_ASSIGNED');
+      expect(rejected(() => planPersonRole(staff, role, [admin.personId], { openAssigned: 2, confirmedOpenAssigned: 3 }))).toBe('OPEN_REQUESTS_ASSIGNED');
+      expect(planPersonRole(staff, role, [admin.personId], { openAssigned: 2, confirmedOpenAssigned: 2 })).toEqual({ role, releaseOpenRequests: true });
+    }
+  });
+
+  it('GM to GM (staff ↔ admin) keeps the work; no open work, nothing to confirm', () => {
+    expect(planPersonRole(staff, 'gm_admin', [admin.personId], { openAssigned: 2 })).toEqual({ role: 'gm_admin', releaseOpenRequests: false });
+    expect(planPersonRole(staff, 'requester', [admin.personId], { openAssigned: 0 })).toEqual({ role: 'requester', releaseOpenRequests: false });
+  });
+});
+
