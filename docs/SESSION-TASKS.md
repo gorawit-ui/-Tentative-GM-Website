@@ -48,13 +48,15 @@ W0 ตาม [WEEK-0](WEEK-0.md) มาก่อน `S00`; ระหว่าง
 | A20 | A18,A03,A04 | BL: card quick accept/follow/complete + `waiting` sheet | common actions<=2 taps; `waiting`/person start empty; validation block; notify/grant only after selected; secret confirm separate |
 | A21 | A09,A01,A04 | BL: GM create cross-team + on-behalf form | <1 min create;7 categories empty required; related persons; initial `waiting` validation; text `requester` close ทันที |
 | A22 | A17,A04 | BL: `waiting`-party response UI | current recipients button+optional note; badge owner notify; no status/stale change; external no button |
-| A23 | A09,A06,S07 | BL: home focus/presence/company contact FAQ | pinned→latest `in_progress`→empty; secret fallback; leave/end; live focus; Admin edit static FAQ; confirm banner |
+| A23 | A09,A06,S07 | BL: home focus/presence/company contact FAQ + **กล่องสรุป GM จากข้อมูลที่มี (SC-9)** | pinned→latest `in_progress`→empty; secret fallback; leave/end; live focus; Admin edit static FAQ; confirm banner; **GM เห็นกล่องสรุป แจ้งซ่อมค้าง / รอผู้อื่น / ยังไม่มอบหมาย / ไม่ขยับ ตัวเลขตรงกับบอร์ด (ไม่รวมงานลับที่ผู้ดูไม่มีสิทธิ์), พนักงานทั่วไปไม่เห็นกล่อง, ไม่มีกล่องของข้อมูลที่ยังไม่มี (ต่ออายุ/PM อยู่ B33)** |
 | A24 | A19,A23,A02 | BL: notification degraded-mode + privacy transitions E2E | Slack only/Gmail only/neither approved; secret flip removes public summary/search/focus/cache epoch; no duplicate grants |
 | A25 | A15,A20,A22,A24 | BL+GM: mobile/accessibility/regression gate | 4 viewports; F1–F6/P1–P2/reduced motion/contrast; year-end unit cases; console error 0; whole flow request/watch/secret |
 | A26 | A25,A05,A10,A11 | Tim+BL: dev staging/pilot release rehearsal | deploy dev guard; Firestore graph/loops/cost; rollback; daily export/restore dev; cloud smoke compiled app |
 | A27 | A26,W0 A blockers closed | GM Admin+Tim: pilot approval/onboarding/baseline | documented A gate;5 locations QR domain; before baseline+calendar; notification approvals optional; admin prod deploy smoke |
 
 ## ด่าน B — W8–W11; W12 buffer ถึง 31 ธันวาคม 2569
+
+ปรับตาม [Scope Addendum พ.ย. 2569](spec/Scope-Addendum-2026-11.md) (SC-1–SC-9): B14–B24 เขียนใหม่ให้ครอบงานตามรอบ 3 แบบ (รวม task ต่ออายุเดิม), เพิ่ม B27–B35 (B35 ผังสถานที่ท้ายสุด), B10/B12/B13 และ T01–T03 ทำเครื่องหมาย “รอยืนยัน” ย้าย Phase 2 (ยังไม่ลบ) — จำนวน session: เดิม 26 → 35 (หรือ 32 ถ้าย้ายสามงาน)
 
 | ID | Depends | งาน/เจ้าของ | Acceptance test เฉพาะงาน |
 |---|---|---|---|
@@ -67,31 +69,40 @@ W0 ตาม [WEEK-0](WEEK-0.md) มาก่อน `S00`; ระหว่าง
 | B07 | A07,A04 | BL: Slack interactive endpoint/inbox | HMAC/time/workspace/mapped actor; durable ACK<3 sec coldcase; retry command ID no duplicate; permission deny |
 | B08 | B07 | BL: Slack actions UI/contracts | role/status / revision check before action; card actions accepted follow complete ตาม flow; unauthorized ephemeral deny |
 | B09 | A02,A07,A08 | BL: digest job in existing tick | one/day/business calendar/user; outage catch-up ไม่ repeat; private scope; disabled provider fallback |
-| B10 | A17,A21 | BL: document request/intake simple forms | US-04; contract/person secret default company doc non-secret; safe title; attachments restricted |
+| B10 | A17,A21 | **(รอยืนยัน: เสนอย้าย Phase 2 — SC-9 / Q-SC-5; ยังไม่ลบ)** BL: document request/intake simple forms | US-04; contract/person secret default company doc non-secret; safe title; attachments restricted |
 | B11 | A19,A24 | BL: request number/title prefix search + paginated all | summary public only; GM private index authorized; normalized prefix bounded; expired 7 day view pagination not live; no external search |
-| B12 | A09 | BL: announcements/Admin editing | role permission; public safe content; link/deactivated expiry; no external CMS |
-| B13 | A09,A17 | BL: PWA shell/install/offline behavior | static cache only; logout clears user state; private payload not cached; offline writes not `queued` unsafely; repair retry clear |
-| B14 | S04,S05,A01 | BL: renewal item/cycle domain tests-first | lead 90/60/45/30+certificate confirmed; starts_on calendar;1 task/cycle; confidential contract; linked cycle identity |
-| B15 | B14,A02 | BL: renewal start task generation + job keys | multiple ticks/concurrent/catch-up one `gm_task`; midnight holiday create but notify deferred; stale jobs no-op |
-| B16 | B15 | BL: 30/7/overdue reminder rules/catch-up | actual overdue calendar state; notify 09 next business day; coalesce missed severity; no obsolete 30 after expiry |
-| B17 | B14,A03 | BL: complete Renewal/stop Renewal transactions | new expiry required / valid later date; link optional; no-renew reason; generic close/cancel cannot bypass; one cycle advance |
-| B18 | B14,B17,A09 | BL: GM renewal list/groups/form | GM-only; groups date boundary;200 items paginated; company/site calendar; place/owner/Drive/original storage fields |
-| B19 | B18,B17 | BL: renewal close/archived history UI | disabled until new expiry; no-renew reason required; atomic result; old cycle cannot reopen ordinarily |
-| B20 | B14 | BL: CSV parser/date normalization tests-first | BOM/Thai headers; BE 2570→2027; invalid/ambiguous/Excel serial report notguess; raw / normalized both |
-| B21 | B20,B18 | BL+Gorawit: CSV preview/explicit confirmation UI | row errors shown; converted date confirm before write; select valid-only explicit; server URL not fetched |
-| B22 | B21,A01 | BL: CSV import chunks/idempotency/resume | filehash+row key retry; partial fail resume only missing; validated items no duplicate; bounded 100 chunks assumption |
-| B23 | B16,B17,B04 | BL: renewal Scorecard aggregate/CSV | `renewal_pending` distinct active current cycles start<=today unresolved; overdue subset; item count still correct if job fails; Viewer excludes secret |
-| B24 | B23,B06,B18 | BL+GM: renewal tile/source definition + end-to-end | real number replaces unconnected only renewal tile; definition shown; import→start→wait→respond→renew/newcycle/no-renew |
-| B25 | B02,B05,B06,B08,B09,B10,B11,B12,B13,B24 | BL: B release regression/load/cost | scopes/calendar/cohort/200 renewals;3 GMlive;bounded query;disable providers; loops/usage budget; complete B checklist |
+| B12 | A09 | **(รอยืนยัน: เสนอย้าย Phase 2 — SC-9 / Q-SC-5; ยังไม่ลบ)** BL: announcements/Admin editing | role permission; public safe content; link/deactivated expiry; no external CMS |
+| B13 | A09,A17 | **(รอยืนยัน: เสนอย้าย Phase 2 — SC-9 / Q-SC-5; ยังไม่ลบ)** BL: PWA shell/install/offline behavior | static cache only; logout clears user state; private payload not cached; offline writes not `queued` unsafely; repair retry clear |
+| B14 | S04,S05,A01 | BL: **งานตามรอบ 3 แบบ** domain tests-first (SC-1, เดิม renewal item/cycle) | ต่ออายุ start = หมดอายุ − (ยื่นได้ก่อน + เวลาเตรียม) วันปฏิทิน + วัน “ยื่นได้ตั้งแต่”; ภาระประจำ: วันเดียว/ช่วงวันรายปีหรือรายเดือน → รอบถัดไป (ปลายปี/ปีอธิกสุรทิน); PM ความถี่ → รอบถัดไป (จุดนับตาม Q-SC-3 เป็นค่าตั้ง); บริษัท/หมวด/PIC/SOP/สถานะใช้งาน; inactive ไม่สร้างรอบ; สัญญาลับตาม C6; identity item+cycle คงที่ |
+| B15 | B14,A02 | BL: สร้าง `gm_task` ต่อรอบทุกแบบ + job keys (SC-1, R2) | หลาย tick/พร้อมกัน/catch-up → 1 งานต่อรอบ; มอบ PIC สถานะ “ยังไม่รับเรื่อง”; ไม่เพิ่ม Scheduler; ข้ามคืน/วันหยุดสร้างงานแต่เลื่อนการแจ้ง; job เก่า no-op; PIC ลาตาม Q-SC-9 |
+| B16 | B15 | BL: **กติกาการเตือน SC-2** (แทน 30/7 ของ R2) + catch-up | ก่อนรับเรื่องเตือนทุกวันทำการ; ไม่รับใน N วันทำการแจ้ง GM Admin (N ค่าตั้ง เริ่ม 2 ตาม Q-SC-1); รับแล้วใช้ stale (Q-SC-2); 7 วันสุดท้ายทุกวัน; เลยกำหนด PIC + GM Admin ทุกวัน ไม่ซ้ำในวันเดียว; ผลการส่งเดิม (Slack→email, ป้าย); วันหยุดตาม Q-SC-12; ไม่มีข้อความ “เหลือ 30 วัน” |
+| B17 | B14,A03 | BL: ปิดรอบทุกแบบ (SC-2, R3) | ต่ออายุต้องวันหมดอายุใหม่ (หลังเดิมและหลังวันนี้), ไม่ต่ออายุต้องเหตุผล; PM ต้องวันที่ทำ → รอบถัดไป; ภาระประจำตาม Q-SC-13; ปุ่มเสร็จ/ยกเลิกทั่วไปข้าม guard ไม่ได้; เลื่อนรอบครั้งเดียว |
+| B18 | B14,B17,B27,B28,A09 | BL: หน้ารายการงานตามรอบ + ฟอร์ม (3 แบบ) | ต่ออายุ/ภาระประจำ GM เท่านั้น; กลุ่มเลยกำหนด/ใกล้ถึง/ปกติ ขอบวันถูก; 200 รายการแบ่งหน้า; บริษัท/หมวด/PIC/SOP/หมายเหตุ/สถานะใช้งาน; PM สถานที่/บริเวณ/ช่างประจำ; แสดง “ยื่นได้ตั้งแต่วันที่”; desktop ตาราง มือถือรายการ |
+| B19 | B18,B17 | BL: UI ปิดรอบ + ประวัติ (3 แบบ) | ปุ่มปิดใช้ไม่ได้จนกรอกวันหมดอายุใหม่ (ต่ออายุ) / วันที่ทำ (PM); ไม่ต่ออายุต้องเหตุผล; ผล atomic; รอบเก่าเปิดกลับแบบปกติไม่ได้; ประวัติรอบ |
+| B20 | B14 | BL: CSV parser ต่ออายุ + ช่าง tests-first (SC-3) | หัวคอลัมน์ไทยตามชีท “[New] รายการต่ออายุเอกสาร” และ “เบอร์ช่าง”; BOM/ชนิดไฟล์แบบ A10; พ.ศ. 2570→2027; วันผิด/กำกวม/Excel serial รายงานไม่เดา; เก็บค่าดิบ + ค่าที่แปลง; fixture ปลอมหัวคอลัมน์เหมือนจริง |
+| B21 | B20,B18,A10 | BL+Gorawit: preview นำเข้าต่ออายุ + ช่าง | Owner (ชื่อ) จับคู่กับรายชื่อพนักงานใน preview — ไม่จับคู่อัตโนมัติจากชื่อคล้าย; แถวผิดแสดง; วันที่แปลงต้องยืนยันก่อนเขียน; เลือกเฉพาะแถวที่ถูกโดยตั้งใจ; ไม่ fetch URL จาก server |
+| B22 | B21,B32,A01 | BL: import chunks/idempotency/resume (ทุกแท็บ) | filehash+row key ลองซ้ำไม่เพิ่ม; ล้มกลางทางทำต่อเฉพาะที่ขาด; ไม่ซ้ำรายการเดิม; chunk ≤ 100 (assumption); ข้อมูลจริงผ่านหน้า Admin หลัง deploy เท่านั้น |
+| B23 | B16,B17,B04 | BL: renewal Scorecard aggregate/CSV (start ตาม SC-1) | `renewal_pending` นับ current cycle ที่ active, start ≤ วันนี้ (สูตร SC-1) และยังไม่จบ; overdue เป็น subset; นับถูกแม้ job ไม่สร้างงาน; Viewer ไม่รวมรายการลับ/GM-only |
+| B24 | B23,B06,B18 | BL+GM: renewal tile + end-to-end งานตามรอบ | ไทล์จริงแทน “ยังไม่เชื่อม” เฉพาะต่ออายุ พร้อมนิยาม; e2e: นำเข้า→ถึงรอบ→เตือนก่อนรับ→รับเรื่อง→รอผู้อื่น→ปิด (ต่ออายุวันใหม่ / PM วันที่ทำ) → รอบใหม่; ไม่ต่ออายุ |
+| B27 | S10,B14 | BL: **Rules/ACL งานตามรอบ, บริษัท, ช่าง, วันลา, ผังสถานที่** tests-first (SC-4) | ACL matrix fixture + Rules + emulator ทุก role: ต่ออายุ/ภาระประจำ GM เท่านั้น; PM อ่านได้ทุกคนที่ active (projection อ่านอย่างเดียว ไม่มีช่าง/ข้อมูลภายใน), เขียนเฉพาะ GM; ช่าง/วันลา/ผังสถานที่ GM เท่านั้น; client เขียนตรงไม่ได้; ขอบเขตงานบนบอร์ดตาม Q-SC-14 |
+| B28 | B27,A11 | BL: รายการบริษัท (Admin ตั้งค่า) + หน้าแผน PM อ่านอย่างเดียวสำหรับทุกคน (SC-1, SC-4) | เพิ่ม/เปลี่ยนชื่อ/ปิดบริษัท (ปิดแล้วรายการเดิมยังชื่อเดิม); พนักงานทั่วไปเห็นแผน PM (ชื่อ สถานที่ บริเวณ รอบถัดไป) ไม่เห็นปุ่มแก้ ไม่เห็นช่าง; 4 ขนาดจอไม่มี horizontal scroll |
+| B29 | A23,S07,B27 | BL: **วันลาเป็นช่วงวันที่** (SC-6) | GM เพิ่ม/แก้/ลบช่วงลาให้ตัวเองและเพื่อน GM; ไม่มีช่องเหตุผล; วันในช่วงลา `presence_status` เป็น “ลา” อัตโนมัติ (รวมวันสุดท้าย, Asia/Bangkok) และกติกาส่งงาน A3 เห็นว่าลา; หลังช่วงกลับ “ไม่ระบุ”; ไม่ทับค่าที่ GM ตั้งเองนอกช่วง; คนที่ไม่ใช่ GM อ่านไม่ได้ (Q-SC-15) |
+| B30 | B27,A20 | BL: **รายชื่อช่าง** + เลือกช่างตอน “รอผู้รับเหมา” + ช่างประจำ PM (SC-7) | ฟอร์ม/รายการช่าง (ชื่อร้าน หมวด ที่อยู่ โทร LINE FB ผู้ติดต่อ Link หมายเหตุ); “รอผู้รับเหมา” เลือกจากรายชื่อหรือพิมพ์เอง; สรุปสาธารณะยัง “ผู้รับเหมา” (D-S09-1) ไม่มีชื่อร้าน/เบอร์; ช่างที่ปิดไม่โผล่ในตัวเลือกใหม่ |
+| B31 | B14,B20 | BL: CSV parser ภาระประจำ + PM tests-first (SC-3) | แท็บ “รายการส่ง report/ชำระ”: period ข้อความเก็บดิบ ไม่เดาวัน; แท็บ “แผนบำรุงรักษา” ตารางรายสัปดาห์ทั้งปี → เสนอความถี่ (ทุกสัปดาห์/เดือน/3 เดือน/6 เดือน/ปี/ไม่สม่ำเสมอ) และวันถัดไปจากสัปดาห์ที่มีเครื่องหมาย; ไม่สม่ำเสมอไม่เดา |
+| B32 | B31,B21 | BL+GM Admin: preview นำเข้าภาระประจำ + PM | Admin กำหนดวัน/ช่วงวันของแต่ละ period เอง; PM ยืนยันความถี่และวันถัดไปทีละรายการ (แก้ได้ก่อนยืนยัน); ไม่บันทึกก่อนยืนยัน; จับคู่สถานที่/บริเวณ/ช่าง |
+| B33 | A23,A19,B16,B27 | BL: **หน้าแรก GM desktop: กล่องสรุป + feed + `planned_date`** (SC-5) | `gm_task` มี `planned_date` ไม่บังคับ (contract + ฟอร์มสร้าง/แก้); กล่อง 5 กล่อง ตัวเลขตรงกับแหล่ง (แจ้งซ่อมค้าง, รอผู้อื่น, ต่ออายุใกล้ถึง/เลยกำหนด, PM สัปดาห์นี้/เลยกำหนด, ไม่ขยับ/เกินเวลา); เลยกำหนดเป็นสีแดง (SC-2); feed ความเคลื่อนไหวล่าสุด bounded + แบ่งหน้า ไม่เปิดข้อมูลลับเกินสิทธิ์; 1366/1440 ครบในจอแรก มือถือตาม Q-SC-16 |
+| B34 | B33,B29,B18 | BL: **ปฏิทินรายเดือน** หน้าแรก GM (SC-5) | แสดง PM, กำหนดต่ออายุและภาระประจำ, งานที่มี `planned_date`, วันลา; สีแยกต่อคน + มีข้อความ/ไอคอนไม่พึ่งสีอย่างเดียว; เฉพาะทีม GM (Q-SC-4); query จำกัดช่วงเดือน; เปลี่ยนเดือนไม่โหลดทั้งปี |
+| B35 | B27,B34 | BL: **ผังสถานที่** (SC-8 — ท้ายสุดของด่าน B) | GM อัปโหลด/แทนรูปหรือ PDF ต่อสถานที่ผ่าน Storage path เดิม (signed URL อายุสั้น); GM ดูได้อย่างเดียว; คนอื่นไม่ได้ลิงก์; ขนาด/ชนิดไฟล์ตรวจ server |
+| B25 | B02,B05,B06,B08,B09,B10,B11,B12,B13,B24,B28,B29,B30,B32,B33,B34,B35 | BL: B release regression/load/cost | scopes/calendar/cohort/งานตามรอบ 3 แบบ 200 รายการ + ช่าง;3 GM live; bounded query; disable providers; loops/usage budget; complete B checklist; B10/B12/B13 ออกจาก deps ถ้า Q-SC-5 ยืนยันย้าย |
 | B26 | B25 | Tim+GM Admin: B release/metrics handoff | admin prod deploy rollback/smoke; actual assumptions confirmed; SLA/Scorecard metrics start; before Q4 deadline |
 
 ## Milestone ท้าย — หลัง B, ไม่เป็น release gate
 
 | ID | Depends | งาน/เจ้าของ | Acceptance test |
 |---|---|---|---|
-| T01 | B26 | BL+GM: label mapping/secret review fixtures | type `gm_task`, source `trello`; external involved mustweb; labels-only no Custom Fields |
-| T02 | T01 | BL: webhook/catch-up idempotent readonly projection | signature/secret validation; duplicate event one update; web actions disabled; secret never public |
-| T03 | T02 | BL+GM: Trello badge/openlink/UI smoke | readonly works; failure does not block repair; defer Phase 2 if time insufficient |
+| T01 | B26 | **(รอยืนยัน: เสนอย้าย Phase 2 — SC-9 / Q-SC-5; ยังไม่ลบ)** BL+GM: label mapping/secret review fixtures | type `gm_task`, source `trello`; external involved mustweb; labels-only no Custom Fields |
+| T02 | T01 | **(รอยืนยัน: เสนอย้าย Phase 2 — SC-9 / Q-SC-5; ยังไม่ลบ)** BL: webhook/catch-up idempotent readonly projection | signature/secret validation; duplicate event one update; web actions disabled; secret never public |
+| T03 | T02 | **(รอยืนยัน: เสนอย้าย Phase 2 — SC-9 / Q-SC-5; ยังไม่ลบ)** BL+GM: Trello badge/openlink/UI smoke | readonly works; failure does not block repair; defer Phase 2 if time insufficient |
 
 ## DoD ทุก session
 

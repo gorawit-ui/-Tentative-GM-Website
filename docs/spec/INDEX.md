@@ -4,7 +4,9 @@
 
 เอกสารที่ใหม่กว่าในลำดับการยืนยันของผู้ใช้ชนะเอกสารเก่า ไม่ใช้ filesystem modified time เป็นลำดับนโยบาย **C1–C11 ชนะ CH-01–CH-09 เสมอ** แม้พบ CH ในไฟล์ที่ timestamp ใหม่กว่า
 
-ลำดับที่ใช้: Part 7 directives → infrastructure/budget + R1–R5 → F1–F6 + UX carryovers → P1–P2 → U1–U5 → Part 3 UI spec → A1–A4 → C1–C11 → Part 1/2 เนื้อหาเดิม เฉพาะเรื่องที่แก้; Part 6 เป็นการสังเคราะห์เทคนิคใต้ข้อกำหนดเหล่านี้ ไม่ลบข้อกำหนดผู้ใช้ การ clean Part 6 เปลี่ยนรูปแบบเท่านั้น ไม่เพิ่มความใหม่ของนโยบาย
+ลำดับที่ใช้: **Scope Addendum พ.ย. 2569 (SC-1–SC-9)** → Part 7 directives → infrastructure/budget + R1–R5 → F1–F6 + UX carryovers → P1–P2 → U1–U5 → Part 3 UI spec → A1–A4 → C1–C11 → Part 1/2 เนื้อหาเดิม เฉพาะเรื่องที่แก้; Part 6 เป็นการสังเคราะห์เทคนิคใต้ข้อกำหนดเหล่านี้ ไม่ลบข้อกำหนดผู้ใช้ การ clean Part 6 เปลี่ยนรูปแบบเท่านั้น ไม่เพิ่มความใหม่ของนโยบาย
+
+[Scope Addendum พ.ย. 2569](Scope-Addendum-2026-11.md) (ประชุมพี่ป๊อป 3 พ.ย. 2569) **ชนะ Part 6 และ Part 7 (directives + Build Plan) ในเรื่องที่ทับกัน** และรวม/แทนที่ R1–R5 ในส่วนที่ทับกัน; ข้อที่ระบุ “รอยืนยัน” ยังไม่มีผล ใช้ spec เดิมจนกว่าจะยืนยัน (คำถาม Q-SC-1 ถึง Q-SC-16 ในเอกสารนั้น)
 
 หากต้นทางไม่ตอบ ให้บันทึกข้อขัดกันพร้อมไฟล์/หัวข้อ และถามเฉพาะเรื่องที่จำเป็น ห้ามเปลี่ยนสิทธิ์/scope/ตัวเลขด้วยการคาดเดา
 
@@ -24,13 +26,14 @@
 | Cascade layers/laptop columns | [P1–P2](Part-4-Patch.md) | P1–P2 ชนะ entry/layout เดิม |
 | Approved prototype/mock flows | [Part 5 Guide](Part-5-Guide.md) / [QA](Part-5-QA.md) | [prototype](../../reference/Part-5-Prototype.html); mock ไม่ใช่ implementation |
 | Mobile filters/cards/wait input/copy/photo/nav | [F1–F6](Part-5-Patch.md) | F1–F6; ภายหลังผู้ใช้ยืนยัน Chromium ผ่าน |
-| Infrastructure/budget/renewal scope | [Infrastructure + R](Infrastructure-Budget-and-Renewals.md) | Infrastructure, Budget, R1–R5; หมายเหตุผู้ส่งล่าสุดดู D4 |
-| Renewal UI spec สั้น | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | ก่อน §6.1: UI/flow ต่ออายุ; ไม่ต้องสร้าง prototype ใหม่ |
+| **งานตามรอบ (ต่ออายุ / ภาระประจำ / PM), รับเรื่องและการเตือน, นำเข้าชีท, สิทธิ์, หน้าแรก GM desktop, วันลา, ช่าง, ผังสถานที่, แผน B/Phase 2** | [Scope Addendum พ.ย. 2569](Scope-Addendum-2026-11.md) | SC-1–SC-9 + ตาราง “จุดที่เปลี่ยน spec เดิม”; `D-SC-*`; ชนะ R1–R5 / Part 6 / Part 7 ที่ทับกัน |
+| Infrastructure/budget/renewal scope | [Infrastructure + R](Infrastructure-Budget-and-Renewals.md) | Infrastructure, Budget, R1–R5 (ส่วนที่ทับกับ SC-1–SC-3 ใช้ Scope Addendum); หมายเหตุผู้ส่งล่าสุดดู D4 |
+| Renewal UI spec สั้น | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | ก่อน §6.1: UI/flow ต่ออายุ; ไม่ต้องสร้าง prototype ใหม่ — ส่วนที่ขัดกับ SC-1–SC-4 ใช้ [Scope Addendum](Scope-Addendum-2026-11.md) |
 | Assumptions/stack/services/code boundaries | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.1–6.3 |
 | Data model/projections/ACL/Rules | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.4–6.5 |
 | Commands/counters/races/idempotency | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.6; implement [S08](../sessions/S08.md) |
 | Pure time snapshots/test examples | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.7; S01–S07 |
-| Renewal cycles/import/Scorecard/tick | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.8–6.9; B14–B24 |
+| Renewal cycles/import/Scorecard/tick | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.8–6.9; B14–B24 (เขียนใหม่ตาม SC-1–SC-3; การเตือนใช้ SC-2 แทน §6.8 ข้อ 5–8) |
 | Slack/Gmail/photo/QR/search/PWA/Trello | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.10; Gmail sender overridden by D4 |
 | Query/listener/index/server aggregates/metrics | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.11; A19/B03–06/B11/B23 |
 | Cost/free quota/US-vs-SG buckets | [Part 6 clean](Part-6-Technical-Spec-Clean.md) | §6.12 + sources S01–S24; actual SKU/quota Tim confirms W0 |
@@ -39,7 +42,7 @@
 | Latest directives / UX carryovers | [Part 7 directives](Part-7-Directives.md) | D1–D5; central mailbox + provider not A gate |
 | Build plan/milestones/capacity/success metrics | [Part 7](../Part-7-Build-Plan.md) | §7.1–7.8 |
 | Before build / owners / A blockers / questions | [WEEK-0](../WEEK-0.md) | P7-INFRA/ADMIN/ASSUME + dev IAM |
-| One-session tasks / DoD / dependencies | [SESSION-TASKS](../SESSION-TASKS.md) | S00–S12 → A01–27 → B01–26 → optional T01–03 |
+| One-session tasks / DoD / dependencies | [SESSION-TASKS](../SESSION-TASKS.md) | S00–S12 → A01–27 → B01–35 (B27–B35 จาก Scope Addendum) → optional T01–03 |
 | Build/test/dev deploy command contract | [BUILD-COMMANDS](../BUILD-COMMANDS.md) | S00 scripts; not yet implemented |
 | Gate evidence / viewport / cost bug checklist | [TEST-CHECKLIST](../TEST-CHECKLIST.md) | suites 1–7 |
 | All decisions + source | [DECISIONS](DECISIONS.md) | C/A/U/P/F/R/P7 one line each |
