@@ -46,10 +46,22 @@ function placeLine(match: DuplicateMatch): string | undefined {
   return match.area_label === undefined ? match.location_label : `${match.location_label} · ${match.area_label}`;
 }
 
-function DuplicateCard({ match, onWatch }: { readonly match: DuplicateMatch; readonly onWatch: (match: DuplicateMatch) => void }) {
+function DuplicateCard({
+  match,
+  pickable,
+  chosen,
+  onChoose,
+}: {
+  readonly match: DuplicateMatch;
+  /** Several open matches: a radio picks the one the bar watches (D-A13-5). */
+  readonly pickable: boolean;
+  readonly chosen: boolean;
+  readonly onChoose: (requestId: string) => void;
+}) {
   const place = placeLine(match);
+  const radioId = useId();
   return (
-    <article className="gm-dup-card" data-testid="duplicate-card">
+    <article className={`gm-dup-card${chosen ? ' gm-dup-card--chosen' : ''}`} data-testid="duplicate-card">
       <div className="gm-dup-card-top">
         <span className="gm-dup-number">{match.request_number}</span>
         <span className={`gm-status-badge gm-status-badge--${match.status}`}>{STATUS_LABELS[match.status]}</span>
@@ -77,21 +89,49 @@ function DuplicateCard({ match, onWatch }: { readonly match: DuplicateMatch; rea
           </Link>
         </div>
       ) : (
-        <button type="button" className="gm-btn gm-btn--primary" onClick={() => onWatch(match)}>
-          <Icon name="bell" />
-          ใช่ เรื่องเดียวกัน — ติดตามเรื่องนี้
-        </button>
+        pickable && (
+          <div className="gm-dup-pick">
+            <input id={radioId} type="radio" name="duplicate-choice" checked={chosen} onChange={() => onChoose(match.request_id)} />
+            <label htmlFor={radioId}>{`เลือกงาน ${match.request_number} นี้`}</label>
+          </div>
+        )
       )}
     </article>
   );
 }
 
-export function DuplicateList({ matches, onWatch }: { readonly matches: readonly DuplicateMatch[]; readonly onWatch: (match: DuplicateMatch) => void }) {
+/** The open matches the person could watch (not their own report, not already watched). */
+export const watchable = (matches: readonly DuplicateMatch[]) => matches.filter((match) => match.viewer === 'none');
+
+/**
+ * “มีคนแจ้งเรื่องนี้แล้ว”: the cards and, at the top, the way back. The choices themselves (“ใช่
+ * ติดตามเรื่องนี้” / “แจ้งเรื่องใหม่”) are on the form's bottom bar, always on screen (D-A13-5).
+ */
+export function DuplicateList({
+  matches,
+  chosenId,
+  onChoose,
+  backLabel,
+  onBack,
+}: {
+  readonly matches: readonly DuplicateMatch[];
+  readonly chosenId: string | undefined;
+  readonly onChoose: (requestId: string) => void;
+  readonly backLabel: string;
+  readonly onBack: () => void;
+}) {
+  const pickable = watchable(matches).length > 1;
   return (
     <div className="gm-dup-list" data-testid="repair-duplicates">
+      <div>
+        <button type="button" className="gm-btn gm-btn--secondary gm-dup-back" onClick={onBack}>
+          <Icon name="back" />
+          {backLabel}
+        </button>
+      </div>
       <p>ใช่เรื่องเดียวกันไหม? ติดตามงานเดิมได้โดยไม่ต้องแจ้งซ้ำ</p>
       {matches.map((match) => (
-        <DuplicateCard key={match.request_id} match={match} onWatch={onWatch} />
+        <DuplicateCard key={match.request_id} match={match} pickable={pickable} chosen={match.request_id === chosenId} onChoose={onChoose} />
       ))}
     </div>
   );

@@ -465,11 +465,13 @@ async function watch(transaction: CommandTransaction, payload: { readonly reques
   const userState = await transaction.get(userStatePath);
   const publicSummary = await transaction.get(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`);
   const gmSummary = await transaction.get(`${GM_SUMMARIES_COLLECTION}/${requestId}`);
-  transaction.set(gmDetailPath, { ...storedGmDetail, watcher_ids: state.watcherIds });
+  // D-A13-2: a note is “มีอัปเดตใหม่” for GM only (GM-only step); no message is sent for a watch.
+  const gmActivity = note === undefined ? {} : { gm_activity_seq: (request.gm_activity_seq ?? 0) + 1 };
+  transaction.set(gmDetailPath, { ...storedGmDetail, watcher_ids: state.watcherIds, ...gmActivity });
   // “มีผู้แจ้งเพิ่ม X คน”: distinct watchers, the requester never counted (U1).
   const count = watcherCount({ ...request, watcher_ids: state.watcherIds });
   if (publicSummary !== undefined) transaction.set(`${PUBLIC_SUMMARIES_COLLECTION}/${requestId}`, { ...publicSummary, watcher_count: count });
-  if (gmSummary !== undefined) transaction.set(`${GM_SUMMARIES_COLLECTION}/${requestId}`, { ...gmSummary, watcher_count: count });
+  if (gmSummary !== undefined) transaction.set(`${GM_SUMMARIES_COLLECTION}/${requestId}`, { ...gmSummary, watcher_count: count, ...gmActivity });
   // FU-08: “คำขอของฉัน” → เกี่ยวข้องกับฉัน shows it as a summary; nothing unread yet. A person who
   // already has another relation (e.g. related) keeps it.
   if (userState === undefined) {

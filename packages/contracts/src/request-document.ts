@@ -86,7 +86,7 @@ export interface RequesterNotNotifiedDocument {
 }
 
 /** Fields kept out of `requests/{id}` (readable by the requester and related persons), D-S09-5 / A06. */
-export const GM_ONLY_REQUEST_FIELDS = ['watcher_ids', 'sensitivity_note', 'requester_not_notified', 'requester_notified_seq'] as const satisfies readonly (keyof RequestRecord)[];
+export const GM_ONLY_REQUEST_FIELDS = ['watcher_ids', 'sensitivity_note', 'requester_not_notified', 'requester_notified_seq', 'gm_activity_seq'] as const satisfies readonly (keyof RequestRecord)[];
 export type GmOnlyRequestField = (typeof GM_ONLY_REQUEST_FIELDS)[number];
 
 /** `requests/{id}`: the detail layer for GM, the requester and related persons. */
@@ -98,6 +98,8 @@ export interface GmRequestDetailDocument {
   readonly sensitivity_note?: string;
   readonly requester_not_notified?: RequesterNotNotifiedDocument;
   readonly requester_notified_seq?: number;
+  /** D-A13-2: GM-only steps (a watcher’s note). */
+  readonly gm_activity_seq?: number;
 }
 
 /** A06: the stored badge fields as the domain state (`requesterNoticeAfter`). */
@@ -197,6 +199,7 @@ export function splitRequestRecord(record: RequestRecord): {
       ...(record.sensitivity_note === undefined ? {} : { sensitivity_note: record.sensitivity_note }),
       ...(record.requester_not_notified === undefined ? {} : { requester_not_notified: record.requester_not_notified }),
       ...(record.requester_notified_seq === undefined ? {} : { requester_notified_seq: record.requester_notified_seq }),
+      ...(record.gm_activity_seq === undefined ? {} : { gm_activity_seq: record.gm_activity_seq }),
     },
   };
 }
@@ -213,5 +216,6 @@ export function joinRequestRecord(request: RequestDocument, gmDetail: GmRequestD
     ...(gmDetail?.sensitivity_note === undefined ? {} : { sensitivity_note: gmDetail.sensitivity_note }),
     ...(gmDetail?.requester_not_notified === undefined ? {} : { requester_not_notified: gmDetail.requester_not_notified }),
     ...(gmDetail?.requester_notified_seq === undefined ? {} : { requester_notified_seq: gmDetail.requester_notified_seq }),
+    ...(gmDetail?.gm_activity_seq === undefined ? {} : { gm_activity_seq: gmDetail.gm_activity_seq }),
   };
 }

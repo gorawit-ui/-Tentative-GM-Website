@@ -14,7 +14,7 @@ import { ApiCallError, apiCall } from '../api-client';
 import { ContactBox } from '../components/ContactBox';
 import { Icon } from '../components/Icon';
 import { HOME_PATH } from '../routes';
-import { DuplicateList, WatchDialog, Watched, fetchDuplicates, type DuplicateMatch, type WatchFailure, type WatchOutcome } from './DuplicateCheck';
+import { DuplicateList, WatchDialog, Watched, fetchDuplicates, watchable, type DuplicateMatch, type WatchFailure, type WatchOutcome } from './DuplicateCheck';
 
 interface Place {
   readonly id: string;
@@ -148,6 +148,8 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
   const [watching, setWatching] = useState<DuplicateMatch | undefined>(undefined);
   const [watched, setWatched] = useState<{ readonly match: DuplicateMatch; readonly outcome: WatchOutcome } | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
+  // D-A13-5: the open match the bar's “ใช่ ติดตามเรื่องนี้” watches (the first, unless another is picked).
+  const [chosenId, setChosenId] = useState<string | undefined>(undefined);
   const [qrMessage, setQrMessage] = useState<string | undefined>(qr === undefined || qr.state === 'ok' ? undefined : QR_MESSAGES[qr.state]);
   const { step, locationId, areaId, symptomKey, fromQr } = selection;
   const location = options.locations.find((place) => place.id === locationId);
@@ -172,6 +174,7 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
       const matches = found.filter((match) => !skip.has(match.request_id));
       if (matches.length === 0) return go(4);
       setDuplicates({ kind: 'matches', matches });
+      setChosenId(watchable(matches)[0]?.request_id);
       window.scrollTo({ top: 0 });
     } catch {
       // Never read as “no duplicate” (U1): say the check failed.
@@ -235,7 +238,9 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
           </>
         );
       case 3:
-        if (duplicates.kind === 'matches') return <DuplicateList matches={duplicates.matches} onWatch={setWatching} />;
+        if (duplicates.kind === 'matches') {
+          return <DuplicateList matches={duplicates.matches} chosenId={chosenId} onChoose={setChosenId} backLabel="ย้อนกลับไปเลือกอาการ" onBack={backward} />;
+        }
         return (
           <Choices
             items={options.symptoms.map((candidate) => ({ value: candidate.key, label: candidate.label }))}
@@ -265,6 +270,7 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
   }
 
   const showingMatches = step === 3 && duplicates.kind === 'matches';
+  const chosen = showingMatches ? watchable(duplicates.matches).find((match) => match.request_id === chosenId) : undefined;
   return (
     <div className="gm-repair">
       <Stepper step={step} />
@@ -326,29 +332,42 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
         </div>
       )}
       <ActionBar>
-        {step === 1 ? (
-          <Link to={HOME_PATH} className="gm-btn gm-btn--secondary">
-            <Icon name="back" />
-            ออกจากฟอร์ม
-          </Link>
-        ) : (
-          <button type="button" className="gm-btn gm-btn--secondary" onClick={backward}>
-            <Icon name="back" />
-            ย้อนกลับ
-          </button>
-        )}
         {showingMatches ? (
-          <button type="button" className="gm-btn gm-btn--secondary" onClick={notSame}>
-            ไม่ใช่ แจ้งเรื่องใหม่
-          </button>
-        ) : step < 4 ? (
-          <button type="button" className="gm-btn gm-btn--primary" onClick={forward} disabled={duplicates.kind === 'checking'}>
-            ถัดไป
-          </button>
+          <>
+            {/* D-A13-5: both choices on screen; watching is the primary one. */}
+            {chosen !== undefined && (
+              <button type="button" className="gm-btn gm-btn--primary gm-repair-bar-main" onClick={() => setWatching(chosen)}>
+                <Icon name="bell" />
+                ใช่ ติดตามเรื่องนี้
+              </button>
+            )}
+            <button type="button" className="gm-btn gm-btn--secondary" onClick={notSame}>
+              แจ้งเรื่องใหม่
+            </button>
+          </>
         ) : (
-          <Link to={HOME_PATH} className="gm-btn gm-btn--secondary">
-            ออกจากฟอร์ม
-          </Link>
+          <>
+            {step === 1 ? (
+              <Link to={HOME_PATH} className="gm-btn gm-btn--secondary">
+                <Icon name="back" />
+                ออกจากฟอร์ม
+              </Link>
+            ) : (
+              <button type="button" className="gm-btn gm-btn--secondary" onClick={backward}>
+                <Icon name="back" />
+                ย้อนกลับ
+              </button>
+            )}
+            {step < 4 ? (
+              <button type="button" className="gm-btn gm-btn--primary" onClick={forward} disabled={duplicates.kind === 'checking'}>
+                ถัดไป
+              </button>
+            ) : (
+              <Link to={HOME_PATH} className="gm-btn gm-btn--secondary">
+                ออกจากฟอร์ม
+              </Link>
+            )}
+          </>
         )}
       </ActionBar>
       {watching !== undefined && (

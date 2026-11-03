@@ -42,10 +42,16 @@ const BACK_TOP = 'ย้อนกลับไปเลือกอาการ';
 /** Lines a button's label takes (1 = not wrapped). */
 async function labelLines(page: Page, name: string): Promise<number> {
   const button = bar(page).getByRole('button', { name, exact: true });
+  // Text only (an icon box sits at another height and is not a line of the label).
   return button.evaluate((element) => {
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const tops = new Set([...range.getClientRects()].filter((rect) => rect.width > 0).map((rect) => Math.round(rect.top)));
+    const tops = new Set<number>();
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      if ((node.textContent ?? '').trim() === '') continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) if (rect.width > 0) tops.add(Math.round(rect.top));
+    }
     return tops.size;
   });
 }
