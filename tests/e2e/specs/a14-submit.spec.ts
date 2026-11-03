@@ -155,7 +155,9 @@ test.describe('ส่งซ้ำ / เน็ตหลุด / ตรวจซ�
     await page.route('**/api/commands', async (route: Route) => {
       const body = route.request().postDataJSON() as (typeof bodies)[number];
       bodies.push(body);
-      if (bodies.length === 1) {
+      // Like the API: refused while the match is not among the answered ones.
+      const known = (body.payload.known_duplicate_ids ?? []) as string[];
+      if (!known.includes(match.request_id)) {
         duplicatesNow = [match];
         return route.fulfill({ status: 409, json: { error: 'DUPLICATE_FOUND', current: { request_ids: [match.request_id] } } });
       }
@@ -195,15 +197,15 @@ test.describe('ส่งซ้ำ / เน็ตหลุด / ตรวจซ�
   });
 
   test('other errors say what to do: a closed place → choose again; a server error → try again', async ({ page }) => {
-    let reply: { status: number; json: unknown } = { status: 422, json: { error: 'LOCATION_UNAVAILABLE' } };
+    let reply: { status: number; json: unknown } = { status: 500, json: { error: 'INTERNAL' } };
     await page.route('**/api/commands', (route) => route.fulfill(reply));
     await toStep4(page, 'อินเทอร์เน็ต');
     await sendButton(page).click();
-    await expect(page.getByRole('alert').filter({ hasText: 'สถานที่ บริเวณ หรืออาการนี้ใช้ไม่ได้แล้ว' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'เลือกสถานที่ใหม่' })).toBeVisible();
-    reply = { status: 500, json: { error: 'INTERNAL' } };
-    await sendButton(page).click();
     await expect(page.getByRole('alert').filter({ hasText: 'ส่งไม่สำเร็จ' })).toContainText('ลองส่งอีกครั้ง');
+    await expect(sendButton(page)).toHaveText(/ส่งอีกครั้ง/);
+    reply = { status: 422, json: { error: 'LOCATION_UNAVAILABLE' } };
+    await sendButton(page).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'สถานที่ บริเวณ หรืออาการนี้ใช้ไม่ได้แล้ว' })).toBeVisible();
     await page.getByRole('button', { name: 'เลือกสถานที่ใหม่' }).click();
     await expect(page.getByText('ขั้น 1 จาก 4')).toBeVisible();
     problems = problems.filter((line) => !line.includes('status of 422') && !line.includes('status of 500'));

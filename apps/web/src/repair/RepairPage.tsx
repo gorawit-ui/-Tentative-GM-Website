@@ -5,16 +5,23 @@
 // Everything comes from the API (the Admin's active places, D-A11-4); before login the person is sent to
 // the login page with the code in the return address. A13: after the symptom (not “อื่นๆ”) the form asks
 // for open repairs that match (U1); a match shows “มีคนแจ้งเรื่องนี้แล้ว” first, a failed check says so.
-// Step 4 (details, photos, sending, the recheck when sending) is A14. Mobile: no bottom navigation, an
-// action bar of 64 px (F6).
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+// A14: step 4 — the automatic title read-only (U2), the description (“อื่นๆ” must be described); photos
+// come with A15 and are not shown yet. Sending uses one command_id per filled form, reused on every retry,
+// and the button is locked while sending; the API checks duplicates again (FU-49) and a match brings the
+// interstitial back with nothing typed lost (“แจ้งเรื่องใหม่” then sends without asking again). Success
+// gives the number, says the GM team was told and links to the request; “not set up” (503) shows the GM
+// contacts (FU-21); other errors say what to do. The draft stays in this tab's session (FU-47).
+// Mobile: no bottom navigation, an action bar of 64 px (F6).
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { OTHER_SYMPTOM_KEY, repairTitlePreview } from '@gm/domain';
 import { ApiCallError, apiCall } from '../api-client';
 import { ContactBox } from '../components/ContactBox';
 import { Icon } from '../components/Icon';
-import { HOME_PATH } from '../routes';
-import { DuplicateList, WatchDialog, Watched, fetchDuplicates, watchable, type DuplicateMatch, type WatchFailure, type WatchOutcome } from './DuplicateCheck';
+import { HOME_PATH, MY_REQUESTS_PATH } from '../routes';
+import { useSession } from '../session-context';
+import { DuplicateList, WatchDialog, Watched, fetchDuplicates, requestPath, watchable, type DuplicateMatch, type WatchFailure, type WatchOutcome } from './DuplicateCheck';
+import { clearRepairDraft, loadRepairDraft, saveRepairDraft, type RepairDraft } from './repair-draft';
 
 interface Place {
   readonly id: string;
@@ -41,7 +48,7 @@ type Load =
 
 type Step = 1 | 2 | 3 | 4;
 const STEP_NAMES = ['สถานที่', 'บริเวณ', 'อาการ', 'รายละเอียด'] as const;
-const STEP_TITLES = ['เลือกสถานที่', 'เลือกบริเวณ', 'อาการที่พบ', 'รายละเอียดและรูป'] as const;
+const STEP_TITLES = ['เลือกสถานที่', 'เลือกบริเวณ', 'อาการที่พบ', 'รายละเอียด'] as const;
 
 /** F01: why a scanned code fills nothing in — said in words, with the way on. */
 const QR_MESSAGES: Readonly<Record<Exclude<QrState['state'], 'ok'>, string>> = {
@@ -131,20 +138,118 @@ function ActionBar({ children }: { readonly children: ReactNode }) {
 type DuplicateState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'checking' }
-  | { readonly kind: 'matches'; readonly matches: readonly DuplicateMatch[] }
+  | { readonly kind: 'matches'; readonly matches: readonly DuplicateMatch[]; readonly origin: 'check' | 'send' }
   | { readonly kind: 'failed' };
+
+/** A14: where the send stands. */
+type Sending =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'sending' }
+  /** No answer came back: the request may or may not exist; the same command_id makes a resend safe. */
+  | { readonly kind: 'unknown' }
+  | { readonly kind: 'place_gone' }
+  | { readonly kind: 'not_ready'; readonly code: string }
+  | { readonly kind: 'already_sent' }
+  | { readonly kind: 'failed'; readonly message: string };
+
+interface Sent {
+  readonly requestId: string;
+  readonly number: string;
+  readonly isAssigned: boolean;
+  readonly assigneeLabel?: string | undefined;
+}
+
+interface CreateReply {
+  readonly result: { readonly request_id: string; readonly request_number: string; readonly is_assigned?: boolean; readonly assignee_label?: string };
+}
+
+/** The draft this tab kept for this person, if its place and symptom are still offered (FU-47). */
+function draftFor(options: RepairOptions, personId: string, qr: QrState | undefined): RepairDraft | undefined {
+  // A scanned code is a new report from that spot: it wins over a draft.
+  if (qr !== undefined) return undefined;
+  const draft = loadRepairDraft(window.sessionStorage, personId);
+  if (draft === undefined) return undefined;
+  const placeOk = draft.locationId === undefined || options.locations.some((place) => place.id === draft.locationId);
+  const areaOk = draft.areaId === undefined || draft.areaId === '' || options.areas.some((area) => area.id === draft.areaId && area.location_id === draft.locationId);
+  const symptomOk = draft.symptomKey === undefined || options.symptoms.some((symptom) => symptom.key === draft.symptomKey);
+  return placeOk && areaOk && symptomOk ? draft : undefined;
+}
+
+const PLACE_GONE = new Set(['LOCATION_UNAVAILABLE', 'AREA_UNAVAILABLE', 'SYMPTOM_UNKNOWN']);
+const MAX_SENT_DISMISSED = 20;
 
 const WATCH_REFUSED: Readonly<Record<WatchFailure, string>> = {
   not_open: 'งานนี้ปิดหรือเสร็จไปแล้ว ติดตามไม่ได้',
   not_available: 'งานนี้ติดตามไม่ได้แล้ว',
 };
 
-function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly qr: QrState | undefined }) {
-  const [selection, setSelection] = useState<Selection>(() => startOf(options, qr));
+/** A14: what happened to the last send, in Thai, with what to do next (UI-03 Error state). */
+function SendState({ sending, onChoosePlace }: { readonly sending: Sending; readonly onChoosePlace: () => void }) {
+  switch (sending.kind) {
+    case 'idle':
+    case 'sending':
+      return null;
+    case 'unknown':
+      return (
+        <p className="gm-notice gm-notice--warning" role="alert">
+          ยังไม่แน่ใจว่าส่งถึงหรือไม่ (การเชื่อมต่อขาด) กด “ส่งอีกครั้ง” ได้เลย ระบบจะไม่สร้างงานซ้ำ
+        </p>
+      );
+    case 'place_gone':
+      return (
+        <div className="gm-notice gm-notice--warning gm-dup-failed">
+          <p role="alert">สถานที่ บริเวณ หรืออาการนี้ใช้ไม่ได้แล้ว (ผู้ดูแลเพิ่งปิด) เลือกใหม่แล้วส่งอีกครั้ง ข้อความที่กรอกยังอยู่</p>
+          <div>
+            <button type="button" className="gm-btn gm-btn--secondary" onClick={onChoosePlace}>
+              เลือกสถานที่ใหม่
+            </button>
+          </div>
+        </div>
+      );
+    case 'not_ready':
+      return (
+        <div className="gm-repair-not-ready" data-testid="repair-send-not-ready">
+          <div className="gm-notice gm-notice--warning" role="alert">
+            <p className="font-semibold">ระบบแจ้งซ่อมยังตั้งค่าไม่ครบ ยังส่งเรื่องจากหน้านี้ไม่ได้</p>
+            <p>{`${NOT_READY[sending.code] ?? 'การตั้งค่ายังไม่ครบ'} — ข้อมูลที่กรอกยังอยู่ ติดต่อทีม GM ตามช่องทางด้านล่างเพื่อแจ้งซ่อมแทน`}</p>
+          </div>
+          <ContactBox title="ติดต่อทีม GM" intro="แจ้งอาการ สถานที่ และบริเวณ ทีม GM จะเปิดเรื่องให้" />
+        </div>
+      );
+    case 'already_sent':
+      return (
+        <p className="gm-notice gm-notice--info" role="alert">
+          เรื่องนี้ส่งไปแล้วจากการกดครั้งก่อน (ใช้ข้อความตอนนั้น) ดูได้ในคำขอของฉัน
+        </p>
+      );
+    case 'failed':
+      return (
+        <p className="gm-notice gm-notice--danger" role="alert">
+          {sending.message}
+        </p>
+      );
+  }
+}
+
+function RepairForm({ options, qr, personId }: { readonly options: RepairOptions; readonly qr: QrState | undefined; readonly personId: string }) {
+  const [restored] = useState(() => draftFor(options, personId, qr));
+  const [selection, setSelection] = useState<Selection>(() =>
+    restored === undefined
+      ? startOf(options, qr)
+      : { step: restored.step, locationId: restored.locationId, areaId: restored.areaId, symptomKey: restored.symptomKey, fromQr: false },
+  );
+  const [description, setDescription] = useState(restored?.description ?? '');
+  // A14: one command_id per filled form, reused on every resend (one request whatever happens).
+  const [commandId] = useState(() => restored?.commandId ?? crypto.randomUUID());
+  const [sending, setSending] = useState<Sending>({ kind: 'idle' });
+  const [sent, setSent] = useState<Sent | undefined>(undefined);
+  const [fieldError, setFieldError] = useState<string | undefined>(undefined);
+  const detailsRef = useRef<HTMLTextAreaElement>(null);
+  const detailsId = useId();
   const [error, setError] = useState<string | undefined>(undefined);
   const [duplicates, setDuplicates] = useState<DuplicateState>({ kind: 'idle' });
   // “ไม่ใช่ แจ้งเรื่องใหม่”: not asked again about the same requests (U1).
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set(restored?.dismissed ?? []));
   const [watching, setWatching] = useState<DuplicateMatch | undefined>(undefined);
   const [watched, setWatched] = useState<{ readonly match: DuplicateMatch; readonly outcome: WatchOutcome } | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
@@ -159,6 +264,13 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
   const title =
     location === undefined || symptom === undefined ? undefined : repairTitlePreview({ symptomLabel: symptom.label, areaLabel: area?.label, locationLabel: location.label });
   const placeText = location === undefined ? undefined : areaId === undefined ? location.label : `${location.label} · ${area?.label ?? 'ไม่ระบุบริเวณ'}`;
+  const isOther = symptomKey === OTHER_SYMPTOM_KEY;
+
+  // FU-47: the choices and the text kept in this tab's session while the form is open; gone once sent.
+  useEffect(() => {
+    if (sent !== undefined || watched !== undefined) return;
+    saveRepairDraft(window.sessionStorage, { personId, step, locationId, areaId, symptomKey, description, commandId, dismissed: [...dismissed] });
+  }, [personId, step, locationId, areaId, symptomKey, description, commandId, dismissed, sent, watched]);
 
   const go = (next: Step) => {
     setError(undefined);
@@ -173,7 +285,7 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
       const found = await fetchDuplicates({ locationId, areaId: areaId === '' ? undefined : areaId, symptomKey });
       const matches = found.filter((match) => !skip.has(match.request_id));
       if (matches.length === 0) return go(4);
-      setDuplicates({ kind: 'matches', matches });
+      setDuplicates({ kind: 'matches', matches, origin: 'check' });
       setChosenId(watchable(matches)[0]?.request_id);
       window.scrollTo({ top: 0 });
     } catch {
@@ -195,14 +307,93 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
   const backward = () => {
     setNotice(undefined);
     if (duplicates.kind === 'matches' || duplicates.kind === 'failed') return setDuplicates({ kind: 'idle' });
+    setSending({ kind: 'idle' });
     go((step - 1) as Step);
   };
+
+  /** A14: sends the request; `skip` = the matches answered “ไม่ใช่” (not asked again, FU-49). */
+  const send = async (skip: ReadonlySet<string> = dismissed) => {
+    if (sending.kind === 'sending' || locationId === undefined || symptomKey === undefined) return;
+    setNotice(undefined);
+    if (isOther && description.trim() === '') {
+      setFieldError('อธิบายอาการก่อนส่ง');
+      detailsRef.current?.focus();
+      return;
+    }
+    setFieldError(undefined);
+    setSending({ kind: 'sending' });
+    const text = description.trim();
+    const known = [...skip].slice(0, MAX_SENT_DISMISSED);
+    try {
+      const reply = await apiCall<CreateReply>('POST', '/api/commands', {
+        command_id: commandId,
+        type: 'create_maintenance',
+        payload: {
+          location_id: locationId,
+          ...(areaId === undefined || areaId === '' ? {} : { area_id: areaId }),
+          symptom_key: symptomKey,
+          ...(text === '' ? {} : { description: text }),
+          ...(known.length === 0 ? {} : { known_duplicate_ids: known }),
+        },
+      });
+      clearRepairDraft(window.sessionStorage);
+      setSent({ requestId: reply.result.request_id, number: reply.result.request_number, isAssigned: reply.result.is_assigned === true, assigneeLabel: reply.result.assignee_label });
+      setSending({ kind: 'idle' });
+      window.scrollTo({ top: 0 });
+    } catch (caught) {
+      const failure = caught instanceof ApiCallError ? caught : new ApiCallError(0, 'NETWORK');
+      if (failure.code === 'DUPLICATE_FOUND') return void showSendDuplicates(skip);
+      if (failure.status === 0) return setSending({ kind: 'unknown' });
+      if (failure.status === 503) return setSending({ kind: 'not_ready', code: failure.code });
+      if (PLACE_GONE.has(failure.code)) return setSending({ kind: 'place_gone' });
+      if (failure.code === 'DESCRIPTION_REQUIRED') {
+        setSending({ kind: 'idle' });
+        setFieldError('อธิบายอาการก่อนส่ง');
+        return detailsRef.current?.focus();
+      }
+      // The first press went through with what was typed then: that request stands.
+      if (failure.code === 'COMMAND_ID_CONFLICT') {
+        clearRepairDraft(window.sessionStorage);
+        return setSending({ kind: 'already_sent' });
+      }
+      if (failure.status === 401 || failure.status === 403) {
+        return setSending({ kind: 'failed', message: 'บัญชีนี้ส่งเรื่องไม่ได้ตอนนี้ เข้าสู่ระบบใหม่ หรือติดต่อทีม GM' });
+      }
+      setSending({ kind: 'failed', message: 'ส่งไม่สำเร็จ ข้อมูลที่กรอกยังอยู่ ลองส่งอีกครั้ง ถ้ายังไม่ได้ติดต่อทีม GM' });
+    }
+  };
+
+  /** FU-49: a match appeared while the form was filled — the interstitial again, nothing typed lost. */
+  const showSendDuplicates = async (skip: ReadonlySet<string>) => {
+    if (locationId === undefined || symptomKey === undefined) return;
+    try {
+      const found = await fetchDuplicates({ locationId, areaId: areaId === '' ? undefined : areaId, symptomKey });
+      const matches = found.filter((match) => !skip.has(match.request_id));
+      setSending({ kind: 'idle' });
+      if (matches.length === 0) {
+        // Gone again (closed meanwhile): send as it is.
+        return void send(skip);
+      }
+      setDuplicates({ kind: 'matches', matches, origin: 'send' });
+      setChosenId(watchable(matches)[0]?.request_id);
+      window.scrollTo({ top: 0 });
+    } catch {
+      setSending({ kind: 'failed', message: 'มีคนแจ้งเรื่องที่ตรงกันระหว่างที่กรอก แต่ตรวจรายการไม่ได้ ลองส่งอีกครั้ง' });
+    }
+  };
+
   const notSame = () => {
-    if (duplicates.kind === 'matches') setDismissed((current) => new Set([...current, ...duplicates.matches.map((match) => match.request_id)]));
-    go(4);
+    if (duplicates.kind !== 'matches') return go(4);
+    const next = new Set([...dismissed, ...duplicates.matches.map((match) => match.request_id)]);
+    setDismissed(next);
+    if (duplicates.origin === 'check') return go(4);
+    // Answered “ไม่ใช่” when sending: send now, without asking again (U1).
+    setDuplicates({ kind: 'idle' });
+    void send(next);
   };
   const changePlace = () => {
     setNotice(undefined);
+    setSending({ kind: 'idle' });
     setDuplicates({ kind: 'idle' });
     setQrMessage(undefined);
     setSelection((current) => ({ ...current, step: 1, fromQr: false }));
@@ -238,7 +429,7 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
           </>
         );
       case 3:
-        if (duplicates.kind === 'matches') {
+        if (duplicates.kind === 'matches' && duplicates.origin === 'check') {
           return <DuplicateList matches={duplicates.matches} chosenId={chosenId} onChoose={setChosenId} backLabel="ย้อนกลับไปเลือกอาการ" onBack={backward} />;
         }
         return (
@@ -252,10 +443,30 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
           />
         );
       case 4:
+        if (duplicates.kind === 'matches') {
+          return <DuplicateList matches={duplicates.matches} chosenId={chosenId} onChoose={setChosenId} backLabel="ย้อนกลับไปแก้รายละเอียด" onBack={backward} />;
+        }
         return (
-          <div className="gm-notice gm-notice--info">
-            <p className="font-semibold">รายละเอียด รูป และการส่งเรื่องเปิดใช้ในรุ่นถัดไป</p>
-            <p>ตอนนี้ยังส่งแจ้งซ่อมจากหน้านี้ไม่ได้ ถ้าเร่งด่วนติดต่อทีม GM โดยตรง</p>
+          <div className="gm-repair-details" data-testid="repair-details">
+            <div className="gm-field">
+              <label htmlFor={detailsId}>{isOther ? 'อธิบายอาการ (ต้องกรอก)' : 'รายละเอียดเพิ่มเติม (ไม่บังคับ)'}</label>
+              <textarea
+                ref={detailsRef}
+                id={detailsId}
+                className="gm-input gm-repair-textarea"
+                value={description}
+                required={isOther}
+                aria-invalid={fieldError !== undefined}
+                aria-describedby={`${detailsId}-hint`}
+                onChange={(event) => {
+                  setDescription(event.target.value);
+                  setFieldError(undefined);
+                }}
+              />
+              <p id={`${detailsId}-hint`} className="gm-admin-muted">
+                {isOther ? 'บอกว่าเกิดอะไรและอยู่ตรงไหน ' : 'เช่น จุดที่เกิดปัญหา หรือสิ่งที่ช่างควรรู้ '}ข้อความนี้ทีม GM และคุณเห็นเท่านั้น ไม่ขึ้นบนบอร์ด
+              </p>
+            </div>
           </div>
         );
     }
@@ -268,8 +479,36 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
       </div>
     );
   }
+  if (sent !== undefined) {
+    return (
+      <div className="gm-repair gm-repair--done">
+        <section className="gm-dup-done" data-testid="repair-sent" aria-labelledby="repair-sent-heading">
+          <span className="gm-dup-done-mark" aria-hidden="true">
+            <Icon name="check" />
+          </span>
+          <h2 id="repair-sent-heading" tabIndex={-1}>
+            ส่งเรื่องเรียบร้อยแล้ว
+          </h2>
+          <p className="gm-repair-sent-number">{sent.number}</p>
+          {title !== undefined && <p className="gm-dup-title">{title}</p>}
+          <p>ทีม GM ได้รับแจ้งแล้ว ติดตามความคืบหน้าได้ในคำขอของฉัน</p>
+          <p className="gm-admin-muted">
+            {sent.isAssigned && sent.assigneeLabel !== undefined ? `ผู้รับผิดชอบ: ${sent.assigneeLabel} · สถานะ รอคิว` : 'ยังไม่มอบหมาย — รอทีม GM รับเรื่อง'}
+          </p>
+          <div className="gm-actions">
+            <Link to={requestPath(sent.requestId)} className="gm-btn gm-btn--primary">
+              ดูงานของฉัน
+            </Link>
+            <Link to={HOME_PATH} className="gm-btn gm-btn--secondary">
+              กลับหน้าแรก
+            </Link>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
-  const showingMatches = step === 3 && duplicates.kind === 'matches';
+  const showingMatches = duplicates.kind === 'matches' && ((step === 3 && duplicates.origin === 'check') || (step === 4 && duplicates.origin === 'send'));
   const chosen = showingMatches ? watchable(duplicates.matches).find((match) => match.request_id === chosenId) : undefined;
   return (
     <div className="gm-repair">
@@ -323,6 +562,12 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
             กำลังตรวจว่ามีคนแจ้งเรื่องนี้แล้วหรือไม่…
           </p>
         )}
+        {step === 4 && fieldError !== undefined && (
+          <p className="gm-notice gm-notice--danger" role="alert">
+            {fieldError}
+          </p>
+        )}
+        {step === 4 && !showingMatches && <SendState sending={sending} onChoosePlace={changePlace} />}
         {content}
       </section>
       {title !== undefined && step >= 3 && (
@@ -362,10 +607,14 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
               <button type="button" className="gm-btn gm-btn--primary" onClick={forward} disabled={duplicates.kind === 'checking'}>
                 ถัดไป
               </button>
-            ) : (
-              <Link to={HOME_PATH} className="gm-btn gm-btn--secondary">
-                ออกจากฟอร์ม
+            ) : sending.kind === 'already_sent' ? (
+              <Link to={MY_REQUESTS_PATH} className="gm-btn gm-btn--primary">
+                คำขอของฉัน
               </Link>
+            ) : (
+              <button type="button" className="gm-btn gm-btn--primary" onClick={() => void send()} disabled={sending.kind === 'sending'} aria-busy={sending.kind === 'sending'}>
+                {sending.kind === 'sending' ? 'กำลังส่ง…' : sending.kind === 'unknown' || sending.kind === 'failed' ? 'ส่งอีกครั้ง' : 'ส่งเรื่อง'}
+              </button>
             )}
           </>
         )}
@@ -392,6 +641,8 @@ function RepairForm({ options, qr }: { readonly options: RepairOptions; readonly
 }
 
 export function RepairPage({ qrId }: { readonly qrId?: string | undefined }) {
+  const { state } = useSession();
+  const personId = state.kind === 'active' ? state.personId : undefined;
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const reload = useCallback(async () => {
     setLoad({ kind: 'loading' });
@@ -445,7 +696,7 @@ export function RepairPage({ qrId }: { readonly qrId?: string | undefined }) {
           </div>
         </div>
       )}
-      {load.kind === 'ready' && <RepairForm key={qrId ?? 'form'} options={load.options} qr={load.qr} />}
+      {load.kind === 'ready' && personId !== undefined && <RepairForm key={qrId ?? 'form'} options={load.options} qr={load.qr} personId={personId} />}
     </>
   );
 }

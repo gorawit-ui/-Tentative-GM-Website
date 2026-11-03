@@ -153,11 +153,11 @@ test.describe('ขั้น 1–3 (UI-03, U2)', () => {
     await choice(page, 'อื่นๆ').click();
     await expect(page.getByTestId('repair-title-preview')).toContainText('อื่นๆ — ห้องแพ็คชั้น 1 · WH300');
 
-    // Step 4 (details, photos, sending) comes with A14; the title stays as previewed.
+    // Step 4 (A14): the details form; the title stays as previewed.
     await next(page).click();
     await expect(page.getByText('ขั้น 4 จาก 4')).toBeVisible();
     await expect(page.getByTestId('repair-title-preview')).toContainText('อื่นๆ — ห้องแพ็คชั้น 1 · WH300');
-    await expect(page.getByText('รายละเอียด รูป และการส่งเรื่องเปิดใช้ในรุ่นถัดไป')).toBeVisible();
+    await expect(page.getByTestId('repair-details')).toBeVisible();
     await expectLayout(page);
   });
 
