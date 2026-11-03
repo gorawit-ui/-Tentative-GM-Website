@@ -40,7 +40,7 @@
 | 20 | A21 GM create cross-team + on-behalf | A09, A01, A04 | ได้ | P7-ADMIN-04 default owner/types จริงก่อน pilot | FU-06, FU-21 |
 | 21 | A20 card actions + waiting sheet | A18, A03, A04 | ได้ | — | FU-04, FU-06, FU-31, FU-35 (API ของ FU-12/FU-09 และ preview ทำแล้วใน A04) |
 | 22 | A22 waiting-party response UI | A17, A04 | ได้ | — | — |
-| 23 | A23 home focus / presence / contact FAQ | A09, A06, S07 | ได้ (FAQ สังเคราะห์) | P7-ADMIN-04 FAQ/contact จริง | FU-28 (`gm_profile_summaries`) |
+| 23 | A23 home focus / presence / contact FAQ **+ กล่องสรุป GM จากข้อมูลที่มี** (D-SC-14) | A09, A06, S07 | ได้ (FAQ สังเคราะห์) | P7-ADMIN-04 FAQ/contact จริง | FU-28 (`gm_profile_summaries`), FU-45 (แถบแดง), FU-50 (จุดฝั่ง GM) |
 | 24 | A24 notification degraded mode + privacy transitions E2E | A19, A23, A02 | ได้ (Slack/Gmail disabled) | P7-ADMIN-02/03 สำหรับกรณีอนุมัติแล้วจริง | FU-09 |
 | 25 | A25 mobile/a11y/regression gate | A15, A20, A22, A24 | ได้ | — | — |
 | 26 | A26 dev staging / pilot rehearsal | A25, A05, A10, A11 | **ไม่ได้** (cloud) | **P7-INFRA-01** | FU-16 (IAM), FU-17, FU-20 (Cloud Tasks client), FU-22 (checklist settings/ปฏิทิน), FU-24 (worker IAM/Scheduler/indexes) |
@@ -52,3 +52,14 @@
 - A11 ก่อน A10: QR/สถานที่/ปฏิทินเป็นข้อมูลที่ A12 ต้องใช้; รายชื่อพนักงานจริง (A10) ปิดได้เมื่อได้ CSV จาก P7-ADMIN-01
 - A21 ย้ายมาก่อน A20 เพราะการสร้างงาน GM ใช้คำสั่งที่ A01 ทำไว้แล้ว และ A20 ต้องใช้ FU-04 (FU-12 ทำแล้วใน A04)
 - งานที่ต้องใช้ค่าจริงของบริษัท (วันหยุด, default owner, GM roles, FAQ) ใช้ข้อมูลสังเคราะห์ที่ติดป้ายชัดใน dev/emulator และห้ามอนุมานวันหยุดจาก fixture (P7-ADMIN-04)
+
+## Scope Addendum พ.ย. 2569 — ผลต่อแผน (3 พ.ย. 2569)
+
+ที่มา [Scope-Addendum-2026-11](../spec/Scope-Addendum-2026-11.md) (`D-SC-1` ถึง `D-SC-14`, คำถาม Q-SC-1 ถึง Q-SC-16)
+
+- **ด่าน A คงเดิม** ยกเว้น A23 ที่เพิ่มกล่องสรุปสำหรับ GM เฉพาะข้อมูลที่มีอยู่แล้ว (แจ้งซ่อมค้าง, รอผู้อื่น, ยังไม่มอบหมาย, ไม่ขยับ) — ลำดับงาน A ไม่เปลี่ยน
+- **ด่าน B**: B14–B24 เขียนใหม่ให้ครอบงานตามรอบ 3 แบบ (รวม task ต่ออายุเดิม) และเพิ่ม B27–B35 ใน [SESSION-TASKS](../SESSION-TASKS.md); ลำดับที่แนะนำในส่วนงานตามรอบ: B14 → B27 → B15 → B16 → B17 → B28 → B18 → B19 → B20 → B21 → B31 → B32 → B22 → B29 → B30 → B23 → B24 → B33 → B34 → B35 (ท้ายสุด)
+- task ที่ต้องรอคำตอบก่อนปิด: B14 (Q-SC-3, Q-SC-6, Q-SC-7, Q-SC-8), B15 (Q-SC-9, Q-SC-10), B16 (Q-SC-1, Q-SC-2, Q-SC-12), B17 (Q-SC-13), B27 (Q-SC-14), B29 (Q-SC-15), B33 (Q-SC-16), B34 (Q-SC-4)
+- **รอยืนยันย้าย Phase 2** (ยังอยู่ในแผน ไม่ลบ): B10 ฟอร์มขอ/ส่งเอกสาร, B12 ประกาศ, B13 PWA, T01–T03 Trello (Q-SC-5)
+- จำนวน session ด่าน B: เดิม 26 → **35** (ถ้าย้าย B10/B12/B13 → 32); Build Plan เดิมวาง 26 sessions ใน W8–W11 — ส่วนที่เพิ่มต้องให้ GM Admin/Tim ตัดสิน capacity หรือขอบเขต (Part 7 §7.3)
+
