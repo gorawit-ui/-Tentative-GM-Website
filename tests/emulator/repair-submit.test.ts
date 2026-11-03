@@ -164,7 +164,7 @@ describe('FU-49: the duplicate check again when sending (U1 “กันส่�
 
   it('a new match the person has not answered is still asked about', async () => {
     const seen = await reportId(SECOND, PACK);
-    const fresh = await reportId(SECOND, { location_id: 'loc-wh300', symptom_key: 'aircon' });
+    const fresh = await reportId(SECOND, { location_id: 'loc-wh300', symptom_key: 'aircon', known_duplicate_ids: [seen] });
     expect(await create(FIRST, { ...PACK, known_duplicate_ids: [seen] })).toEqual({ status: 409, body: { error: 'DUPLICATE_FOUND', current: { request_ids: [fresh] } } });
   });
 
@@ -185,6 +185,19 @@ describe('FU-49: the duplicate check again when sending (U1 “กันส่�
     const refused = one.status === 409 ? one : two;
     const created = one.status === 200 ? one : two;
     expect(refused.body).toEqual({ error: 'DUPLICATE_FOUND', current: { request_ids: [(created.body.result as { request_id: string }).request_id] } });
+  });
+
+  it('15 people at WH300 report the same aircon at the same moment (U1 example): one request, 14 are shown it', async () => {
+    const people = [FIRST, SECOND, THIRD];
+    const replies = await Promise.all(Array.from({ length: 15 }, (_, index) => create(people[index % people.length]!, PACK)));
+    const created = replies.filter((reply) => reply.status === 200);
+    expect(created).toHaveLength(1);
+    const id = (created[0]!.body.result as { request_id: string }).request_id;
+    for (const reply of replies.filter((candidate) => candidate.status !== 200)) {
+      expect(reply).toEqual({ status: 409, body: { error: 'DUPLICATE_FOUND', current: { request_ids: [id] } } });
+    }
+    expect(await count('requests')).toBe(1);
+    expect(await readDoc(harness.db, 'system_counters/request_sequence')).toMatchObject({ last_issued: 1 });
   });
 
   it('known_duplicate_ids is checked: not a list of IDs → 400', async () => {

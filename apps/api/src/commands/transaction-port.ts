@@ -18,7 +18,16 @@ export interface CommandTransaction {
   list?(collection: string, field: string, value: string, limit: number): Promise<readonly { readonly id: string; readonly data: StoredData }[]>;
   /** A11/D-A11-4: every document of a small collection, at most `limit` (e.g. the locations). A read. */
   listAll?(collection: string, limit: number): Promise<readonly { readonly id: string; readonly data: StoredData }[]>;
+  /**
+   * A14 / FU-49: the documents matching every filter (`==` or `in`), at most `limit` — e.g. the open
+   * repairs at one place with one symptom, rechecked when a repair is sent. A read.
+   */
+  query?(collection: string, filters: readonly QueryFilter[], limit: number): Promise<readonly { readonly id: string; readonly data: StoredData }[]>;
 }
+
+export type QueryFilter =
+  | { readonly field: string; readonly op: '=='; readonly value: string }
+  | { readonly field: string; readonly op: 'in'; readonly value: readonly string[] };
 
 export interface CommandStore {
   /** Serializable transaction; the work may run more than once under contention. */

@@ -20,6 +20,7 @@ import {
   requesterNoticeFields,
   watcherCount,
   type CommandEnvelope,
+  type CreateMaintenancePayload,
   type CreateOnBehalfPayload,
   type GmRequestDetailDocument,
   type MaintenanceSelection,
@@ -35,6 +36,11 @@ import {
   nextRequestSequence,
   watchNote,
   watchRequest,
+  DUPLICATE_OPEN_STATUSES,
+  OTHER_SYMPTOM_KEY,
+  duplicateMatches,
+  unansweredDuplicates,
+  type RequestType,
   type Actor,
   type CreateRequestCommand,
   type DeploymentEnvironment,
@@ -63,6 +69,8 @@ export const REQUESTS_COLLECTION = 'requests';
 export const GM_REQUEST_DETAILS_COLLECTION = 'gm_request_details';
 export const PUBLIC_SUMMARIES_COLLECTION = 'request_summaries';
 export const GM_SUMMARIES_COLLECTION = 'gm_request_summaries';
+/** A14 / FU-49: one guard per place + symptom serializes sends of the same repair (API only). */
+export const DUPLICATE_GUARDS_COLLECTION = 'duplicate_guards';
 export const BOARD_COUNTER_PATH = 'board_counters/public';
 export const OUTBOX_COLLECTION = 'outbox';
 
@@ -153,6 +161,9 @@ export interface CommandResult {
   readonly waiting_interval_id?: number;
   /** A04 follow-up with “ส่งเตือนอีกครั้ง”: sent now, deferred to 09:00 of the next business day, or already used today. */
   readonly reminder?: { readonly status: 'send_now' | 'next_business_day' | 'quota_used'; readonly business_date: string; readonly send_at?: number };
+  /** A14 create commands: whether a GM has it, and their name (UI-03 “รับเรื่อง GM-xxxx แล้ว”). */
+  readonly is_assigned?: boolean;
+  readonly assignee_label?: string;
 }
 
 export interface CommandOutcome {
@@ -220,6 +231,7 @@ async function create(
   const { now, actor } = context;
   const draft = createRequestDraft(await toDomainCommand(transaction, command, context));
   // Every read happens before the first write (Firestore transactions).
+  const guard = command.type === 'create_maintenance' ? await recheckDuplicates(transaction, command.payload) : undefined;
   const counter = await transaction.get(REQUEST_COUNTER_PATH);
   if (counter !== undefined && counter.last_issued === undefined) {
     throw new RangeError('request counter document has no last_issued');
@@ -308,7 +320,65 @@ async function create(
   for (const entry of [...outbox, ...related]) transaction.set(`${OUTBOX_COLLECTION}/${entry.id}`, outboxDocument(entry.data));
   // A05: the first stale check, 3 business days + 1 ms after creation (Part 6 §6.9).
   transaction.set(staleJobPath(requestId), staleJobDocument(requestId, record, facts.workCalendar, now));
-  return { result: { request_id: requestId, request_number: requestNumber }, outboxIds: [...outbox, ...related].map((entry) => entry.id) };
+  // FU-49: the next send of the same repair (place + symptom) waits for this one, then sees it.
+  if (guard !== undefined) transaction.set(guard, { updated_at: now });
+  const assigneeLabel = route.assigneeId === undefined ? undefined : names.get(route.assigneeId);
+  return {
+    result: {
+      request_id: requestId,
+      request_number: requestNumber,
+      // UI-03 “รับเรื่อง GM-xxxx แล้ว” with the real status and whether a GM has it.
+      status: record.status,
+      is_assigned: route.assigneeId !== undefined,
+      ...(assigneeLabel === undefined ? {} : { assignee_label: assigneeLabel }),
+    },
+    outboxIds: [...outbox, ...related].map((entry) => entry.id),
+  };
+}
+
+/** Open requests per place + symptom read when a repair is sent (U1 “กันส่งพร้อมกัน”). */
+const MAX_RECHECKED_MATCHES = 20;
+
+/**
+ * A14 / FU-49 (U1 “กันส่งพร้อมกัน”): looks again, inside the create transaction, for open public repairs
+ * at the same place/area/symptom. A guard document per place + symptom is read here and written by the
+ * create, so two sends of the same repair run one after the other and the second sees the first. Any
+ * match the person has not answered “ไม่ใช่” to yet refuses the send with DUPLICATE_FOUND (its IDs), so
+ * the form shows the interstitial again; nothing is written. “อื่นๆ” is never matched. Returns the guard.
+ */
+async function recheckDuplicates(transaction: CommandTransaction, payload: CreateMaintenancePayload): Promise<string | undefined> {
+  if (payload.symptom_key === OTHER_SYMPTOM_KEY) return undefined;
+  if (transaction.query === undefined) throw new Error('this store cannot query open requests');
+  const guard = `${DUPLICATE_GUARDS_COLLECTION}/${createHash('sha256').update(`${payload.location_id}|${payload.symptom_key}`).digest('hex').slice(0, 32)}`;
+  await transaction.get(guard);
+  const rows = await transaction.query(
+    PUBLIC_SUMMARIES_COLLECTION,
+    [
+      { field: 'location_id', op: '==', value: payload.location_id },
+      { field: 'symptom_key', op: '==', value: payload.symptom_key },
+      { field: 'status', op: 'in', value: [...DUPLICATE_OPEN_STATUSES] },
+    ],
+    MAX_RECHECKED_MATCHES,
+  );
+  const matches = duplicateMatches(
+    rows.map(({ id, data }) => ({
+      requestId: id,
+      type: data.type as RequestType,
+      status: data.status as RequestStatus,
+      closedAt: typeof data.closed_at === 'number' ? data.closed_at : undefined,
+      locationId: typeof data.location_id === 'string' ? data.location_id : undefined,
+      areaId: typeof data.area_id === 'string' ? data.area_id : undefined,
+      symptomKey: typeof data.symptom_key === 'string' ? data.symptom_key : undefined,
+      createdAt: typeof data.created_at === 'number' ? data.created_at : 0,
+    })),
+    { locationId: payload.location_id, ...(payload.area_id === undefined ? {} : { areaId: payload.area_id }), symptomKey: payload.symptom_key },
+  );
+  const unanswered = unansweredDuplicates(
+    matches.map((match) => match.requestId),
+    payload.known_duplicate_ids ?? [],
+  );
+  if (unanswered.length > 0) throw new CommandRejected('DUPLICATE_FOUND', 'Open requests match this repair', { request_ids: unanswered });
+  return guard;
 }
 
 /** Default owner facts for routeNewRequest: a gm_task creator is an active GM by definition. */

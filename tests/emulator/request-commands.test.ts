@@ -85,11 +85,15 @@ function context(actor: Actor, environment: DeploymentEnvironment = 'prod'): Com
   };
 }
 
+/**
+ * A14 / FU-49: each report names its own room (from its command ID), so these number and idempotency
+ * tests are not stopped by the duplicate recheck; the same command ID is the same payload.
+ */
 function internetDown(commandId: string = randomUUID()): CommandEnvelope {
   return parseCommand({
     command_id: commandId,
     type: 'create_maintenance',
-    payload: { location_id: 'loc-fac16', symptom_key: 'internet_down', description: 'เน็ตล่มทั้งอาคาร' },
+    payload: { location_id: 'loc-fac16', area_id: `area-${commandId.slice(0, 8)}`, symptom_key: 'internet_down', description: 'เน็ตล่มทั้งอาคาร' },
   });
 }
 
@@ -141,7 +145,11 @@ describe('request number (A4)', () => {
   it('starts at GM-0001 and continues one by one', async () => {
     const first = await executeCommand(client.store, internetDown(), context(EMPLOYEE));
     const second = await executeCommand(client.store, gmTask(), context(GM));
-    expect(first).toEqual({ replayed: false, result: { request_id: expect.any(String), request_number: 'GM-0001' }, outboxIds: [] });
+    expect(first).toEqual({
+      replayed: false,
+      result: { request_id: expect.any(String), request_number: 'GM-0001', status: 'queued', is_assigned: expect.any(Boolean) },
+      outboxIds: [],
+    });
     expect(second.result).toMatchObject({ request_number: 'GM-0002' });
     expect(await counter()).toBe(2);
     const stored = await readDoc(client.db, `requests/${String(first.result.request_id)}`);
@@ -150,7 +158,7 @@ describe('request number (A4)', () => {
       type: 'maintenance',
       origin: 'requester',
       requester_id: EMPLOYEE.personId,
-      summary_title: 'อินเทอร์เน็ตใช้ไม่ได้ · FAC16',
+      summary_title: 'อินเทอร์เน็ตใช้ไม่ได้ — ห้องประชุม · FAC16',
       status: 'queued',
       created_at: NOW,
       last_updated_at: NOW,

@@ -39,7 +39,11 @@ const TYPED_DETAIL = 'เน็ตล่มทั้งอาคาร โต๊
 const CATALOG: MaintenanceCatalog = {
   async resolve(_tx, selection) {
     if (selection.location_id !== 'loc-fac16' || selection.symptom_key !== 'internet_down') throw new CommandRejected('CATALOG_UNKNOWN', 'unknown');
-    return { location: { id: 'loc-fac16', label: 'FAC16' }, symptom: { key: 'internet_down', label: 'อินเทอร์เน็ตใช้ไม่ได้' } };
+    return {
+      location: { id: 'loc-fac16', label: 'FAC16' },
+      ...(selection.area_id === undefined ? {} : { area: { id: selection.area_id, label: 'ห้องประชุม' } }),
+      symptom: { key: 'internet_down', label: 'อินเทอร์เน็ตใช้ไม่ได้' },
+    };
   },
 };
 
@@ -101,21 +105,22 @@ async function call(
 const maintenance = (commandId = randomUUID()) => ({
   command_id: commandId,
   type: 'create_maintenance',
-  payload: { location_id: 'loc-fac16', symptom_key: 'internet_down', description: TYPED_DETAIL },
+  // A14 / FU-49: each report names its own room (from its command ID), so the duplicate recheck does not stop these tests.
+  payload: { location_id: 'loc-fac16', area_id: `area-${commandId.slice(0, 8)}`, symptom_key: 'internet_down', description: TYPED_DETAIL },
 });
 const gmTask = (extra: Record<string, unknown> = {}, commandId = randomUUID()) => ({
   command_id: commandId,
   type: 'create_gm_task',
   payload: { summary_title: 'ต่อสัญญาเช่ารถส่งของ', category: 'documents_admin', sensitivity_subject: 'general', ...extra },
 });
-const onBehalf = (requester: string, type: 'maintenance' | 'document_request' = 'document_request') => ({
-  command_id: randomUUID(),
+const onBehalf = (requester: string, type: 'maintenance' | 'document_request' = 'document_request', commandId = randomUUID()) => ({
+  command_id: commandId,
   type: 'create_on_behalf',
   payload: {
     requester: { person_id: requester },
     details:
       type === 'maintenance'
-        ? { type: 'maintenance', location_id: 'loc-fac16', symptom_key: 'internet_down' }
+        ? { type: 'maintenance', location_id: 'loc-fac16', area_id: `area-${commandId.slice(0, 8)}`, symptom_key: 'internet_down' }
         : { type: 'document_request', summary_title: 'ขอหนังสือรับรองการทำงาน', sensitivity_subject: 'general' },
   },
 });

@@ -62,3 +62,12 @@ export function watchNote(text: string | undefined): string | undefined {
   if ([...note].length > MAX_WATCH_NOTE_CHARS) reject('NOTE_TOO_LONG', `A note is up to ${MAX_WATCH_NOTE_CHARS} characters`);
   return note;
 }
+
+/** A14 / FU-49: at most this many “ไม่ใช่” answers travel with a request (one form's interstitials). */
+export const MAX_KNOWN_DUPLICATES = 20;
+
+/** The matches found when sending that the person has not answered “ไม่ใช่” to yet (U1: not asked twice). */
+export function unansweredDuplicates(matchIds: readonly string[], knownIds: readonly string[]): string[] {
+  const known = new Set(knownIds);
+  return matchIds.filter((id) => !known.has(id));
+}

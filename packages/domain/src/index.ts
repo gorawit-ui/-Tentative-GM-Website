@@ -134,7 +134,9 @@ export {
 export { watchRequest, type WatchOutcome, type WatchState } from './watch';
 export {
   DUPLICATE_OPEN_STATUSES,
+  MAX_KNOWN_DUPLICATES,
   MAX_WATCH_NOTE_CHARS,
+  unansweredDuplicates,
   duplicateMatches,
   isDuplicateMatch,
   viewerRelation,

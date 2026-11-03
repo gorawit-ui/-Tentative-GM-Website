@@ -2,7 +2,7 @@
 // domain works in epoch milliseconds; Firestore stores those instants as real Timestamps (so the
 // D-S08-6 TTL policy on `commands.expire_at` can delete them). Contention: the Admin SDK retries a
 // transaction up to `maxAttempts` times (its default of 5 was not enough for 15 concurrent creates).
-import { Timestamp, type Firestore } from 'firebase-admin/firestore';
+import { Timestamp, type Firestore, type Query } from 'firebase-admin/firestore';
 import type { CommandStore, CommandTransaction, StoredData } from '../commands/transaction-port';
 
 export const DEFAULT_MAX_ATTEMPTS = 20;
@@ -95,6 +95,12 @@ export function adminCommandStore(db: Firestore, options: { readonly maxAttempts
             },
             listAll: async (collection, limit) => {
               const snapshot = await transaction.get(db.collection(collection).limit(limit));
+              return snapshot.docs.map((document) => ({ id: document.id, data: fromStored(document.data()) }));
+            },
+            query: async (collection, filters, limit) => {
+              let query: Query = db.collection(collection);
+              for (const filter of filters) query = query.where(filter.field, filter.op, filter.value);
+              const snapshot = await transaction.get(query.limit(limit));
               return snapshot.docs.map((document) => ({ id: document.id, data: fromStored(document.data()) }));
             },
             list: async (collection, field, value, limit) => {

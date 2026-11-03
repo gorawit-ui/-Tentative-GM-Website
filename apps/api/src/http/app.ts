@@ -115,6 +115,8 @@ const CONFLICT_CODES = new Set([
   'ALREADY_RESPONDED',
   // D-A10-2: the Admin must confirm the latest count of open requests a GM holds.
   'OPEN_REQUESTS_ASSIGNED',
+  // A14 / FU-49: an open request matching this repair appeared; the form shows it again.
+  'DUPLICATE_FOUND',
   // A11: the Admin's change clashes with what is there (Part 3 §13 states: keep the form, say why).
   'AREA_LABEL_TAKEN',
   'LOCATION_LABEL_TAKEN',

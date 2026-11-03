@@ -42,8 +42,14 @@ async function call(who: string | undefined, method: 'GET' | 'POST', path: strin
 
 const act = (who: string, type: string, payload: Record<string, unknown>) => call(who, 'POST', '/api/commands', { command_id: randomUUID(), type, payload });
 
+/** Seeds a repair; the reporter has already answered “ไม่ใช่” to the open ones (A14 / FU-49 recheck). */
 async function report(who: string, payload: Record<string, unknown>): Promise<string> {
-  const reply = await act(who, 'create_maintenance', payload);
+  const open = [...(await readCollection(harness.db, 'request_summaries')).entries()]
+    .filter(([, summary]) => ['queued', 'in_progress', 'waiting'].includes(String(summary.status)))
+    .map(([id]) => id)
+    .sort()
+    .slice(0, 20);
+  const reply = await act(who, 'create_maintenance', { ...payload, ...(open.length === 0 ? {} : { known_duplicate_ids: open }) });
   expect(reply.status).toBe(200);
   return (reply.body.result as { request_id: string }).request_id;
 }
