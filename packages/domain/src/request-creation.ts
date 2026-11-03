@@ -236,7 +236,7 @@ function serviceFields(details: ServiceDetails) {
       locationId: requireText(details.location.id, 'LOCATION_REQUIRED', 'location'),
       ...(details.area === undefined ? {} : { areaId: requireText(details.area.id, 'AREA_INVALID', 'area id') }),
       symptomKey: requireText(details.symptom.key, 'SYMPTOM_REQUIRED', 'symptom'),
-      ...optionalDescription(details.description),
+      ...optionalDescription(otherNeedsDescription(details)),
       isConfidential: false,
     };
   }
@@ -250,6 +250,17 @@ function serviceFields(details: ServiceDetails) {
     };
   }
   throw new RequestRejected('TYPE_INVALID', 'Requests opened by or for an employee use a service type, not gm_task');
+}
+
+/** `OTHER_SYMPTOM_KEY` of maintenance-catalog.ts (which imports this file, so the value is repeated). */
+const OTHER_SYMPTOM = 'other';
+
+/** UI-03: “อื่นๆ” must be described (the description is where the problem is said). */
+function otherNeedsDescription(details: MaintenanceDetails): string | undefined {
+  if (details.symptom.key === OTHER_SYMPTOM && (details.description === undefined || details.description.trim() === '')) {
+    throw new RequestRejected('DESCRIPTION_REQUIRED', 'Describe the problem when the symptom is “อื่นๆ”');
+  }
+  return details.description;
 }
 
 function optionalDescription(description: string | undefined) {

@@ -211,7 +211,11 @@ async function run(transaction: CommandTransaction, command: AdminCommand, conte
       return { revision: document.revision };
     }
     case 'set_person_role':
-      return setPersonRole(transaction, command.payload.person_id, command.payload.role, now);
+      return setPersonRole(
+        transaction,
+        { personId: command.payload.person_id, role: command.payload.role, confirmedOpenAssigned: command.payload.release_open_requests, jobId: `release_assignments-${command.command_id}` },
+        now,
+      );
     case 'set_person_active':
       return setPersonActive(
         transaction,

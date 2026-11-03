@@ -151,12 +151,20 @@ const gmSummary = (id: string) => readDoc(harness.db, `gm_request_summaries/${id
 const boardCount = async () => ((await readDoc(harness.db, 'board_counters/public'))?.internal_board_count as number | undefined) ?? 0;
 const epoch = async () => ((await readDoc(harness.db, 'system_counters/public_visibility'))?.public_visibility_epoch as number | undefined) ?? 0;
 
+/** A14 / FU-49: earlier repairs in this test are not duplicates of the next one (the reporter said so). */
+const answered = async () =>
+  [...(await readCollection(harness.db, 'request_summaries')).entries()]
+    .filter(([, summary]) => ['queued', 'in_progress', 'waiting'].includes(String(summary.status)))
+    .map(([id]) => id)
+    .sort()
+    .slice(0, 20);
 /** An employee's repair request, accepted by GM1 (in progress). */
 async function inProgressRepair(): Promise<{ id: string; number: string }> {
-  const created = await act(EMPLOYEE, 'create_maintenance', { location_id: 'loc-fac16', symptom_key: 'aircon_broken', description: 'แอร์ห้องประชุมไม่เย็น' });
+  const created = await act(EMPLOYEE, 'create_maintenance', { location_id: 'loc-fac16', symptom_key: 'aircon_broken', description: 'แอร์ห้องประชุมไม่เย็น', known_duplicate_ids: await answered() });
   expect(created.status).toBe(200);
   const { request_id: id, request_number: number } = created.body.result as { request_id: string; request_number: string };
-  expect(await act(GM1, 'accept_request', { request_id: id, expected_revision: 1 })).toMatchObject({ status: 200 });
+  const accepted = await act(GM1, 'accept_request', { request_id: id, expected_revision: 1 });
+  expect(accepted).toMatchObject({ status: 200 });
   return { id, number };
 }
 

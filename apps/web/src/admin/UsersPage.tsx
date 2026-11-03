@@ -78,6 +78,8 @@ function PersonActions({ person, run }: { readonly person: PersonView; readonly 
   const roleId = useId();
   // D-A10-2: what a switch-off of this person releases (the API checks the count again).
   const releasing = pending?.kind === 'active' && !pending.active ? person.open_assigned : 0;
+  // D-A12-2: a GM moved to a role that is not a GM cannot work as a GM any more — the same release.
+  const demoting = pending?.kind === 'role' && isGm(person.role) && !isGm(pending.role) ? person.open_assigned : 0;
   const who = (
     <>
       <p className="font-semibold">{person.name}</p>
@@ -139,16 +141,21 @@ function PersonActions({ person, run }: { readonly person: PersonView; readonly 
       {pending?.kind === 'role' && (
         <ConfirmDialog
           title="เปลี่ยนสิทธิ์?"
-          confirm="เปลี่ยนสิทธิ์"
+          confirm={demoting > 0 ? `เปลี่ยนสิทธิ์และปล่อยงาน ${demoting} งาน` : 'เปลี่ยนสิทธิ์'}
           onCancel={() => setPending(undefined)}
           onConfirm={async () => {
-            const ok = await run('set_person_role', { person_id: person.person_id, role: pending.role }, `เปลี่ยนสิทธิ์ของ ${person.name} เป็น ${ROLE_LABELS[pending.role]} แล้ว`);
+            const payload = { person_id: person.person_id, role: pending.role, ...(demoting > 0 ? { release_open_requests: demoting } : {}) };
+            const done = `เปลี่ยนสิทธิ์ของ ${person.name} เป็น ${ROLE_LABELS[pending.role]} แล้ว${demoting > 0 ? ` งาน ${demoting} งานกลับเป็น “ยังไม่มอบหมาย”` : ''}`;
+            const ok = await run('set_person_role', payload, done);
             setPending(undefined);
             if (ok) setEditing(false);
           }}
         >
           {who}
           <p>{`จาก ${ROLE_LABELS[person.role]} เป็น ${ROLE_LABELS[pending.role]} — มีผลทันทีในคำขอถัดไปของคนนี้`}</p>
+          {demoting > 0 && (
+            <p className="gm-notice gm-notice--warning">{`มีงานที่รับผิดชอบค้างอยู่ ${demoting} งาน คนนี้ทำงานในฐานะ GM ไม่ได้แล้ว งานเหล่านี้จะกลับเป็น “ยังไม่มอบหมาย” ปลดหมุด และแจ้ง GM ที่เหลือให้รับเรื่องต่อ`}</p>
+          )}
         </ConfirmDialog>
       )}
       {pending?.kind === 'active' && (
@@ -458,4 +465,8 @@ export function UsersPage() {
       </div>
     </>
   );
+}
+
+function isGm(role: Role): boolean {
+  return role === 'gm_staff' || role === 'gm_admin';
 }

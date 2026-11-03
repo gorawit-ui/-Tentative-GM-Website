@@ -18,7 +18,7 @@ import { consoleWorkerLogger } from '../../apps/worker/src/log';
 import { runTick } from '../../apps/worker/src/tick';
 import { blockedHosts } from '../rules/network-guard';
 import { apiHarness, captureLogs, clearAuth, type ApiHarness, type LogCapture } from './support/api-harness';
-import { TEST_MAX_ATTEMPTS, clearFirestore, emulatorClient, readDoc, type EmulatorClient } from './support/firestore-client-store';
+import { TEST_MAX_ATTEMPTS, clearFirestore, emulatorClient, readCollection, readDoc, type EmulatorClient } from './support/firestore-client-store';
 
 const NOW = Date.parse('2026-12-28T09:00:00+07:00');
 const MINUTE = 60_000;
@@ -97,8 +97,15 @@ async function http(who: string, method: string, path: string, body?: unknown): 
 const act = (who: string, type: string, payload: Record<string, unknown>) => http(who, 'POST', '/api/commands', { command_id: randomUUID(), type, payload });
 const revisionOf = async (id: string) => (await readDoc(harness.db, `requests/${id}`))?.revision as number;
 
+/** A14 / FU-49: earlier repairs in this test are not duplicates of the next one (the reporter said so). */
+const answered = async () =>
+  [...(await readCollection(harness.db, 'request_summaries')).entries()]
+    .filter(([, summary]) => ['queued', 'in_progress', 'waiting'].includes(String(summary.status)))
+    .map(([id]) => id)
+    .sort()
+    .slice(0, 20);
 async function repairBy(who: string): Promise<string> {
-  const reply = await act(who, 'create_maintenance', { location_id: 'loc-fac16', symptom_key: 'internet_down' });
+  const reply = await act(who, 'create_maintenance', { location_id: 'loc-fac16', symptom_key: 'internet_down', known_duplicate_ids: await answered() });
   expect(reply.status).toBe(200);
   return (reply.body.result as { request_id: string }).request_id;
 }

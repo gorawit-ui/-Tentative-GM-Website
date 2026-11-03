@@ -98,9 +98,16 @@ async function act(who: string, type: string, payload: Record<string, unknown>, 
   return post(who, command(type, payload, commandId));
 }
 
+/** A14 / FU-49: earlier repairs in this test are not duplicates of the next one (the reporter said so). */
+const answered = async () =>
+  [...(await readCollection(harness.db, 'request_summaries')).entries()]
+    .filter(([, summary]) => ['queued', 'in_progress', 'waiting'].includes(String(summary.status)))
+    .map(([id]) => id)
+    .sort()
+    .slice(0, 20);
 /** An employee's repair request (default owner GM1). */
 async function newRepair(): Promise<{ id: string; number: string }> {
-  const reply = await act(EMPLOYEE, 'create_maintenance', { location_id: 'loc-fac16', symptom_key: 'internet_down', description: 'โต๊ะ 4 เน็ตหลุด' });
+  const reply = await act(EMPLOYEE, 'create_maintenance', { location_id: 'loc-fac16', symptom_key: 'internet_down', description: 'โต๊ะ 4 เน็ตหลุด', known_duplicate_ids: await answered() });
   expect(reply.status).toBe(200);
   const result = reply.body.result as { request_id: string; request_number: string };
   return { id: result.request_id, number: result.request_number };

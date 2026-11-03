@@ -588,3 +588,28 @@ describe('FU-07: related persons chosen in the GM forms (Part 2 GM ริเร�
     );
   });
 });
+
+describe('A14 / UI-03: “อื่นๆ” must be described', () => {
+  const OTHER_OFFICE: MaintenanceDetails = {
+    type: 'maintenance',
+    location: { id: 'loc-office195', label: 'Office 195' },
+    symptom: { key: 'other', label: 'อื่นๆ' },
+  };
+
+  it('no description, or only spaces → DESCRIPTION_REQUIRED (also for a GM opening it on behalf)', () => {
+    expect(rejectionCode(() => createRequestDraft({ kind: 'self', actor: EMPLOYEE, details: OTHER_OFFICE }))).toBe('DESCRIPTION_REQUIRED');
+    expect(rejectionCode(() => createRequestDraft({ kind: 'self', actor: EMPLOYEE, details: { ...OTHER_OFFICE, description: '  \n ' } }))).toBe('DESCRIPTION_REQUIRED');
+    expect(
+      rejectionCode(() => createRequestDraft({ kind: 'on_behalf', actor: GM, requester: { personId: 'person-employee-02' }, details: OTHER_OFFICE })),
+    ).toBe('DESCRIPTION_REQUIRED');
+  });
+
+  it('described: accepted; the title still says only “อื่นๆ” and the place (U2), the text stays in the description', () => {
+    const draft = createRequestDraft({ kind: 'self', actor: EMPLOYEE, details: { ...OTHER_OFFICE, description: 'ประตูห้องประชุมปิดไม่สนิท' } });
+    expect(draft).toMatchObject({ summaryTitle: 'อื่นๆ · Office 195', symptomKey: 'other', description: 'ประตูห้องประชุมปิดไม่สนิท' });
+  });
+
+  it('a listed symptom needs no description', () => {
+    expect(createRequestDraft({ kind: 'self', actor: EMPLOYEE, details: AIRCON_FAC16 })).not.toHaveProperty('description');
+  });
+});

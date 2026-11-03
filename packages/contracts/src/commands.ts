@@ -10,6 +10,7 @@
 // button checks the interval, access and latest status, so a GM's follow-up does not void it).
 import {
   GM_CATEGORY_KEYS,
+  MAX_KNOWN_DUPLICATES,
   SENSITIVITY_REASONS,
   SENSITIVITY_SUBJECTS,
   type GmCategory,
@@ -21,6 +22,7 @@ import {
   enumField,
   idField,
   isPlainObject,
+  join,
   optional,
   optionalBoolean,
   optionalId,
@@ -95,7 +97,10 @@ export interface MaintenanceSelection {
   readonly description?: string;
 }
 
-export type CreateMaintenancePayload = MaintenanceSelection;
+export type CreateMaintenancePayload = MaintenanceSelection & {
+  /** A14 / FU-49: matches the person already answered “ไม่ใช่” to (not asked again when sending). */
+  readonly known_duplicate_ids?: readonly string[];
+};
 
 export type MaintenanceDetailsPayload = { readonly type: 'maintenance' } & MaintenanceSelection;
 
@@ -133,6 +138,8 @@ export interface CreateGmTaskPayload extends RelatedChoicePayload {
 
 export interface WatchRequestPayload {
   readonly request_id: string;
+  /** U1 / A13: the one optional note sent with the watch (photos: A15). */
+  readonly note?: string;
 }
 
 /** A03: every lifecycle command names the request and the revision the user acted on. */
@@ -260,6 +267,17 @@ function maintenanceSelection(object: JsonObject, path: string): MaintenanceSele
 
 const MAINTENANCE_FIELDS = ['location_id', 'area_id', 'symptom_key', 'description'] as const;
 
+/** A14 / FU-49: unique request IDs, at most MAX_KNOWN_DUPLICATES (20). */
+function knownDuplicateIds(object: JsonObject, path: string): readonly string[] | undefined {
+  if (!Object.hasOwn(object, 'known_duplicate_ids')) return undefined;
+  const field = join(path, 'known_duplicate_ids');
+  const value = object.known_duplicate_ids;
+  if (!Array.isArray(value) || value.length > MAX_KNOWN_DUPLICATES || new Set(value).size !== value.length) {
+    throw new ContractRejected('FIELD_INVALID', field, `${field} is a list of up to ${MAX_KNOWN_DUPLICATES} different request IDs`);
+  }
+  return value.map((id, index) => idField({ id } as JsonObject, `${field}[${index}]`, 'id'));
+}
+
 function serviceDetails(value: unknown, path: string): MaintenanceDetailsPayload | DocumentDetailsPayload {
   if (!isPlainObject(value)) throw new ContractRejected('FIELD_TYPE', path, `${path} must be an object`);
   const type = enumField(value, path, 'type', ['maintenance', 'document_request', 'document_intake'] as const);
@@ -325,8 +343,10 @@ function waitingParty(payload: JsonObject, path: string): WaitingPartyPayload {
 function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'] {
   const path = 'payload';
   switch (type) {
-    case 'create_maintenance':
-      return maintenanceSelection(strictObject(value, path, MAINTENANCE_FIELDS), path);
+    case 'create_maintenance': {
+      const payload = strictObject(value, path, [...MAINTENANCE_FIELDS, 'known_duplicate_ids']);
+      return { ...maintenanceSelection(payload, path), ...optional('known_duplicate_ids', knownDuplicateIds(payload, path)) };
+    }
     case 'create_on_behalf': {
       const payload = strictObject(value, path, ['requester', 'details', 'mark_confidential', 'confidential_note', ...RELATED_FIELDS]);
       return {
@@ -356,8 +376,8 @@ function payloadOf(type: CommandType, value: unknown): CommandEnvelope['payload'
       };
     }
     case 'watch_request': {
-      const payload = strictObject(value, path, ['request_id']);
-      return { request_id: idField(payload, path, 'request_id') };
+      const payload = strictObject(value, path, ['request_id', 'note']);
+      return { request_id: idField(payload, path, 'request_id'), ...optional('note', optionalString(payload, path, 'note')) };
     }
     case 'accept_request': {
       const payload = strictObject(value, path, ['request_id', 'expected_revision', 'take_over']);

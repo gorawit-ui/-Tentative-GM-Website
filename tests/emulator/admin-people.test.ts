@@ -526,6 +526,56 @@ describe('D-A10-2: switching off a GM who still has open requests', () => {
   });
 });
 
+describe('D-A12-1 / D-A12-2: waiting work of a GM switched off; a GM demoted', () => {
+  async function onBehalfFor(requester: string): Promise<string> {
+    const reply = await act(GM, 'create_on_behalf', {
+      requester: { person_id: requester },
+      details: { type: 'document_request', summary_title: 'ขอหนังสือรับรอง', sensitivity_subject: 'general' },
+    });
+    expect(reply.status).toBe(200);
+    return (reply.body.result as { request_id: string }).request_id;
+  }
+
+  it('D-A12-1: the request keeps waiting with nobody assigned; the party’s “ฝั่งฉันเรียบร้อยแล้ว” reaches every active GM, not the one switched off', async () => {
+    const id = await onBehalfFor(EMPLOYEE);
+    expect(await act(GM, 'accept_request', { request_id: id, expected_revision: 1 })).toMatchObject({ status: 200 });
+    expect(await act(GM, 'enter_waiting', { request_id: id, expected_revision: 2, waiting_on: { kind: 'person', person_id: EMPLOYEE } })).toMatchObject({ status: 200 });
+    expect(await admin('set_person_active', { person_id: GM, active: false, release_open_requests: 1 })).toMatchObject({ status: 200 });
+    const waiting = await readDoc(harness.db, `requests/${id}`);
+    expect(waiting).toMatchObject({ status: 'waiting', current_waiting_interval_id: 1 });
+    expect(waiting).not.toHaveProperty('assignee_id');
+    expect(await act(EMPLOYEE, 'respond_waiting_party', { request_id: id, waiting_interval_id: 1 })).toMatchObject({ status: 200 });
+    const told = [...(await readCollection(harness.db, 'outbox')).values()].filter((entry) => entry.request_id === id && entry.event_kind === 'waiting_party_responded');
+    expect(told.map((entry) => [entry.recipient_id, entry.audience])).toEqual([[ADMIN, 'gm']]);
+  });
+
+  it('D-A12-2: demoting a GM who holds open requests needs the latest count; then the work is released like a switch-off', async () => {
+    const queued = await onBehalfFor(EMPLOYEE);
+    const working = await onBehalfFor(EMPLOYEE);
+    expect(await act(GM, 'accept_request', { request_id: working, expected_revision: 1 })).toMatchObject({ status: 200 });
+    await harness.db.doc(`gm_profiles/${GM}`).set({ presence_status: { kind: 'unspecified' }, focus_request_id: working });
+    expect(await admin('set_person_role', { person_id: GM, role: 'requester' })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', current: { open_assigned: 2 } } });
+    expect(await admin('set_person_role', { person_id: GM, role: 'viewer', release_open_requests: 1 })).toEqual({ status: 409, body: { error: 'OPEN_REQUESTS_ASSIGNED', current: { open_assigned: 2 } } });
+    expect(await readDoc(harness.db, `people/${GM}`)).toMatchObject({ role: 'gm_staff' });
+    expect(await admin('set_person_role', { person_id: GM, role: 'requester', release_open_requests: 2 })).toMatchObject({ status: 200, body: { result: { person_id: GM, role: 'requester', released: 2 } } });
+    expect(await readDoc(harness.db, `access/${uids.get(GM)}`)).toMatchObject({ role: 'requester', enabled: true });
+    for (const id of [queued, working]) {
+      const request = await readDoc(harness.db, `requests/${id}`);
+      expect(request).toMatchObject({ status: 'queued' });
+      expect(request).not.toHaveProperty('assignee_id');
+    }
+    expect(await readDoc(harness.db, `gm_profiles/${GM}`)).not.toHaveProperty('focus_request_id');
+    const notices = [...(await readCollection(harness.db, 'outbox')).values()].filter((entry) => entry.event_kind === 'request_unassigned');
+    expect(notices.map((entry) => entry.recipient_id).sort()).toEqual([ADMIN, ADMIN]);
+  });
+
+  it('D-A12-2: GM Staff → GM Admin keeps the work (still a GM); the list counts only for GMs', async () => {
+    const id = await onBehalfFor(EMPLOYEE);
+    expect(await admin('set_person_role', { person_id: GM, role: 'gm_admin' })).toMatchObject({ status: 200, body: { result: { released: 0 } } });
+    expect(await readDoc(harness.db, `requests/${id}`)).toMatchObject({ assignee_id: GM });
+  });
+});
+
 describe('D-A10-5 / D-A10-6: add a person by hand; edit a name and team', () => {
   it('a new employee not in the CSV yet: the e-mail is checked like an import (lower case, @tdfb.co only); an ordinary user', async () => {
     expect(await admin('add_person', { email: '  New.Hire@TDFB.co ', name: 'คุณพนักงาน ใหม่', team: 'ฝ่ายขาย' })).toMatchObject({ status: 200, body: { result: { person_id: 'new.hire@tdfb.co' } } });

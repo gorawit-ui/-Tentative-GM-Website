@@ -426,7 +426,31 @@ describe('D-S09-5: watcher list and confidential note live only in the GM detail
     expect(REQUEST_DOCUMENT_FIELDS).not.toContain('sensitivity_note');
     // A06: the “ผู้ขอยังไม่ได้รับแจ้ง” badge is GM-only too.
     expect(REQUEST_DOCUMENT_FIELDS).not.toContain('requester_not_notified');
-    expect(GM_ONLY_REQUEST_FIELDS).toEqual(['watcher_ids', 'sensitivity_note', 'requester_not_notified', 'requester_notified_seq']);
+    expect(GM_ONLY_REQUEST_FIELDS).toEqual(['watcher_ids', 'sensitivity_note', 'requester_not_notified', 'requester_notified_seq', 'gm_activity_seq']);
+  });
+});
+
+describe('D-A13-2: “มีอัปเดตใหม่” for GM only (a watcher’s note)', () => {
+  const record: RequestRecord = { ...REQUEST, gm_activity_seq: 3 };
+
+  it('gm_activity_seq is kept in the GM detail and copied to the GM summary, never to requests/{id} or the public summary', () => {
+    const built = buildRequestProjections('req-0427', record, context(UPDATED));
+    expect(built.gmDetail).toMatchObject({ gm_activity_seq: 3 });
+    expect(built.gm).toMatchObject({ gm_activity_seq: 3 });
+    expect(built.detail).not.toHaveProperty('gm_activity_seq');
+    expect(built.public).not.toHaveProperty('gm_activity_seq');
+  });
+
+  it('split and join keep it', () => {
+    const { request, gmDetail } = splitRequestRecord(record);
+    expect(request).not.toHaveProperty('gm_activity_seq');
+    expect(joinRequestRecord(request, gmDetail).gm_activity_seq).toBe(3);
+  });
+
+  it('absent until the first note', () => {
+    const built = buildRequestProjections('req-0427', REQUEST, context(UPDATED));
+    expect(built.gm).not.toHaveProperty('gm_activity_seq');
+    expect(built.gmDetail).not.toHaveProperty('gm_activity_seq');
   });
 });
 

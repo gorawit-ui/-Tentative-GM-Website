@@ -246,6 +246,23 @@ test.describe('D-A10-2 / D-A10-5 / D-A10-6: รายชื่อ', () => {
     await expect(row.getByRole('button', { name: 'ปิดบัญชี', exact: true })).toBeVisible();
   });
 
+  test('D-A12-2: demoting a GM who still holds open requests: the role dialog says how many and what happens', async ({ page }) => {
+    await openUsers(page);
+    await page.getByLabel('ค้นชื่อหรืออีเมล').fill('a10.gm.busy@tdfb.co');
+    const row = personRow(page, 'a10.gm.busy@tdfb.co');
+    await row.getByRole('button', { name: 'เปลี่ยนสิทธิ์' }).click();
+    await row.getByLabel('สิทธิ์ใหม่').selectOption({ label: 'พนักงาน' });
+    await row.getByRole('button', { name: 'บันทึกสิทธิ์' }).click();
+    const dialog = page.getByRole('alertdialog', { name: 'เปลี่ยนสิทธิ์?' });
+    await expect(dialog).toContainText('มีงานที่รับผิดชอบค้างอยู่ 2 งาน');
+    await expect(dialog).toContainText('กลับเป็น “ยังไม่มอบหมาย”');
+    await expect(dialog.getByRole('button', { name: 'เปลี่ยนสิทธิ์และปล่อยงาน 2 งาน' })).toBeVisible();
+    await expectLayout(page);
+    // Nothing is confirmed: the shared GM stays a GM for the other projects.
+    await dialog.getByRole('button', { name: 'ยกเลิก' }).click();
+    await expect(row).toContainText('ทีม GM');
+  });
+
   test('add a new employee by hand: the e-mail is checked like an import; then an ordinary user on the list', async ({ page }, testInfo) => {
     const email = `a10.hand-${testInfo.project.name}@tdfb.co`;
     await openUsers(page);

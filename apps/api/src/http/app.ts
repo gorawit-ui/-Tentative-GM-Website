@@ -24,6 +24,7 @@ import {
   ApiError,
   authenticate,
   readQrState,
+  readRepairDuplicates,
   readRepairOptions,
   countAwaitingConfirmation,
   createUploadUrl,
@@ -114,6 +115,8 @@ const CONFLICT_CODES = new Set([
   'ALREADY_RESPONDED',
   // D-A10-2: the Admin must confirm the latest count of open requests a GM holds.
   'OPEN_REQUESTS_ASSIGNED',
+  // A14 / FU-49: an open request matching this repair appeared; the form shows it again.
+  'DUPLICATE_FOUND',
   // A11: the Admin's change clashes with what is there (Part 3 §13 states: keep the form, say why).
   'AREA_LABEL_TAKEN',
   'LOCATION_LABEL_TAKEN',
@@ -312,6 +315,13 @@ function routes(deps: HttpDeps): readonly Route[] {
       method: 'GET',
       pattern: /^\/api\/repair\/options$/,
       handle: async ({ token }) => ({ status: 200, body: await readRepairOptions(api, token) }),
+    },
+    {
+      // A13 / U1: open public repairs matching the place, area and symptom chosen (A14 asks again).
+      name: 'repair.duplicates',
+      method: 'GET',
+      pattern: /^\/api\/repair\/duplicates$/,
+      handle: async ({ token, query }) => ({ status: 200, body: await readRepairDuplicates(api, token, query) }),
     },
     {
       name: 'repair.qr',

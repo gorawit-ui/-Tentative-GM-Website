@@ -24,11 +24,25 @@ function requireAnotherAdmin(person: PersonFacts, activeGmAdminIds: readonly str
   }
 }
 
-export function planPersonRole(person: PersonFacts | undefined, role: Role, activeGmAdminIds: readonly string[]): { readonly role: Role } {
+/**
+ * D-A12-2: demoting a GM who still holds open requests (to a role that is not a GM) releases them
+ * like a switch-off (D-A10-2) — the person can no longer work as a GM — and needs the same
+ * confirmed latest count.
+ */
+export function planPersonRole(
+  person: PersonFacts | undefined,
+  role: Role,
+  activeGmAdminIds: readonly string[],
+  work: { readonly openAssigned: number; readonly confirmedOpenAssigned?: number | undefined } = { openAssigned: 0 },
+): { readonly role: Role; readonly releaseOpenRequests: boolean } {
   if (person === undefined) return reject('PERSON_NOT_FOUND', 'No such person');
   if (!(ROLES as readonly string[]).includes(role)) return reject('ROLE_INVALID', 'Unknown role');
   if (role !== 'gm_admin') requireAnotherAdmin(person, activeGmAdminIds);
-  return { role };
+  const release = isGmRole(person.role) && !isGmRole(role) && work.openAssigned > 0;
+  if (release && work.confirmedOpenAssigned !== work.openAssigned) {
+    reject('OPEN_REQUESTS_ASSIGNED', 'This GM still has open requests; confirm how many are released');
+  }
+  return { role, releaseOpenRequests: release };
 }
 
 /**

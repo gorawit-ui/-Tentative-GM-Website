@@ -62,6 +62,8 @@ describe('parseAdminCommand', () => {
     [{ type: 'add_person', payload: { email: 'new.person@tdfb.co', name: 'คุณใหม่', team: 'ฝ่ายขาย' } }],
     // D-A10-2: switching off a GM with open requests carries the count the Admin confirmed.
     [{ type: 'set_person_active', payload: { person_id: 'somchai@tdfb.co', active: false, release_open_requests: 3 } }],
+    // D-A12-2: demoting a GM with open requests carries the count too.
+    [{ type: 'set_person_role', payload: { person_id: 'somchai@tdfb.co', role: 'requester', release_open_requests: 2 } }],
     // D-A10-6: name and team by hand; no team = the team is cleared.
     [{ type: 'update_person', payload: { person_id: 'somchai@tdfb.co', name: 'คุณสมชาย ใจดี', team: 'ฝ่ายผลิต' } }],
     [{ type: 'update_person', payload: { person_id: 'somchai@tdfb.co', name: 'คุณสมชาย ใจดี' } }],
@@ -92,6 +94,7 @@ describe('parseAdminCommand', () => {
     [{ command_id: ID, type: 'set_reminder_time', payload: { working_morning_time: '9 โมง' } }, 'FIELD_INVALID', 'payload.working_morning_time'],
     [{ command_id: ID, type: 'set_person_active', payload: { person_id: 'a@tdfb.co', active: false, release_open_requests: -1 } }, 'FIELD_INVALID', 'payload.release_open_requests'],
     [{ command_id: ID, type: 'set_person_active', payload: { person_id: 'a@tdfb.co', active: false, release_open_requests: 1.5 } }, 'FIELD_INVALID', 'payload.release_open_requests'],
+    [{ command_id: ID, type: 'set_person_role', payload: { person_id: 'a@tdfb.co', role: 'viewer', release_open_requests: '2' } }, 'FIELD_INVALID', 'payload.release_open_requests'],
     // D-A10-5: the hand-added e-mail is checked like an imported one.
     [{ command_id: ID, type: 'add_person', payload: { email: 'new.person@gmail.com', name: 'คนนอก' } }, 'FIELD_INVALID', 'payload.email'],
     [{ command_id: ID, type: 'update_person', payload: { person_id: 'A@TDFB.CO', name: 'x' } }, 'FIELD_INVALID', 'payload.person_id'],

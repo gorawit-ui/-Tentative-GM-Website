@@ -102,8 +102,15 @@ const publicSummary = (id: string) => readDoc(harness.db, `request_summaries/${i
 const staleJob = (id: string) => readDoc(harness.db, `scheduled_work/stale-${id}`);
 const profile = (gm: string) => readDoc(harness.db, `gm_profiles/${gm}`);
 
+/** A14 / FU-49: earlier repairs in this test are not duplicates of the next one (the reporter said so). */
+const answered = async () =>
+  [...(await readCollection(harness.db, 'request_summaries')).entries()]
+    .filter(([, summary]) => ['queued', 'in_progress', 'waiting'].includes(String(summary.status)))
+    .map(([id]) => id)
+    .sort()
+    .slice(0, 20);
 async function newRepair(): Promise<string> {
-  const reply = await act(EMPLOYEE, 'create_maintenance', { location_id: 'loc-wh300', symptom_key: 'light_off', description: 'ไฟทางเดินดับ' });
+  const reply = await act(EMPLOYEE, 'create_maintenance', { location_id: 'loc-wh300', symptom_key: 'light_off', description: 'ไฟทางเดินดับ', known_duplicate_ids: await answered() });
   expect(reply.status).toBe(200);
   return (reply.body.result as { request_id: string }).request_id;
 }
