@@ -2,7 +2,9 @@
 // area and symptom just chosen (never the GM-editable title), and how the reader relates to each.
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_KNOWN_DUPLICATES,
   MAX_WATCH_NOTE_CHARS,
+  unansweredDuplicates,
   duplicateMatches,
   isDuplicateMatch,
   viewerRelation,
@@ -94,5 +96,17 @@ describe('watchNote — the one note sent with a watch (U1)', () => {
     } catch (error) {
       expect((error as LifecycleRejected).code).toBe('NOTE_TOO_LONG');
     }
+  });
+});
+
+describe('A14 / FU-49: the recheck when sending asks only about requests not answered yet', () => {
+  it('matches the person already said “ไม่ใช่” to are not asked again; a new one is', () => {
+    expect(unansweredDuplicates(['req-1', 'req-2'], ['req-1', 'req-2'])).toEqual([]);
+    expect(unansweredDuplicates(['req-1', 'req-3'], ['req-1', 'req-2'])).toEqual(['req-3']);
+    expect(unansweredDuplicates(['req-3'], [])).toEqual(['req-3']);
+  });
+
+  it(`at most ${MAX_KNOWN_DUPLICATES} answered IDs travel with a request`, () => {
+    expect(MAX_KNOWN_DUPLICATES).toBe(20);
   });
 });

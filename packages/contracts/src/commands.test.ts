@@ -101,6 +101,17 @@ describe('parseCommand — valid commands come back as fresh typed objects', () 
     ).toEqual({ requester: { name_text: 'คุณสมศรี (ไม่มีบัญชี)' }, details: { type: 'maintenance', location_id: 'loc-wh300', symptom_key: 'aircon' } });
   });
 
+  it('A14 / FU-49: create_maintenance may carry the matches already answered “ไม่ใช่” (unique IDs, at most 20)', () => {
+    const ids = ['req-a', 'req-b'];
+    expect(parseCommand(withPayload(MAINTENANCE, { known_duplicate_ids: ids })).payload).toMatchObject({ known_duplicate_ids: ids });
+    expect(() => parseCommand(withPayload(MAINTENANCE, { known_duplicate_ids: 'req-a' }))).toThrow(/payload\.known_duplicate_ids/);
+    expect(() => parseCommand(withPayload(MAINTENANCE, { known_duplicate_ids: ['req-a', 'req-a'] }))).toThrow(/payload\.known_duplicate_ids/);
+    expect(() => parseCommand(withPayload(MAINTENANCE, { known_duplicate_ids: Array.from({ length: 21 }, (_, index) => `req-${index}`) }))).toThrow(
+      /payload\.known_duplicate_ids/,
+    );
+    expect(() => parseCommand(withPayload(MAINTENANCE, { known_duplicate_ids: ['bad/id'] }))).toThrow(/payload\.known_duplicate_ids/);
+  });
+
   it('A13 / U1: watch_request may carry the one optional note sent with the watch', () => {
     expect(parseCommand(withPayload(WATCH, { note: 'แอร์มีน้ำหยดด้วย' })).payload).toEqual({ request_id: 'req-7f3a9c', note: 'แอร์มีน้ำหยดด้วย' });
     expect(() => parseCommand(withPayload(WATCH, { note: 12 }))).toThrow(/payload\.note/);
