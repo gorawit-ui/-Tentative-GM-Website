@@ -492,8 +492,14 @@ function RepairForm({ options, qr, personId }: { readonly options: RepairOptions
           <p className="gm-repair-sent-number">{sent.number}</p>
           {title !== undefined && <p className="gm-dup-title">{title}</p>}
           <p>ทีม GM ได้รับแจ้งแล้ว ติดตามความคืบหน้าได้ในคำขอของฉัน</p>
-          <p className="gm-admin-muted">
-            {sent.isAssigned && sent.assigneeLabel !== undefined ? `ผู้รับผิดชอบ: ${sent.assigneeLabel} · สถานะ รอคิว` : 'ยังไม่มอบหมาย — รอทีม GM รับเรื่อง'}
+          <p className="gm-admin-muted gm-repair-sent-meta">
+            {sent.isAssigned && sent.assigneeLabel !== undefined ? (
+              <>
+                <span>{`ผู้รับผิดชอบ: ${sent.assigneeLabel}`}</span> · <span>สถานะ รอคิว</span>
+              </>
+            ) : (
+              <span>ยังไม่มอบหมาย — รอทีม GM รับเรื่อง</span>
+            )}
           </p>
           <div className="gm-actions">
             <Link to={requestPath(sent.requestId)} className="gm-btn gm-btn--primary">

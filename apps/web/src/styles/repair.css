@@ -67,6 +67,7 @@
 /* A14 — step 4: the description (16 px text, no zoom on iOS) and the number on success. */
 .gm-repair-details { display: grid; gap: var(--gm-space-3); }
 .gm-repair-textarea { min-height: 7.5rem; resize: vertical; font-size: var(--gm-font-size-body); }
+.gm-repair-sent-meta span { white-space: nowrap; }
 .gm-repair-sent-number { font-size: var(--gm-font-size-h2); font-weight: var(--gm-font-weight-semibold); font-variant-numeric: tabular-nums; }
 
 @media (min-width: 1024px) {
