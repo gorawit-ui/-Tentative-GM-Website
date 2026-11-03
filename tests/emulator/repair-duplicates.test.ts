@@ -257,3 +257,47 @@ describe('watch_request from the interstitial — U1 “ใช่ เรื่�
     expect(await act(SECOND, 'watch_request', { request_id: id })).toMatchObject({ status: 422, body: { error: 'WATCH_NOT_OPEN' } });
   });
 });
+
+describe('D-A13-2: a watch tells no one; a watch with a note is “มีอัปเดตใหม่” for GM only', () => {
+  it('a note adds 1 to the GM-only gm_activity_seq; a watch without one does not; no message is queued', async () => {
+    const id = await report(FIRST, PACK);
+    const outboxBefore = (await readCollection(harness.db, 'outbox')).size;
+    expect(await act(SECOND, 'watch_request', { request_id: id })).toMatchObject({ status: 200 });
+    expect(await readDoc(harness.db, `gm_request_summaries/${id}`)).not.toHaveProperty('gm_activity_seq');
+    expect(await act(THIRD, 'watch_request', { request_id: id, note: 'น้ำหยดใส่ปลั๊กด้วย' })).toMatchObject({ status: 200 });
+    expect(await readDoc(harness.db, `gm_request_summaries/${id}`)).toMatchObject({ gm_activity_seq: 1 });
+    expect(await readDoc(harness.db, `gm_request_details/${id}`)).toMatchObject({ gm_activity_seq: 1 });
+    // No Slack/e-mail for a watch (busy days would flood the GM).
+    expect((await readCollection(harness.db, 'outbox')).size).toBe(outboxBefore);
+  });
+
+  it('the requester, related people and other watchers see nothing new; the public summary and the request do not carry it', async () => {
+    const id = await report(FIRST, PACK);
+    expect(await act(SECOND, 'watch_request', { request_id: id })).toMatchObject({ status: 200 });
+    const before = {
+      request: await readDoc(harness.db, `requests/${id}`),
+      requester: await readDoc(harness.db, `user_state/${FIRST}/requests/${id}`),
+      watcher: await readDoc(harness.db, `user_state/${SECOND}/requests/${id}`),
+      summary: await readDoc(harness.db, `request_summaries/${id}`),
+    };
+    expect(await act(THIRD, 'watch_request', { request_id: id, note: 'มีเสียงดังด้วย' })).toMatchObject({ status: 200 });
+    const request = await readDoc(harness.db, `requests/${id}`);
+    expect(request?.activity_seq).toBe(before.request?.activity_seq);
+    expect(request?.last_updated_at).toBe(before.request?.last_updated_at);
+    expect(request).not.toHaveProperty('gm_activity_seq');
+    expect(await readDoc(harness.db, `user_state/${FIRST}/requests/${id}`)).toEqual(before.requester);
+    expect(await readDoc(harness.db, `user_state/${SECOND}/requests/${id}`)).toEqual(before.watcher);
+    const summary = await readDoc(harness.db, `request_summaries/${id}`);
+    expect(summary).not.toHaveProperty('gm_activity_seq');
+    expect(summary?.last_updated_at).toBe(before.summary?.last_updated_at);
+  });
+
+  it('a second note adds again; a GM command later keeps the count on the GM summary', async () => {
+    const id = await report(FIRST, PACK);
+    expect(await act(SECOND, 'watch_request', { request_id: id, note: 'หนึ่ง' })).toMatchObject({ status: 200 });
+    expect(await act(THIRD, 'watch_request', { request_id: id, note: 'สอง' })).toMatchObject({ status: 200 });
+    expect(await act(GM, 'accept_request', { request_id: id, expected_revision: await revisionOf(id) })).toMatchObject({ status: 200 });
+    expect(await readDoc(harness.db, `gm_request_summaries/${id}`)).toMatchObject({ status: 'in_progress', gm_activity_seq: 2 });
+    expect(await readDoc(harness.db, `gm_request_details/${id}`)).toMatchObject({ gm_activity_seq: 2 });
+  });
+});

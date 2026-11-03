@@ -73,6 +73,8 @@ export interface RequestRecord {
   readonly requester_not_notified?: RequesterNotNotifiedDocument;
   /** A06: highest unread step known to have reached the requester (delivered or opened in the web). */
   readonly requester_notified_seq?: number;
+  /** D-A13-2: GM-only steps (a watcher’s note) for “มีอัปเดตใหม่” on the GM side; absent = none yet. */
+  readonly gm_activity_seq?: number;
 }
 
 /** A06: the GM-only badge as stored (snake_case of `RequesterNoticeIssue`). */

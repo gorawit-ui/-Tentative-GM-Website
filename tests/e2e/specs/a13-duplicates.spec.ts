@@ -34,8 +34,28 @@ async function expectLayout(page: Page): Promise<void> {
 const choice = (page: Page, name: string) => page.getByTestId('repair-choices').getByRole('button', { name, exact: true });
 const bar = (page: Page) => page.getByTestId('repair-action-bar');
 const interstitial = (page: Page) => page.getByTestId('repair-duplicates');
-const WATCH = 'ใช่ เรื่องเดียวกัน — ติดตามเรื่องนี้';
-const NOT_SAME = 'ไม่ใช่ แจ้งเรื่องใหม่';
+// D-A13-5: both choices sit on the bottom bar (watch = primary); back is at the top of the interstitial.
+const WATCH = 'ใช่ ติดตามเรื่องนี้';
+const NOT_SAME = 'แจ้งเรื่องใหม่';
+const BACK_TOP = 'ย้อนกลับไปเลือกอาการ';
+
+/** Lines a button's label takes (1 = not wrapped). */
+async function labelLines(page: Page, name: string): Promise<number> {
+  const button = bar(page).getByRole('button', { name, exact: true });
+  return button.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const tops = new Set([...range.getClientRects()].filter((rect) => rect.width > 0).map((rect) => Math.round(rect.top)));
+    return tops.size;
+  });
+}
+
+/** True when the element is fully inside the viewport as it is now (nothing scrolled). */
+async function inViewport(page: Page, name: string): Promise<boolean> {
+  const box = await bar(page).getByRole('button', { name, exact: true }).boundingBox();
+  const size = page.viewportSize();
+  return box !== null && size !== null && box.y >= 0 && box.x >= 0 && box.y + box.height <= size.height && box.x + box.width <= size.width;
+}
 
 async function toSymptom(page: Page, who: AccountKey, place: string, area: string, symptom: string): Promise<void> {
   await signInToShell(page, who, REPAIR);
@@ -78,15 +98,15 @@ test.describe('หน้าคั่น “มีคนแจ้งเรื่�
     await expect(card).toContainText('รอคิว');
     await expect(card).toContainText('ยังไม่มอบหมาย');
     await expect(card).toContainText('มีผู้แจ้งเพิ่ม 1 คน');
-    await expect(card.getByRole('button', { name: WATCH })).toBeVisible();
+    await expect(bar(page).getByRole('button', { name: WATCH, exact: true })).toBeVisible();
     // Only the public summary: who reported it is not shown.
     await expect(interstitial(page)).not.toContainText('a09.viewer');
     await expectLayout(page);
-    for (const button of await page.getByRole('button', { name: new RegExp(`${WATCH}|${NOT_SAME}`) }).all()) {
-      expect((await button.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+    for (const name of [WATCH, NOT_SAME]) {
+      expect((await bar(page).getByRole('button', { name, exact: true }).boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     }
 
-    await bar(page).getByRole('button', { name: NOT_SAME }).click();
+    await bar(page).getByRole('button', { name: NOT_SAME, exact: true }).click();
     await expect(page.getByText('ขั้น 4 จาก 4')).toBeVisible();
     await expect(interstitial(page)).toHaveCount(0);
     await expect(page.getByTestId('repair-context')).toContainText('WH300 · ห้อง QA ชั้น 1');
@@ -95,13 +115,32 @@ test.describe('หน้าคั่น “มีคนแจ้งเรื่�
     await expect(choice(page, 'กล้องวงจรปิด')).toHaveAttribute('aria-pressed', 'true');
   });
 
+  test('D-A13-5: on a phone both choices are on screen without scrolling, on one line; back is at the top', async ({ page }) => {
+    await toSymptom(page, 'requester', 'WH300', 'ห้อง QA ชั้น 1', 'กล้องวงจรปิด');
+    await bar(page).getByRole('button', { name: 'ถัดไป' }).click();
+    await expect(page.getByRole('heading', { name: 'มีคนแจ้งเรื่องนี้แล้ว' })).toBeVisible();
+    await page.evaluate(() => window.scrollTo({ top: 0 }));
+    expect(await inViewport(page, WATCH)).toBe(true);
+    expect(await inViewport(page, NOT_SAME)).toBe(true);
+    expect(await labelLines(page, WATCH)).toBe(1);
+    expect(await labelLines(page, NOT_SAME)).toBe(1);
+    // The primary choice is the watch; the bar holds nothing else.
+    await expect(bar(page).getByRole('button', { name: WATCH, exact: true })).toHaveClass(/gm-btn--primary/);
+    await expect(bar(page).getByRole('button', { name: NOT_SAME, exact: true })).toHaveClass(/gm-btn--secondary/);
+    await expect(bar(page).getByRole('button')).toHaveCount(2);
+    await interstitial(page).getByRole('button', { name: BACK_TOP }).click();
+    await expect(choice(page, 'กล้องวงจรปิด')).toHaveAttribute('aria-pressed', 'true');
+    await expect(interstitial(page)).toHaveCount(0);
+  });
+
   test('the requester of the match: “คุณแจ้งเรื่องนี้ไว้แล้ว” with a link to their request, no watch button', async ({ page }) => {
     await toSymptom(page, 'viewer', 'WH300', 'ห้อง QA ชั้น 1', 'กล้องวงจรปิด');
     await bar(page).getByRole('button', { name: 'ถัดไป' }).click();
     const card = interstitial(page).getByTestId('duplicate-card');
     await expect(card).toContainText('คุณแจ้งเรื่องนี้ไว้แล้ว');
     await expect(card.getByRole('link', { name: 'ดูงานของคุณ' })).toHaveAttribute('href', `/requests/${FIXTURE_ID}`);
-    await expect(card.getByRole('button', { name: WATCH })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: WATCH, exact: true })).toHaveCount(0);
+    await expect(bar(page).getByRole('button', { name: NOT_SAME, exact: true })).toBeVisible();
     await expectLayout(page);
   });
 
@@ -111,7 +150,7 @@ test.describe('หน้าคั่น “มีคนแจ้งเรื่�
     const card = interstitial(page).getByTestId('duplicate-card');
     await expect(card).toContainText('คุณติดตามเรื่องนี้อยู่แล้ว');
     await expect(card.getByRole('link', { name: 'ดูข้อมูลสรุป' })).toHaveAttribute('href', `/requests/${FIXTURE_ID}`);
-    await expect(card.getByRole('button', { name: WATCH })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: WATCH, exact: true })).toHaveCount(0);
   });
 
   test('no match → no interstitial; “อื่นๆ” is not checked at all', async ({ page }) => {
@@ -147,7 +186,7 @@ test.describe('ติดตามเรื่องนี้ (U1, mocked API)', 
     await expect(card).toContainText('กำลังทำ');
     await expect(card).toContainText('คุณช่าง ตัวอย่าง');
     await expect(card).toContainText('มีผู้แจ้งเพิ่ม 2 คน');
-    await card.getByRole('button', { name: WATCH }).click();
+    await bar(page).getByRole('button', { name: WATCH, exact: true }).click();
 
     const dialog = page.getByRole('dialog', { name: 'ติดตามเรื่องนี้' });
     await expect(dialog).toContainText('DEV-9201');
@@ -181,6 +220,28 @@ test.describe('ติดตามเรื่องนี้ (U1, mocked API)', 
     await expect(cards.nth(0).getByTestId('duplicate-place')).toHaveCount(0);
   });
 
+  test('D-A13-5 with several matches: the first open one is chosen, another can be picked, the bar watches the chosen one', async ({ page }) => {
+    const sent: { payload: Record<string, unknown> }[] = [];
+    const second = { ...MOCK_MATCH, request_id: 'req-a13-mock-0002', request_number: 'DEV-9202', summary_title: 'แอร์ · WH300' };
+    await page.route('**/api/repair/duplicates?*', (route) => route.fulfill({ json: { matches: [MOCK_MATCH, second] } }));
+    await page.route('**/api/commands', async (route: Route) => {
+      sent.push(route.request().postDataJSON() as { payload: Record<string, unknown> });
+      await route.fulfill({ json: { replayed: false, result: { request_id: second.request_id, request_number: 'DEV-9202', watch: 'added' } } });
+    });
+    await toSymptom(page, 'requester', 'WH300', 'ห้องแพ็คชั้น 1', 'แอร์');
+    await bar(page).getByRole('button', { name: 'ถัดไป' }).click();
+    const picks = interstitial(page).getByRole('radio');
+    await expect(picks).toHaveCount(2);
+    await expect(picks.nth(0)).toBeChecked();
+    await interstitial(page).getByRole('radio', { name: /DEV-9202/ }).check();
+    await bar(page).getByRole('button', { name: WATCH, exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('DEV-9202');
+    await page.getByRole('dialog').getByRole('button', { name: 'ยืนยันติดตาม' }).click();
+    await expect(page.getByTestId('repair-watched')).toContainText('DEV-9202');
+    expect(sent.map((body) => body.payload)).toEqual([{ request_id: second.request_id }]);
+    await expectLayout(page);
+  });
+
   test('without a note the payload has none; “ย้อนกลับ” in the dialog sends nothing', async ({ page }) => {
     const sent: { payload: Record<string, unknown> }[] = [];
     await page.route('**/api/repair/duplicates?*', (route) => route.fulfill({ json: { matches: [MOCK_MATCH] } }));
@@ -190,11 +251,11 @@ test.describe('ติดตามเรื่องนี้ (U1, mocked API)', 
     });
     await toSymptom(page, 'requester', 'WH300', 'ห้องแพ็คชั้น 1', 'แอร์');
     await bar(page).getByRole('button', { name: 'ถัดไป' }).click();
-    await interstitial(page).getByRole('button', { name: WATCH }).click();
+    await bar(page).getByRole('button', { name: WATCH, exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'ย้อนกลับ' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(sent).toEqual([]);
-    await interstitial(page).getByRole('button', { name: WATCH }).click();
+    await bar(page).getByRole('button', { name: WATCH, exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'ยืนยันติดตาม' }).click();
     await expect(page.getByTestId('repair-watched')).toBeVisible();
     expect(sent.map((body) => body.payload)).toEqual([{ request_id: MOCK_MATCH.request_id }]);
@@ -209,7 +270,7 @@ test.describe('ติดตามเรื่องนี้ (U1, mocked API)', 
     await page.route('**/api/commands', (route) => route.fulfill({ status: 422, json: { error: 'WATCH_NOT_OPEN' } }));
     await toSymptom(page, 'requester', 'WH300', 'ห้องแพ็คชั้น 1', 'แอร์');
     await bar(page).getByRole('button', { name: 'ถัดไป' }).click();
-    await interstitial(page).getByRole('button', { name: WATCH }).click();
+    await bar(page).getByRole('button', { name: WATCH, exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'ยืนยันติดตาม' }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'งานนี้ปิดหรือเสร็จไปแล้ว ติดตามไม่ได้' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -233,7 +294,7 @@ test.describe('ติดตามเรื่องนี้ (U1, mocked API)', 
     await failed.getByRole('button', { name: 'ลองอีกครั้ง' }).click();
     await expect(page.getByRole('heading', { name: 'มีคนแจ้งเรื่องนี้แล้ว' })).toBeVisible();
 
-    await bar(page).getByRole('button', { name: 'ย้อนกลับ' }).click();
+    await interstitial(page).getByRole('button', { name: BACK_TOP }).click();
     fail = true;
     await bar(page).getByRole('button', { name: 'ถัดไป' }).click();
     await failed.getByRole('button', { name: 'แจ้งเรื่องใหม่ต่อ' }).click();
