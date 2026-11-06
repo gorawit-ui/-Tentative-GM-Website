@@ -81,11 +81,15 @@
       "area-wh300-store-3": { "location_id": "loc-wh300", "label": "คลังสินค้าชั้น 3", "active": true, "order": 4 },
       "area-wh300-store-4": { "location_id": "loc-wh300", "label": "คลังสินค้าชั้น 4", "active": true, "order": 5 },
       "area-wh300-storage-5": { "location_id": "loc-wh300", "label": "ห้องเก็บของชั้น 5", "active": true, "order": 6 },
+      "area-b8f2954eb8e8": { "location_id": "loc-fac17", "label": "ไลน์ผลิต 1 (ทดสอบ)", "active": true, "order": 1, "qr_id": "VTHDtbb9OiySSnsVFNqQxg" },
+      "area-d460202d7cef": { "location_id": "loc-fac17", "label": "ห้องเก็บวัตถุดิบ (ทดสอบ)", "active": true, "order": 2, "qr_id": "lbUur6McEJ3FeJXvTi6kzg" },
       "area-cafe222-bar": { "location_id": "loc-cafe222", "label": "เคาน์เตอร์บาร์", "active": true, "order": 1 },
       "area-cafe222-old": { "location_id": "loc-cafe222", "label": "ห้องเก็บของเดิม (ปิดแล้ว)", "active": false, "order": 2, "qr_id": "A12FixtureQrCafeOld001" }
     },
     "qr_codes": {
       "A11FixtureQrPackOne001": { "location_id": "loc-wh300", "area_id": "area-wh300-pack-1", "active": true },
+      "VTHDtbb9OiySSnsVFNqQxg": { "location_id": "loc-fac17", "area_id": "area-b8f2954eb8e8", "active": true },
+      "lbUur6McEJ3FeJXvTi6kzg": { "location_id": "loc-fac17", "area_id": "area-d460202d7cef", "active": true },
       "A12FixtureQrCafeOld001": { "location_id": "loc-cafe222", "area_id": "area-cafe222-old", "active": true },
       "A12FixtureQrDisabled01": { "location_id": "loc-cafe222", "area_id": "area-cafe222-bar", "active": false }
     },
